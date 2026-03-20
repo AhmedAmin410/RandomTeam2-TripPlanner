@@ -1,8 +1,10 @@
 package com.randmteam2.tripplanning.user.service;
 
+import com.randmteam2.tripplanning.user.model.Role;
 import com.randmteam2.tripplanning.user.model.User;
 import com.randmteam2.tripplanning.user.repository.UserRepository;
 import org.springframework.stereotype.Service;
+
 
 import java.util.List;
 
@@ -45,10 +47,40 @@ public class UserService {
         User user = getUserById(id);
         userRepository.delete(user);
     }
-//    public List<User> searchUsers(String name, String email) {
-//        return userRepository.findByNameContainingIgnoreCaseAndEmailContainingIgnoreCase(
-//                name == null ? "" : name,
-//                email == null ? "" : email
-//        );
-//    }
+    public List<User> searchUsers(String name, Role role, String email) {
+
+        if (name != null && role != null && email != null) {
+            return userRepository
+                    .findByNameContainingIgnoreCaseAndRoleAndEmailContainingIgnoreCase(name, role, email);
+        }
+
+        if (name != null && role != null) {
+            return userRepository
+                    .findByNameContainingIgnoreCaseAndRole(name, role);
+        }
+
+        if (name != null && email != null) {
+            return userRepository
+                    .findByNameContainingIgnoreCaseAndEmailContainingIgnoreCase(name, email);
+        }
+
+        if (role != null && email != null) {
+            return userRepository
+                    .findByRoleAndEmailContainingIgnoreCase(role, email);
+        }
+
+        if (name != null) {
+            return userRepository.findByNameContainingIgnoreCase(name);
+        }
+
+        if (role != null) {
+            return userRepository.findByRole(role);
+        }
+
+        if (email != null) {
+            return userRepository.findByEmailContainingIgnoreCase(email);
+        }
+
+        return userRepository.findAll();
+    }
 }

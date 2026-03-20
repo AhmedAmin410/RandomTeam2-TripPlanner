@@ -3,7 +3,7 @@ package com.randmteam2.tripplanning.user.controller;
 import com.randmteam2.tripplanning.user.model.User;
 import com.randmteam2.tripplanning.user.service.UserService;
 import org.springframework.web.bind.annotation.*;
-
+import com.randmteam2.tripplanning.user.model.Role;
 import java.util.List;
 
 @RestController
@@ -40,12 +40,19 @@ public class UserController {
     public void deleteUser(@PathVariable Long id) {
         userService.deleteUser(id);
     }
-//    @GetMapping("/search")
-//    public List<User> searchUsers(
-//            @RequestParam(required = false) String name,
-//            @RequestParam(required = false) String email
-//    ) {
-//        return userService.searchUsers(name, email);
-//    }
 
+    @GetMapping("/search")
+    public List<User> searchUsers(
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) String role,
+            @RequestParam(required = false) String email
+    ) {
+        Role roleEnum = null;
+
+        if (role != null) {
+            roleEnum = Role.valueOf(role.toUpperCase());
+        }
+
+        return userService.searchUsers(name, roleEnum, email);
+    }
 }
