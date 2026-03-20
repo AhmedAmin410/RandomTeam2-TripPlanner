@@ -4,8 +4,8 @@ import com.randmteam2.tripplanning.user.model.Role;
 import com.randmteam2.tripplanning.user.model.User;
 import com.randmteam2.tripplanning.user.repository.UserRepository;
 import org.springframework.stereotype.Service;
-
-
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 import java.util.List;
 
 @Service
@@ -27,7 +27,7 @@ public class UserService {
 
     public User getUserById(Long id) {
         return userRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
     }
 
     public User updateUser(Long id, User updatedUser) {
