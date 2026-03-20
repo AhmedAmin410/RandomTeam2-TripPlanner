@@ -1,0 +1,12 @@
+package com.randmteam2.tripplanning.user.repository;
+
+import com.randmteam2.tripplanning.user.model.User;
+import org.springframework.data.jpa.repository.JpaRepository;
+import java.util.List;
+
+public interface UserRepository extends JpaRepository<User, Long> {
+
+//    List<User> findByNameContainingIgnoreCaseAndEmailContainingIgnoreCase(
+//            String name, String email
+//    );
+}
