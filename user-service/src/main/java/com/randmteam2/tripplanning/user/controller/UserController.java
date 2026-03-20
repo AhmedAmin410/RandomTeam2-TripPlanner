@@ -5,6 +5,7 @@ import com.randmteam2.tripplanning.user.service.UserService;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/users")
@@ -47,5 +48,13 @@ public class UserController {
 //    ) {
 //        return userService.searchUsers(name, email);
 //    }
+
+@PutMapping("/{id}/preferences")
+public User updatePreferences(
+        @PathVariable Long id,
+        @RequestBody Map<String, Object> updates
+) {
+    return userService.updatePreferences(id, updates);
+}
 
 }
