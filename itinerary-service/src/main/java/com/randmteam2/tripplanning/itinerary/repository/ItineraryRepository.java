@@ -2,9 +2,11 @@ package com.randmteam2.tripplanning.itinerary.repository;
 
 import com.randmteam2.tripplanning.itinerary.model.Itinerary;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 @Repository
 public interface ItineraryRepository extends JpaRepository<Itinerary, Long> {
@@ -15,4 +17,13 @@ public interface ItineraryRepository extends JpaRepository<Itinerary, Long> {
         AND b.status = 'CONFIRMED'
         """, nativeQuery = true)
     Double sumConfirmedBookings(@Param("itineraryId") Long itineraryId);
+    @Modifying
+    @Transactional
+    @Query(value = """
+        UPDATE bookings
+        SET status = 'CANCELLED'
+        WHERE itinerary_id = :itineraryId
+        AND status = 'PENDING'
+        """, nativeQuery = true)
+    void cancelPendingBookings(@Param("itineraryId") Long itineraryId);
 }
