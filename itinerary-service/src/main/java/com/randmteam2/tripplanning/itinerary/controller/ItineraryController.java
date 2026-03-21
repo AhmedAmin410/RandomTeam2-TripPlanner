@@ -1,5 +1,6 @@
 package com.randmteam2.tripplanning.itinerary.controller;
 
+import com.randmteam2.tripplanning.itinerary.dto.ItineraryDayRequest;
 import com.randmteam2.tripplanning.itinerary.model.Itinerary;
 import com.randmteam2.tripplanning.itinerary.service.ItineraryService;
 import org.springframework.http.ResponseEntity;
@@ -60,5 +61,10 @@ public class ItineraryController {
             @PathVariable Long itineraryId,
             @RequestParam Long destinationId) {
         return ResponseEntity.ok(itineraryService.assignDestination(itineraryId, destinationId));
+    }
+    @PostMapping("/{itineraryId}/days")
+    public ResponseEntity<Itinerary> addDays(@PathVariable Long itineraryId,
+                                             @RequestBody List<ItineraryDayRequest> days) {
+        return ResponseEntity.status(201).body(itineraryService.addDays(itineraryId, days));
     }
 }

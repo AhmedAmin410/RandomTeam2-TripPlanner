@@ -1,5 +1,6 @@
 package com.randmteam2.tripplanning.itinerary.model;
 
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -45,7 +46,7 @@ public class Itinerary {
     private LocalDateTime createdAt;
 
     @OneToMany(mappedBy = "itinerary", cascade = CascadeType.ALL)
-    @JsonIgnore
+    @JsonManagedReference
     private List<ItineraryDay> itineraryDays;
 
     @PrePersist
