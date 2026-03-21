@@ -51,4 +51,8 @@ public class ItineraryController {
         itineraryService.delete(id);
         return ResponseEntity.noContent().build();
     }
+    @PutMapping("/{id}/cancel")
+    public ResponseEntity<Itinerary> cancelItinerary(@PathVariable Long id) {
+        return ResponseEntity.ok(itineraryService.cancelItinerary(id));
+    }
 }

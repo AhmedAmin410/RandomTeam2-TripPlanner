@@ -64,4 +64,18 @@ public class ItineraryService {
         getById(id);
         itineraryRepository.deleteById(id);
     }
+    @Transactional
+    public Itinerary cancelItinerary(Long id) {
+        Itinerary itinerary = itineraryRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Itinerary not found with id: " + id));
+
+        if (itinerary.getStatus() != Itinerary.Status.DRAFT &&
+                itinerary.getStatus() != Itinerary.Status.PLANNED) {
+            throw new RuntimeException("Itinerary must be DRAFT or PLANNED to cancel it");
+        }
+
+        itinerary.setStatus(Itinerary.Status.CANCELLED);
+        itineraryRepository.cancelPendingBookings(id);
+        return itineraryRepository.save(itinerary);
+    }
 }
