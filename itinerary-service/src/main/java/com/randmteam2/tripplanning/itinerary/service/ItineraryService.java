@@ -78,4 +78,27 @@ public class ItineraryService {
         itineraryRepository.cancelPendingBookings(id);
         return itineraryRepository.save(itinerary);
     }
+    @Transactional
+    public Itinerary assignDestination(Long itineraryId, Long destinationId) {
+        Itinerary itinerary = itineraryRepository.findById(itineraryId)
+                .orElseThrow(() -> new RuntimeException("Itinerary not found with id: " + itineraryId));
+
+        if (itinerary.getStatus() != Itinerary.Status.DRAFT) {
+            throw new RuntimeException("Itinerary must be DRAFT to assign a destination");
+        }
+
+        Integer exists = itineraryRepository.checkDestinationExists(destinationId);
+        if (exists == 0) {
+            throw new RuntimeException("Destination not found with id: " + destinationId);
+        }
+
+        Integer active = itineraryRepository.checkDestinationActive(destinationId);
+        if (active == 0) {
+            throw new RuntimeException("Destination must be ACTIVE to assign it");
+        }
+
+        itinerary.setDestinationId(destinationId);
+        itinerary.setStatus(Itinerary.Status.PLANNED);
+        return itineraryRepository.save(itinerary);
+    }
 }

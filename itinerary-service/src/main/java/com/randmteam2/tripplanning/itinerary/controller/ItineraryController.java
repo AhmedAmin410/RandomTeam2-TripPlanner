@@ -55,4 +55,10 @@ public class ItineraryController {
     public ResponseEntity<Itinerary> cancelItinerary(@PathVariable Long id) {
         return ResponseEntity.ok(itineraryService.cancelItinerary(id));
     }
+    @PutMapping("/{itineraryId}/assign")
+    public ResponseEntity<Itinerary> assignDestination(
+            @PathVariable Long itineraryId,
+            @RequestParam Long destinationId) {
+        return ResponseEntity.ok(itineraryService.assignDestination(itineraryId, destinationId));
+    }
 }

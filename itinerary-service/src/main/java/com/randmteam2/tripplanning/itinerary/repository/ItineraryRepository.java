@@ -25,5 +25,18 @@ public interface ItineraryRepository extends JpaRepository<Itinerary, Long> {
         WHERE itinerary_id = :itineraryId
         AND status = 'PENDING'
         """, nativeQuery = true)
+
     void cancelPendingBookings(@Param("itineraryId") Long itineraryId);
+    @Query(value = """
+        SELECT COUNT(*) FROM destinations
+        WHERE id = :destinationId
+        AND status = 'ACTIVE'
+        """, nativeQuery = true)
+    Integer checkDestinationActive(@Param("destinationId") Long destinationId);
+
+    @Query(value = """
+        SELECT COUNT(*) FROM destinations
+        WHERE id = :destinationId
+        """, nativeQuery = true)
+    Integer checkDestinationExists(@Param("destinationId") Long destinationId);
 }
