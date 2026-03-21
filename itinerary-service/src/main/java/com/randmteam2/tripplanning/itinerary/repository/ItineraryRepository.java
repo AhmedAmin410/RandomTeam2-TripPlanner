@@ -39,4 +39,10 @@ public interface ItineraryRepository extends JpaRepository<Itinerary, Long> {
         WHERE id = :destinationId
         """, nativeQuery = true)
     Integer checkDestinationExists(@Param("destinationId") Long destinationId);
+    @Query(value = """
+        SELECT COALESCE(MAX(day_order), 0)
+        FROM itinerary_days
+        WHERE itinerary_id = :itineraryId
+        """, nativeQuery = true)
+    Integer getMaxDayOrder(@Param("itineraryId") Long itineraryId);
 }

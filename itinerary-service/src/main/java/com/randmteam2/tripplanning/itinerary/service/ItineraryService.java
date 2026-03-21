@@ -1,19 +1,26 @@
 package com.randmteam2.tripplanning.itinerary.service;
 
+import com.randmteam2.tripplanning.itinerary.dto.ItineraryDayRequest;
 import com.randmteam2.tripplanning.itinerary.model.Itinerary;
+import com.randmteam2.tripplanning.itinerary.model.ItineraryDay;
+import com.randmteam2.tripplanning.itinerary.repository.ItineraryDayRepository;
 import com.randmteam2.tripplanning.itinerary.repository.ItineraryRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
 public class ItineraryService {
 
     private final ItineraryRepository itineraryRepository;
+    private final ItineraryDayRepository itineraryDayRepository;
 
-    public ItineraryService(ItineraryRepository itineraryRepository) {
+    public ItineraryService(ItineraryRepository itineraryRepository,
+                            ItineraryDayRepository itineraryDayRepository) {
         this.itineraryRepository = itineraryRepository;
+        this.itineraryDayRepository = itineraryDayRepository;
     }
 
 
@@ -100,5 +107,44 @@ public class ItineraryService {
         itinerary.setDestinationId(destinationId);
         itinerary.setStatus(Itinerary.Status.PLANNED);
         return itineraryRepository.save(itinerary);
+    }
+    @Transactional
+    public Itinerary addDays(Long itineraryId, List<ItineraryDayRequest> dayRequests) {
+        Itinerary itinerary = itineraryRepository.findById(itineraryId)
+                .orElseThrow(() -> new RuntimeException("Itinerary not found with id: " + itineraryId));
+
+        if (itinerary.getStatus() != Itinerary.Status.DRAFT &&
+                itinerary.getStatus() != Itinerary.Status.PLANNED) {
+            throw new RuntimeException("cannot add days to itinerary with status: " + itinerary.getStatus());
+        }
+
+        for (ItineraryDayRequest req : dayRequests) {
+            if (req.getDate() == null || req.getTitle() == null || req.getTitle().isBlank()) {
+                throw new RuntimeException("each day must have a date and title");
+            }
+        }
+
+        int maxOrder = itineraryRepository.getMaxDayOrder(itineraryId);
+
+        List<ItineraryDay> newDays = new ArrayList<>();
+        for (ItineraryDayRequest req : dayRequests) {
+            maxOrder++;
+            ItineraryDay day = new ItineraryDay();
+            day.setDayOrder(maxOrder);
+            day.setDate(req.getDate());
+            day.setTitle(req.getTitle());
+            day.setDescription(req.getDescription());
+            day.setMetadata(req.getMetadata());
+            day.setStatus(ItineraryDay.Status.PLANNED);
+            day.setItinerary(itinerary);
+            newDays.add(day);
+        }
+
+        itineraryDayRepository.saveAll(newDays);
+
+        Itinerary result = itineraryRepository.findById(itineraryId)
+                .orElseThrow(() -> new RuntimeException("Itinerary not found with id: " + itineraryId));
+        result.setItineraryDays(itineraryDayRepository.findByItineraryIdOrderByDayOrder(itineraryId));
+        return result;
     }
 }

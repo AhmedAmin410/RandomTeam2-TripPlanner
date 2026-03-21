@@ -1,5 +1,6 @@
 package com.randmteam2.tripplanning.itinerary.model;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import jakarta.persistence.*;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -36,7 +37,7 @@ public class ItineraryDay {
 
     @ManyToOne
     @JoinColumn(name = "itinerary_id")
-    @JsonIgnore
+    @JsonBackReference
     private Itinerary itinerary;
 
     public enum Status {
