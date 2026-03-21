@@ -3,6 +3,8 @@ package com.randmteam2.tripplanning.itinerary.service;
 import com.randmteam2.tripplanning.itinerary.model.Itinerary;
 import com.randmteam2.tripplanning.itinerary.repository.ItineraryRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import java.util.List;
 
 @Service
@@ -40,7 +42,24 @@ public class ItineraryService {
         existing.setEndDate(updated.getEndDate());
         return itineraryRepository.save(existing);
     }
+    @Transactional
+    public Itinerary completeItinerary(Long id) {
+        Itinerary itinerary = itineraryRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Itinerary not found with id: " + id));
 
+        if (itinerary.getStatus() != Itinerary.Status.IN_PROGRESS) {
+            throw new RuntimeException("Itinerary must be IN_PROGRESS to complete it");
+        }
+
+        itinerary.setStatus(Itinerary.Status.COMPLETED);
+
+        if (itinerary.getEstimatedBudget() == null) {
+            Double total = itineraryRepository.sumConfirmedBookings(id);
+            itinerary.setEstimatedBudget(total);
+        }
+
+        return itineraryRepository.save(itinerary);
+    }
     public void delete(Long id) {
         getById(id);
         itineraryRepository.deleteById(id);

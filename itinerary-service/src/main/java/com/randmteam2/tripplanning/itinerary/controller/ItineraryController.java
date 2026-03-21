@@ -21,7 +21,10 @@ public class ItineraryController {
         return ResponseEntity.ok("OK");
     }
 
-
+    @PutMapping("/{id}/complete")
+    public ResponseEntity<Itinerary> completeItinerary(@PathVariable Long id) {
+        return ResponseEntity.ok(itineraryService.completeItinerary(id));
+    }
     @PostMapping
     public ResponseEntity<Itinerary> create(@RequestBody Itinerary itinerary) {
         return ResponseEntity.status(201).body(itineraryService.create(itinerary));
