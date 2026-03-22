@@ -72,4 +72,13 @@ public interface ItineraryRepository extends JpaRepository<Itinerary, Long> {
         AND status IN ('DRAFT', 'PLANNED', 'IN_PROGRESS')
         """, nativeQuery = true)
     Integer countActiveItinerariesForDestination(@Param("destinationId") Long destinationId);
+
+    @Query(value = """
+        SELECT * FROM itineraries
+        WHERE metadata ->> :key = :value
+        """, nativeQuery = true)
+    List<Itinerary> filterByMetadata(
+            @Param("key") String key,
+            @Param("value") String value
+    );
 }
