@@ -9,6 +9,7 @@ import com.randmteam2.tripplanning.itinerary.repository.ItineraryRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -171,5 +172,8 @@ public class ItineraryService {
         dto.setCompletedDays(completedDays);
 
         return dto;
+    }
+    public List<Itinerary> searchByStatusAndDateRange(String status, LocalDate startDate, LocalDate endDate) {
+        return itineraryRepository.searchByStatusAndDateRange(status, startDate, endDate);
     }
 }

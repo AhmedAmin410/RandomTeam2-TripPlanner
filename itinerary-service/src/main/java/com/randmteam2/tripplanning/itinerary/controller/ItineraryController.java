@@ -6,6 +6,8 @@ import com.randmteam2.tripplanning.itinerary.model.Itinerary;
 import com.randmteam2.tripplanning.itinerary.service.ItineraryService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -71,5 +73,12 @@ public class ItineraryController {
     @GetMapping("/{itineraryId}/details")
     public ResponseEntity<ItineraryDetailsDTO> getItineraryDetails(@PathVariable Long itineraryId) {
         return ResponseEntity.ok(itineraryService.getItineraryDetails(itineraryId));
+    }
+    @GetMapping("/search")
+    public ResponseEntity<List<Itinerary>> search(
+            @RequestParam(required = false) String status,
+            @RequestParam LocalDate startDate,
+            @RequestParam LocalDate endDate) {
+        return ResponseEntity.ok(itineraryService.searchByStatusAndDateRange(status, startDate, endDate));
     }
 }
