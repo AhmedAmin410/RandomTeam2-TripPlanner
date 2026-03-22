@@ -2,6 +2,8 @@ package com.randmteam2.tripplanning.itinerary.service;
 
 import com.randmteam2.tripplanning.itinerary.dto.ItineraryDayRequest;
 import com.randmteam2.tripplanning.itinerary.dto.ItineraryDetailsDTO;
+import com.randmteam2.tripplanning.itinerary.dto.TripCostEstimateDTO;
+import com.randmteam2.tripplanning.itinerary.dto.TripCostRequestDTO;
 import com.randmteam2.tripplanning.itinerary.model.Itinerary;
 import com.randmteam2.tripplanning.itinerary.model.ItineraryDay;
 import com.randmteam2.tripplanning.itinerary.repository.ItineraryDayRepository;
@@ -175,5 +177,32 @@ public class ItineraryService {
     }
     public List<Itinerary> searchByStatusAndDateRange(String status, LocalDate startDate, LocalDate endDate) {
         return itineraryRepository.searchByStatusAndDateRange(status, startDate, endDate);
+    }
+
+    public TripCostEstimateDTO estimateTripCost(TripCostRequestDTO request) {
+        double accommodation = 150.0 * request.getNumberOfDays() * request.getNumberOfTravelers();
+        double transport = 50.0 * request.getNumberOfDays() * request.getNumberOfTravelers();
+        double activities = 100.0 * request.getNumberOfDays();
+
+        Integer activeCount = itineraryRepository.countActiveItinerariesForDestination(request.getDestinationId());
+        double seasonMultiplier;
+        if (activeCount <= 5) {
+            seasonMultiplier = 1.0;
+        } else if (activeCount <= 15) {
+            seasonMultiplier = 1.3;
+        } else {
+            seasonMultiplier = 1.6;
+        }
+
+        double total = (accommodation + transport + activities) * seasonMultiplier;
+
+        TripCostEstimateDTO dto = new TripCostEstimateDTO();
+        dto.setEstimatedAccommodation(accommodation);
+        dto.setEstimatedTransport(transport);
+        dto.setEstimatedActivities(activities);
+        dto.setSeasonMultiplier(seasonMultiplier);
+        dto.setEstimatedTotal(total);
+
+        return dto;
     }
 }

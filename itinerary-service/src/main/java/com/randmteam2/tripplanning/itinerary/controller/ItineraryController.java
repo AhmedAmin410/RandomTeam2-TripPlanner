@@ -2,6 +2,8 @@ package com.randmteam2.tripplanning.itinerary.controller;
 
 import com.randmteam2.tripplanning.itinerary.dto.ItineraryDayRequest;
 import com.randmteam2.tripplanning.itinerary.dto.ItineraryDetailsDTO;
+import com.randmteam2.tripplanning.itinerary.dto.TripCostEstimateDTO;
+import com.randmteam2.tripplanning.itinerary.dto.TripCostRequestDTO;
 import com.randmteam2.tripplanning.itinerary.model.Itinerary;
 import com.randmteam2.tripplanning.itinerary.service.ItineraryService;
 import org.springframework.http.ResponseEntity;
@@ -80,5 +82,10 @@ public class ItineraryController {
             @RequestParam LocalDate startDate,
             @RequestParam LocalDate endDate) {
         return ResponseEntity.ok(itineraryService.searchByStatusAndDateRange(status, startDate, endDate));
+    }
+
+    @PostMapping("/estimate")
+    public ResponseEntity<TripCostEstimateDTO> estimateTripCost(@RequestBody TripCostRequestDTO request) {
+        return ResponseEntity.ok(itineraryService.estimateTripCost(request));
     }
 }
