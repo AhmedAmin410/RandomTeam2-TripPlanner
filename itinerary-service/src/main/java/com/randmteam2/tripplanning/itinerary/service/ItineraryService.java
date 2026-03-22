@@ -1,9 +1,6 @@
 package com.randmteam2.tripplanning.itinerary.service;
 
-import com.randmteam2.tripplanning.itinerary.dto.ItineraryDayRequest;
-import com.randmteam2.tripplanning.itinerary.dto.ItineraryDetailsDTO;
-import com.randmteam2.tripplanning.itinerary.dto.TripCostEstimateDTO;
-import com.randmteam2.tripplanning.itinerary.dto.TripCostRequestDTO;
+import com.randmteam2.tripplanning.itinerary.dto.*;
 import com.randmteam2.tripplanning.itinerary.model.Itinerary;
 import com.randmteam2.tripplanning.itinerary.model.ItineraryDay;
 import com.randmteam2.tripplanning.itinerary.repository.ItineraryDayRepository;
@@ -211,4 +208,26 @@ public class ItineraryService {
         }
         return itineraryRepository.filterByMetadata(key, value);
     }
+    public ItineraryAnalyticsDTO getAnalytics(LocalDate startDate, LocalDate endDate) {
+        Object[] result = itineraryRepository.getAnalytics(startDate, endDate);
+        Object[] row = (Object[]) result[0];
+
+        long total = ((Number) row[0]).longValue();
+        long completed = ((Number) row[1]).longValue();
+        long cancelled = ((Number) row[2]).longValue();
+        double totalBudget = ((Number) row[3]).doubleValue();
+        double avgBudget = ((Number) row[4]).doubleValue();
+        double completionRate = total > 0 ? (completed * 100.0) / total : 0.0;
+
+        ItineraryAnalyticsDTO dto = new ItineraryAnalyticsDTO();
+        dto.setTotalItineraries(total);
+        dto.setCompletedItineraries(completed);
+        dto.setCancelledItineraries(cancelled);
+        dto.setTotalBudget(totalBudget);
+        dto.setAverageBudget(avgBudget);
+        dto.setCompletionRate(completionRate);
+
+        return dto;
+    }
+
 }
