@@ -1,12 +1,14 @@
 package com.randmteam2.tripplanning.user.service;
 
 import com.randmteam2.tripplanning.user.dto.UserTripSummaryDTO;
+import com.randmteam2.tripplanning.user.model.Role;
 import com.randmteam2.tripplanning.user.model.User;
 import com.randmteam2.tripplanning.user.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
 import java.util.List;
+import org.springframework.http.HttpStatus;
 
 @Service
 public class UserService {
@@ -73,5 +75,16 @@ public class UserService {
                 totalSpent,
                 avgBudget
         );
+    public List<User> searchByPreference(String key, String value) {
+
+        if (key == null || key.trim().isEmpty() ||
+                value == null || value.trim().isEmpty()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Key and value must not be empty"
+            );
+        }
+
+        return userRepository.findByPreference(key, value);
     }
 }
