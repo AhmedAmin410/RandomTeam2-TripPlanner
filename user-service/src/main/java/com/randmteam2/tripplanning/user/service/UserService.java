@@ -7,6 +7,9 @@ import com.randmteam2.tripplanning.user.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 
@@ -49,6 +52,29 @@ public class UserService {
         User user = getUserById(id);
         userRepository.delete(user);
     }
+//    public List<User> searchUsers(String name, String email) {
+//        return userRepository.findByNameContainingIgnoreCaseAndEmailContainingIgnoreCase(
+//                name == null ? "" : name,
+//                email == null ? "" : email
+//        );
+//    }
+
+    public User updatePreferences(Long id, Map<String, Object> updates) {
+
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+
+        Map<String, Object> current = user.getPreferences();
+
+        if (current == null) {
+            current = new HashMap<>();
+        }
+
+        current.putAll(updates);
+
+        user.setPreferences(current);
+
+        return userRepository.save(user);
 
     public UserTripSummaryDTO getUserTripSummary(Long userId) {
 
