@@ -1,5 +1,6 @@
 package com.randmteam2.tripplanning.user.service;
 
+import com.randmteam2.tripplanning.user.model.Role;
 import com.randmteam2.tripplanning.user.model.User;
 import com.randmteam2.tripplanning.user.repository.UserRepository;
 import org.springframework.stereotype.Service;

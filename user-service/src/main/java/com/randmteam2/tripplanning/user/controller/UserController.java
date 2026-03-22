@@ -49,4 +49,18 @@ public class UserController {
         return ResponseEntity.ok(userService.searchByPreference(key, value));
     }
 
+    @GetMapping("/search")
+    public List<User> searchUsers(
+            @RequestParam(required = false) String name,
+            @RequestParam(required = false) String role,
+            @RequestParam(required = false) String email
+    ) {
+        Role roleEnum = null;
+
+        if (role != null) {
+            roleEnum = Role.valueOf(role.toUpperCase());
+        }
+
+        return userService.searchUsers(name, roleEnum, email);
+    }
 }
