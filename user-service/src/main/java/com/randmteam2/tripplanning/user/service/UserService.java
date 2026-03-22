@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
 import java.util.List;
+import org.springframework.http.HttpStatus;
 
 @Service
 public class UserService {
@@ -47,40 +48,17 @@ public class UserService {
         User user = getUserById(id);
         userRepository.delete(user);
     }
-    public List<User> searchUsers(String name, Role role, String email) {
 
-        if (name != null && role != null && email != null) {
-            return userRepository
-                    .findByNameContainingIgnoreCaseAndRoleAndEmailContainingIgnoreCase(name, role, email);
+    public List<User> searchByPreference(String key, String value) {
+
+        if (key == null || key.trim().isEmpty() ||
+                value == null || value.trim().isEmpty()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Key and value must not be empty"
+            );
         }
 
-        if (name != null && role != null) {
-            return userRepository
-                    .findByNameContainingIgnoreCaseAndRole(name, role);
-        }
-
-        if (name != null && email != null) {
-            return userRepository
-                    .findByNameContainingIgnoreCaseAndEmailContainingIgnoreCase(name, email);
-        }
-
-        if (role != null && email != null) {
-            return userRepository
-                    .findByRoleAndEmailContainingIgnoreCase(role, email);
-        }
-
-        if (name != null) {
-            return userRepository.findByNameContainingIgnoreCase(name);
-        }
-
-        if (role != null) {
-            return userRepository.findByRole(role);
-        }
-
-        if (email != null) {
-            return userRepository.findByEmailContainingIgnoreCase(email);
-        }
-
-        return userRepository.findAll();
+        return userRepository.findByPreference(key, value);
     }
 }
