@@ -1,5 +1,6 @@
 package com.randmteam2.tripplanning.user.service;
 
+import com.randmteam2.tripplanning.user.dto.UserTripSummaryDTO;
 import com.randmteam2.tripplanning.user.model.Role;
 import com.randmteam2.tripplanning.user.model.User;
 import com.randmteam2.tripplanning.user.repository.UserRepository;
@@ -49,6 +50,31 @@ public class UserService {
         userRepository.delete(user);
     }
 
+    public UserTripSummaryDTO getUserTripSummary(Long userId) {
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "User not found"));
+
+        List<Object[]> results = userRepository.getUserTripSummary(userId);
+
+        Object[] result = results.isEmpty() ? new Object[]{0, 0, 0, 0, 0} : results.get(0);
+
+        Long totalTrips = ((Number) result[0]).longValue();
+        Long completedTrips = ((Number) result[1]).longValue();
+        Long cancelledTrips = ((Number) result[2]).longValue();
+        Double totalSpent = ((Number) result[3]).doubleValue();
+        Double avgBudget = ((Number) result[4]).doubleValue();
+
+        return new UserTripSummaryDTO(
+                user.getId(),
+                user.getName(),
+                totalTrips,
+                completedTrips,
+                cancelledTrips,
+                totalSpent,
+                avgBudget
+        );
     public List<User> searchByPreference(String key, String value) {
 
         if (key == null || key.trim().isEmpty() ||

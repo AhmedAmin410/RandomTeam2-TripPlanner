@@ -1,5 +1,6 @@
 package com.randmteam2.tripplanning.user.controller;
 
+import com.randmteam2.tripplanning.user.dto.UserTripSummaryDTO;
 import com.randmteam2.tripplanning.user.model.User;
 import com.randmteam2.tripplanning.user.service.UserService;
 import org.springframework.http.ResponseEntity;
@@ -11,6 +12,7 @@ import java.util.List;
 public class UserController {
 
     private final UserService userService;
+
 
     public UserController(UserService userService) {
         this.userService = userService;
@@ -40,6 +42,12 @@ public class UserController {
     public void deleteUser(@PathVariable Long id) {
         userService.deleteUser(id);
     }
+
+    @GetMapping("/{id}/trip-summary")
+    public ResponseEntity<UserTripSummaryDTO> getTripSummary(@PathVariable Long id) {
+        return ResponseEntity.ok(userService.getUserTripSummary(id));
+    }
+
 
     @GetMapping("/preferences/search")
     public ResponseEntity<List<User>> searchByPreference(
