@@ -81,4 +81,20 @@ public interface ItineraryRepository extends JpaRepository<Itinerary, Long> {
             @Param("key") String key,
             @Param("value") String value
     );
+
+    @Query(value = """
+        SELECT 
+            COUNT(*) as total,
+            SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) as completed,
+            SUM(CASE WHEN status = 'CANCELLED' THEN 1 ELSE 0 END) as cancelled,
+            COALESCE(SUM(estimated_budget), 0) as totalBudget,
+            COALESCE(AVG(CASE WHEN status = 'COMPLETED' THEN estimated_budget END), 0) as avgBudget
+        FROM itineraries
+        WHERE start_date >= :startDate
+        AND start_date <= :endDate
+        """, nativeQuery = true)
+    Object[] getAnalytics(
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate
+    );
 }
