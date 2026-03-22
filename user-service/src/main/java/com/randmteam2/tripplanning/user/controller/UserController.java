@@ -2,8 +2,8 @@ package com.randmteam2.tripplanning.user.controller;
 
 import com.randmteam2.tripplanning.user.model.User;
 import com.randmteam2.tripplanning.user.service.UserService;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
 import java.util.List;
 
 @RestController
@@ -40,12 +40,13 @@ public class UserController {
     public void deleteUser(@PathVariable Long id) {
         userService.deleteUser(id);
     }
-//    @GetMapping("/search")
-//    public List<User> searchUsers(
-//            @RequestParam(required = false) String name,
-//            @RequestParam(required = false) String email
-//    ) {
-//        return userService.searchUsers(name, email);
-//    }
+
+    @GetMapping("/preferences/search")
+    public ResponseEntity<List<User>> searchByPreference(
+            @RequestParam String key,
+            @RequestParam String value) {
+
+        return ResponseEntity.ok(userService.searchByPreference(key, value));
+    }
 
 }

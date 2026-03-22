@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
 import java.util.List;
+import org.springframework.http.HttpStatus;
 
 @Service
 public class UserService {
@@ -46,10 +47,17 @@ public class UserService {
         User user = getUserById(id);
         userRepository.delete(user);
     }
-//    public List<User> searchUsers(String name, String email) {
-//        return userRepository.findByNameContainingIgnoreCaseAndEmailContainingIgnoreCase(
-//                name == null ? "" : name,
-//                email == null ? "" : email
-//        );
-//    }
+
+    public List<User> searchByPreference(String key, String value) {
+
+        if (key == null || key.trim().isEmpty() ||
+                value == null || value.trim().isEmpty()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Key and value must not be empty"
+            );
+        }
+
+        return userRepository.findByPreference(key, value);
+    }
 }

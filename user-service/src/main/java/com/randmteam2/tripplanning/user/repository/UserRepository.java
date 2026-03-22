@@ -3,10 +3,14 @@ package com.randmteam2.tripplanning.user.repository;
 import com.randmteam2.tripplanning.user.model.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface UserRepository extends JpaRepository<User, Long> {
 
-//    List<User> findByNameContainingIgnoreCaseAndEmailContainingIgnoreCase(
-//            String name, String email
-//    );
+    @Query(value = """
+    SELECT * FROM users 
+    WHERE preferences ->> :key = :value
+""", nativeQuery = true)
+    List<User> findByPreference(@Param("key") String key, @Param("value") String value);
 }
