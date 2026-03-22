@@ -1,6 +1,7 @@
 package com.randmteam2.tripplanning.itinerary.service;
 
 import com.randmteam2.tripplanning.itinerary.dto.ItineraryDayRequest;
+import com.randmteam2.tripplanning.itinerary.dto.ItineraryDetailsDTO;
 import com.randmteam2.tripplanning.itinerary.model.Itinerary;
 import com.randmteam2.tripplanning.itinerary.model.ItineraryDay;
 import com.randmteam2.tripplanning.itinerary.repository.ItineraryDayRepository;
@@ -146,5 +147,29 @@ public class ItineraryService {
                 .orElseThrow(() -> new RuntimeException("Itinerary not found with id: " + itineraryId));
         result.setItineraryDays(itineraryDayRepository.findByItineraryIdOrderByDayOrder(itineraryId));
         return result;
+    }
+    public ItineraryDetailsDTO getItineraryDetails(Long itineraryId) {
+        Itinerary itinerary = itineraryRepository.findById(itineraryId)
+                .orElseThrow(() -> new RuntimeException("Itinerary not found with id: " + itineraryId));
+
+        List<ItineraryDay> days = itineraryDayRepository.findByItineraryIdOrderByDayOrder(itineraryId);
+
+        long completedDays = days.stream()
+                .filter(d -> d.getStatus() == ItineraryDay.Status.COMPLETED)
+                .count();
+
+        ItineraryDetailsDTO dto = new ItineraryDetailsDTO();
+        dto.setItineraryId(itinerary.getId());
+        dto.setUserId(itinerary.getUserId());
+        dto.setDestinationId(itinerary.getDestinationId());
+        dto.setTitle(itinerary.getTitle());
+        dto.setStatus(itinerary.getStatus().name());
+        dto.setEstimatedBudget(itinerary.getEstimatedBudget());
+        dto.setMetadata(itinerary.getMetadata());
+        dto.setDays(days);
+        dto.setTotalDays(days.size());
+        dto.setCompletedDays(completedDays);
+
+        return dto;
     }
 }
