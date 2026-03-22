@@ -2,11 +2,22 @@ package com.randmteam2.tripplanning.user.repository;
 
 import com.randmteam2.tripplanning.user.model.User;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
 import java.util.List;
 
 public interface UserRepository extends JpaRepository<User, Long> {
 
-//    List<User> findByNameContainingIgnoreCaseAndEmailContainingIgnoreCase(
-//            String name, String email
-//    );
+    @Query(value = """
+    SELECT 
+        COUNT(*) AS total_trips,
+        COUNT(CASE WHEN status = 'COMPLETED' THEN 1 END) AS completed_trips,
+        COUNT(CASE WHEN status = 'CANCELLED' THEN 1 END) AS cancelled_trips,
+        COALESCE(SUM(CASE WHEN status = 'COMPLETED' THEN estimated_budget END), 0) AS total_spent,
+        COALESCE(AVG(CASE WHEN status = 'COMPLETED' THEN estimated_budget END), 0) AS avg_budget
+    FROM itineraries
+    WHERE user_id = :userId
+""", nativeQuery = true)
+    List<Object[]> getUserTripSummary(@Param("userId") Long userId);
 }
