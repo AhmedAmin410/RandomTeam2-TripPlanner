@@ -205,4 +205,10 @@ public class ItineraryService {
 
         return dto;
     }
+    public List<Itinerary> filterByMetadata(String key, String value) {
+        if (key == null || key.isBlank() || value == null || value.isBlank()) {
+            throw new IllegalArgumentException("key and value must not be blank");
+        }
+        return itineraryRepository.filterByMetadata(key, value);
+    }
 }

@@ -88,4 +88,11 @@ public class ItineraryController {
     public ResponseEntity<TripCostEstimateDTO> estimateTripCost(@RequestBody TripCostRequestDTO request) {
         return ResponseEntity.ok(itineraryService.estimateTripCost(request));
     }
+
+    @GetMapping("/metadata/search")
+    public ResponseEntity<List<Itinerary>> filterByMetadata(
+            @RequestParam String key,
+            @RequestParam String value) {
+        return ResponseEntity.ok(itineraryService.filterByMetadata(key, value));
+    }
 }
