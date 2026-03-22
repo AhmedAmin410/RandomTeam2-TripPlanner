@@ -10,5 +10,11 @@
     "name": "Sara Yasser Abdelmageed Meckawy",
     "githubUsername": "member2-github",
     "service": "booking-service"
+  },
+  {
+    "studentId": "40-20092",
+    "name": "Youssef samy andrawis",
+    "githubUsername": "JoeAndrawis",
+    "service": "itinerary-and-activity-service"
   }
 ]
