@@ -1,4 +1,4 @@
-package com.team2.tripplanning.booking.model;
+package com.randmteam2.tripplanning.booking.model;
 
 import jakarta.persistence.*;
 import lombok.Data;

@@ -1,7 +1,7 @@
-package com.team2.tripplanning.booking.service;
+package com.randmteam2.tripplanning.booking.service;
 
-import com.team2.tripplanning.booking.model.Coupon;
-import com.team2.tripplanning.booking.repository.CouponRepository;
+import com.randmteam2.tripplanning.booking.model.Coupon;
+import com.randmteam2.tripplanning.booking.repository.CouponRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

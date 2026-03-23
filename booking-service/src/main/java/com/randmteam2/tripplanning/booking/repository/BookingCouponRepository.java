@@ -1,6 +1,6 @@
-package com.team2.tripplanning.booking.repository;
+package com.randmteam2.tripplanning.booking.repository;
 
-import com.team2.tripplanning.booking.model.BookingCoupon;
+import com.randmteam2.tripplanning.booking.model.BookingCoupon;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
