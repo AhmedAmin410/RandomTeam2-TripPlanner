@@ -1,6 +1,7 @@
 package com.randmteam2.tripplanning.booking.controller;
 
 import com.randmteam2.tripplanning.booking.model.Booking;
+import com.randmteam2.tripplanning.booking.model.BookingCoupon;
 import com.randmteam2.tripplanning.booking.service.BookingService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -51,5 +52,12 @@ public class BookingController {
             @RequestParam LocalDateTime startDate,
             @RequestParam LocalDateTime endDate) {
         return ResponseEntity.ok(bookingService.searchBookings(status, startDate, endDate));
+    }
+
+    // S5-F5: Apply Coupon to Booking
+    @PostMapping("/{bookingId}/coupons/{couponId}")
+    public ResponseEntity<BookingCoupon> applyCouponToBooking(@PathVariable Long bookingId,
+                                                              @PathVariable Long couponId) {
+        return ResponseEntity.ok(bookingService.applyCouponToBooking(bookingId, couponId));
     }
 }
