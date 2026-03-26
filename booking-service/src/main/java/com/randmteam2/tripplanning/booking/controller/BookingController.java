@@ -1,7 +1,10 @@
 package com.randmteam2.tripplanning.booking.controller;
 
+import com.randmteam2.tripplanning.booking.dto.BookingDetailsDTO;
+import com.randmteam2.tripplanning.booking.dto.CouponUsageDTO;
 import com.randmteam2.tripplanning.booking.dto.UserBookingSummaryDTO;
 import com.randmteam2.tripplanning.booking.model.Booking;
+import com.randmteam2.tripplanning.booking.model.BookingCoupon;
 import com.randmteam2.tripplanning.booking.service.BookingService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -58,5 +61,25 @@ public class BookingController {
     @GetMapping("/user/{userId}/summary")
     public ResponseEntity<UserBookingSummaryDTO> getUserBookingSummary(@PathVariable Long userId) {
         return ResponseEntity.ok(bookingService.getUserBookingSummary(userId));
+    }
+
+    // S5-F5: Apply Coupon to Booking
+    @PostMapping("/{bookingId}/coupons/{couponId}")
+    public ResponseEntity<BookingCoupon> applyCouponToBooking(@PathVariable Long bookingId,
+                                                              @PathVariable Long couponId) {
+        return ResponseEntity.ok(bookingService.applyCouponToBooking(bookingId, couponId));
+    }
+
+    // S5-F8: Booking Details with Coupons
+    @GetMapping("/{bookingId}/details")
+    public ResponseEntity<BookingDetailsDTO> getBookingDetails(@PathVariable Long bookingId) {
+        return ResponseEntity.ok(bookingService.getBookingDetails(bookingId));
+    }
+
+    // S5-F9: Most Used Coupons Report
+    @GetMapping("/coupons/top-used")
+    public ResponseEntity<List<CouponUsageDTO>> getTopUsedCoupons(
+            @RequestParam(defaultValue = "10") int limit) {
+        return ResponseEntity.ok(bookingService.getTopUsedCoupons(limit));
     }
 }

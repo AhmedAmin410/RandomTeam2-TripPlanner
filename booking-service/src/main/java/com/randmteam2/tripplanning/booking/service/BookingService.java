@@ -1,15 +1,22 @@
 package com.randmteam2.tripplanning.booking.service;
 
+import com.randmteam2.tripplanning.booking.dto.AppliedCouponDTO;
+import com.randmteam2.tripplanning.booking.dto.BookingDetailsDTO;
+import com.randmteam2.tripplanning.booking.dto.CouponUsageDTO;
 import com.randmteam2.tripplanning.booking.dto.UserBookingSummaryDTO;
-import com.randmteam2.tripplanning.booking.model.Booking;
-import com.randmteam2.tripplanning.booking.model.BookingStatus;
+import com.randmteam2.tripplanning.booking.model.*;
+import com.randmteam2.tripplanning.booking.repository.BookingCouponRepository;
 import com.randmteam2.tripplanning.booking.repository.BookingRepository;
+import com.randmteam2.tripplanning.booking.repository.CouponRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.sql.Timestamp;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,6 +26,12 @@ public class BookingService {
 
     @Autowired
     private BookingRepository bookingRepository;
+
+    @Autowired
+    private CouponRepository couponRepository;
+
+    @Autowired
+    private BookingCouponRepository bookingCouponRepository;
 
     public List<Booking> getAllBookings() {
         return bookingRepository.findAll();
@@ -70,5 +83,132 @@ public class BookingService {
         }
 
         return new UserBookingSummaryDTO(userId, totalBookings, totalAmount, typeBreakdown);
+    }
+
+    // S5-F5: Apply Coupon to Booking
+    @Transactional
+    public BookingCoupon applyCouponToBooking(Long bookingId, Long couponId) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Booking not found with id: " + bookingId));
+
+        Coupon coupon = couponRepository.findById(couponId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Coupon not found with id: " + couponId));
+
+        // booking must be PENDING
+        if (booking.getStatus() != BookingStatus.PENDING) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "cannot apply coupon to a confirmed/cancelled booking");
+        }
+
+        // coupon must be active
+        if (!coupon.getActive()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Coupon is not active");
+        }
+
+        // coupon must not be expired
+        if (coupon.getExpiryDate().isBefore(LocalDateTime.now())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Coupon has expired");
+        }
+
+        // coupon usage limit check
+        if (coupon.getCurrentUses() >= coupon.getMaxUses()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Coupon usage limit reached");
+        }
+
+        // check if coupon already applied to this booking
+        if (bookingCouponRepository.findByBookingAndCoupon(booking, coupon).isPresent()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "coupon already applied");
+        }
+
+        // calculate discount
+        double discount;
+        if (coupon.getDiscountType() == DiscountType.PERCENTAGE) {
+            discount = booking.getAmount() * (coupon.getDiscountValue() / 100.0);
+        } else {
+            discount = coupon.getDiscountValue();
+        }
+        // cap discount at booking amount
+        discount = Math.min(discount, booking.getAmount());
+
+        // create BookingCoupon record
+        BookingCoupon bookingCoupon = new BookingCoupon();
+        bookingCoupon.setBooking(booking);
+        bookingCoupon.setCoupon(coupon);
+        bookingCoupon.setDiscountApplied(discount);
+        bookingCoupon.setAppliedAt(LocalDateTime.now());
+
+        BookingCoupon saved = bookingCouponRepository.save(bookingCoupon);
+
+        // increment currentUses on coupon
+        coupon.setCurrentUses(coupon.getCurrentUses() + 1);
+        couponRepository.save(coupon);
+
+        // save the booking as well
+        bookingRepository.save(booking);
+
+        return saved;
+    }
+
+    // S5-F8: Booking Details with Coupons
+    public BookingDetailsDTO getBookingDetails(Long bookingId) {
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Booking not found with id: " + bookingId));
+
+        List<BookingCoupon> bookingCoupons = bookingCouponRepository.findByBookingId(bookingId);
+
+        List<AppliedCouponDTO> appliedCoupons = new ArrayList<>();
+        double totalDiscount = 0.0;
+
+        for (BookingCoupon bc : bookingCoupons) {
+            Coupon coupon = bc.getCoupon();
+            AppliedCouponDTO dto = new AppliedCouponDTO(
+                    coupon.getCode(),
+                    coupon.getDiscountType().name(),
+                    bc.getDiscountApplied(),
+                    bc.getAppliedAt()
+            );
+            appliedCoupons.add(dto);
+            totalDiscount += bc.getDiscountApplied();
+        }
+
+        BookingDetailsDTO details = new BookingDetailsDTO();
+        details.setBookingId(booking.getId());
+        details.setItineraryId(booking.getItineraryId());
+        details.setUserId(booking.getUserId());
+        details.setOriginalAmount(booking.getAmount());
+        details.setType(booking.getType().name());
+        details.setStatus(booking.getStatus().name());
+        details.setBookingDetails(booking.getBookingDetails());
+        details.setAppliedCoupons(appliedCoupons);
+        details.setTotalDiscount(totalDiscount);
+        details.setFinalAmount(booking.getAmount() - totalDiscount);
+
+        return details;
+    }
+
+    // S5-F9: Most Used Coupons Report
+    public List<CouponUsageDTO> getTopUsedCoupons(int limit) {
+        List<Object[]> rows = bookingCouponRepository.findTopUsedCoupons(limit);
+        List<CouponUsageDTO> result = new ArrayList<>();
+
+        for (Object[] row : rows) {
+            Long couponId = ((Number) row[0]).longValue();
+            String code = (String) row[1];
+            String discountType = (String) row[2];
+            Double discountValue = ((Number) row[3]).doubleValue();
+            Long timesUsed = ((Number) row[4]).longValue();
+            Double totalDiscountGiven = ((Number) row[5]).doubleValue();
+            Boolean active = (Boolean) row[6];
+            LocalDateTime expiryDate = ((Timestamp) row[7]).toLocalDateTime();
+
+            result.add(new CouponUsageDTO(couponId, code, discountType, discountValue,
+                    timesUsed, totalDiscountGiven, active, expiryDate));
+        }
+
+        return result;
     }
 }
