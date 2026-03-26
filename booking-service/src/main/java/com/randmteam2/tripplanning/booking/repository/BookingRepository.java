@@ -31,4 +31,8 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
 
     // S5-F3: find confirmed bookings for a given user
     List<Booking> findByUserIdAndStatus(Long userId, BookingStatus status);
-}
+
+    // For compatibility with ongoing features
+    // For S5-F1
+    List<Booking> findByStatusAndCreatedAtBetweenOrderByCreatedAtDesc(BookingStatus status, LocalDateTime start, LocalDateTime end); 
+    List<Booking> findByCreatedAtBetweenOrderByCreatedAtDesc(LocalDateTime start, LocalDateTime end); 
