@@ -1,5 +1,6 @@
 package com.randmteam2.tripplanning.booking.controller;
 
+import com.randmteam2.tripplanning.booking.dto.CouponUsageDTO;
 import com.randmteam2.tripplanning.booking.model.Booking;
 import com.randmteam2.tripplanning.booking.service.BookingService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -51,5 +52,12 @@ public class BookingController {
             @RequestParam LocalDateTime startDate,
             @RequestParam LocalDateTime endDate) {
         return ResponseEntity.ok(bookingService.searchBookings(status, startDate, endDate));
+    }
+
+    // S5-F9: Most Used Coupons Report
+    @GetMapping("/coupons/top-used")
+    public ResponseEntity<List<CouponUsageDTO>> getTopUsedCoupons(
+            @RequestParam(defaultValue = "10") int limit) {
+        return ResponseEntity.ok(bookingService.getTopUsedCoupons(limit));
     }
 }
