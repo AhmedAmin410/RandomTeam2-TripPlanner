@@ -1,5 +1,6 @@
 package com.randmteam2.tripplanning.booking.controller;
 
+import com.randmteam2.tripplanning.booking.dto.UserBookingSummaryDTO;
 import com.randmteam2.tripplanning.booking.model.Booking;
 import com.randmteam2.tripplanning.booking.service.BookingService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -51,5 +52,11 @@ public class BookingController {
             @RequestParam LocalDateTime startDate,
             @RequestParam LocalDateTime endDate) {
         return ResponseEntity.ok(bookingService.searchBookings(status, startDate, endDate));
+    }
+
+    // S5-F3: User Booking Summary
+    @GetMapping("/user/{userId}/summary")
+    public ResponseEntity<UserBookingSummaryDTO> getUserBookingSummary(@PathVariable Long userId) {
+        return ResponseEntity.ok(bookingService.getUserBookingSummary(userId));
     }
 }
