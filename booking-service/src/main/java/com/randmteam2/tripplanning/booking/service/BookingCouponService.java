@@ -34,7 +34,7 @@ public class BookingCouponService {
     }
 
     public BookingCoupon updateBookingCoupon(Long id, BookingCoupon bookingCoupon) {
-        BookingCoupon existing = getBookingCouponById(id);
+        getBookingCouponById(id);
         bookingCoupon.setId(id);
         return bookingCouponRepository.save(bookingCoupon);
     }
