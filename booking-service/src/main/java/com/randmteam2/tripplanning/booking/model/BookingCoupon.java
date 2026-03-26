@@ -19,9 +19,14 @@ public class BookingCoupon {
     private LocalDateTime appliedAt;
 
     @ManyToOne
-    @JoinColumn(name = "booking_id")
+    @JoinColumn(name = "booking_id", nullable = false)
     @JsonIgnore
     private Booking booking;
+
+    @ManyToOne
+    @JoinColumn(name = "coupon_id", nullable = false)
+    @JsonIgnore
+    private Coupon coupon;
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -34,4 +39,7 @@ public class BookingCoupon {
 
     public Booking getBooking() { return booking; }
     public void setBooking(Booking booking) { this.booking = booking; }
+
+    public Coupon getCoupon() { return coupon; }
+    public void setCoupon(Coupon coupon) { this.coupon = coupon; }
 }
