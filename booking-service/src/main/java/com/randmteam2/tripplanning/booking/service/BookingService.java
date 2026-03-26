@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -49,5 +50,10 @@ public class BookingService {
         booking.setBookingDetails(details);
 
         return bookingRepository.save(booking);
+    }
+
+    public Double getRevenue(LocalDateTime startDate, LocalDateTime endDate) {
+        Double revenue = bookingRepository.calculateRevenue(BookingStatus.CONFIRMED, startDate, endDate);
+        return revenue != null ? revenue : 0.0;
     }
 }
