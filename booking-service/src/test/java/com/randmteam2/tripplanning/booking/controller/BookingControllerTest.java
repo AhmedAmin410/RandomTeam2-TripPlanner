@@ -20,10 +20,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -72,5 +69,17 @@ public class BookingControllerTest {
                 .andExpect(jsonPath("$.id").value(1L))
                 .andExpect(jsonPath("$.status").value("PENDING"))
                 .andExpect(jsonPath("$.amount").value(500.0));
+    }
+
+    @Test
+    public void testRevenueReport() throws Exception {
+        Mockito.when(bookingService.getRevenue(any(), any()))
+                .thenReturn(1500.0);
+
+        mockMvc.perform(get("/api/bookings/revenue")
+                .param("start", "2026-01-01T00:00:00")
+                .param("end", "2026-12-31T23:59:59"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").value(1500.0));
     }
 }

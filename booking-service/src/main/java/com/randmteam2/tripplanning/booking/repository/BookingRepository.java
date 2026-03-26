@@ -36,6 +36,9 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     @Query(value = "SELECT user_id FROM itineraries WHERE id = :id", nativeQuery = true)
     Optional<Long> findUserIdByItineraryId(@Param("id") Long id);
 
+    @Query("SELECT SUM(b.amount) FROM Booking b WHERE b.status = :status AND b.createdAt BETWEEN :start AND :end")
+    Double calculateRevenue(@Param("status") BookingStatus status, @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
     // S5-F3: find confirmed bookings for a given user
     List<Booking> findByUserIdAndStatus(Long userId, BookingStatus status);
 

@@ -245,4 +245,9 @@ public class BookingService {
 
         return bookingRepository.save(booking);
     }
+
+    public Double getRevenue(LocalDateTime startDate, LocalDateTime endDate) {
+        Double revenue = bookingRepository.calculateRevenue(BookingStatus.CONFIRMED, startDate, endDate);
+        return revenue != null ? revenue : 0.0;
+    }
 }
