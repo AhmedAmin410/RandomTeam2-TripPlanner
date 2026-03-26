@@ -47,4 +47,76 @@ public class Booking {
 
     @OneToMany(mappedBy = "booking", cascade = CascadeType.ALL)
     private List<BookingCoupon> bookingCoupons;
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public Long getItineraryId() {
+        return itineraryId;
+    }
+
+    public void setItineraryId(Long itineraryId) {
+        this.itineraryId = itineraryId;
+    }
+
+    public Long getUserId() {
+        return userId;
+    }
+
+    public void setUserId(Long userId) {
+        this.userId = userId;
+    }
+
+    public Double getAmount() {
+        return amount;
+    }
+
+    public void setAmount(Double amount) {
+        this.amount = amount;
+    }
+
+    public BookingType getType() {
+        return type;
+    }
+
+    public void setType(BookingType type) {
+        this.type = type;
+    }
+
+    public BookingStatus getStatus() {
+        return status;
+    }
+
+    public void setStatus(BookingStatus status) {
+        this.status = status;
+    }
+
+    public Map<String, Object> getBookingDetails() {
+        return bookingDetails;
+    }
+
+    public void setBookingDetails(Map<String, Object> bookingDetails) {
+        this.bookingDetails = bookingDetails;
+    }
+
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(LocalDateTime createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public List<BookingCoupon> getBookingCoupons() {
+        return bookingCoupons;
+    }
+
+    public void setBookingCoupons(List<BookingCoupon> bookingCoupons) {
+        this.bookingCoupons = bookingCoupons;
+    }
 }

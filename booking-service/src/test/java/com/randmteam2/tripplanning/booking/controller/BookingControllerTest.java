@@ -1,0 +1,76 @@
+package com.randmteam2.tripplanning.booking.controller;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.randmteam2.tripplanning.booking.dto.BookingRequestDTO;
+import com.randmteam2.tripplanning.booking.model.Booking;
+import com.randmteam2.tripplanning.booking.model.BookingStatus;
+import com.randmteam2.tripplanning.booking.model.BookingType;
+import com.randmteam2.tripplanning.booking.service.BookingService;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.web.servlet.MockMvc;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+@SpringBootTest
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
+public class BookingControllerTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @Autowired
+    private ObjectMapper objectMapper;
+
+    @MockBean
+    private BookingService bookingService;
+
+    private BookingRequestDTO requestDTO;
+    private Booking booking;
+
+    @BeforeEach
+    public void setup() {
+        requestDTO = new BookingRequestDTO();
+        requestDTO.setType(BookingType.TRANSPORT);
+        requestDTO.setAmount(500.0);
+        requestDTO.setProviderName("Airline X");
+
+        booking = new Booking();
+        booking.setId(1L);
+        booking.setItineraryId(10L);
+        booking.setUserId(5L);
+        booking.setAmount(500.0);
+        booking.setType(BookingType.TRANSPORT);
+        booking.setStatus(BookingStatus.PENDING);
+    }
+
+    @Test
+    public void testCreateBookingForItinerary() throws Exception {
+        Mockito.when(bookingService.createBooking(eq(10L), any(BookingRequestDTO.class)))
+                .thenReturn(booking);
+
+        mockMvc.perform(post("/api/bookings/itinerary/{itineraryId}", 10L)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(requestDTO)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").value(1L))
+                .andExpect(jsonPath("$.status").value("PENDING"))
+                .andExpect(jsonPath("$.amount").value(500.0));
+    }
+}

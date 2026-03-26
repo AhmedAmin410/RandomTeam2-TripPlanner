@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface BookingRepository extends JpaRepository<Booking, Long> {
@@ -29,6 +30,12 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     @Query(value = "SELECT COUNT(*) FROM users WHERE id = :userId", nativeQuery = true)
     int countUserById(@Param("userId") Long userId);
 
+    @Query(value = "SELECT status FROM itineraries WHERE id = :id", nativeQuery = true)
+    Optional<String> findItineraryStatusById(@Param("id") Long id);
+
+    @Query(value = "SELECT user_id FROM itineraries WHERE id = :id", nativeQuery = true)
+    Optional<Long> findUserIdByItineraryId(@Param("id") Long id);
+
     // S5-F3: find confirmed bookings for a given user
     List<Booking> findByUserIdAndStatus(Long userId, BookingStatus status);
 
@@ -36,3 +43,4 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     // For S5-F1
     List<Booking> findByStatusAndCreatedAtBetweenOrderByCreatedAtDesc(BookingStatus status, LocalDateTime start, LocalDateTime end); 
     List<Booking> findByCreatedAtBetweenOrderByCreatedAtDesc(LocalDateTime start, LocalDateTime end); 
+}

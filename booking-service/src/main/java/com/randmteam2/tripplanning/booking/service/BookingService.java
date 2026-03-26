@@ -4,6 +4,7 @@ import com.randmteam2.tripplanning.booking.dto.AppliedCouponDTO;
 import com.randmteam2.tripplanning.booking.dto.BookingDetailsDTO;
 import com.randmteam2.tripplanning.booking.dto.CouponUsageDTO;
 import com.randmteam2.tripplanning.booking.dto.UserBookingSummaryDTO;
+import com.randmteam2.tripplanning.booking.dto.BookingRequestDTO;
 import com.randmteam2.tripplanning.booking.model.*;
 import com.randmteam2.tripplanning.booking.repository.BookingCouponRepository;
 import com.randmteam2.tripplanning.booking.repository.BookingRepository;
@@ -210,5 +211,38 @@ public class BookingService {
         }
 
         return result;
+    }
+
+    // S5-F4: Create Booking for Itinerary
+    @Transactional
+    public Booking createBooking(Long itineraryId, BookingRequestDTO request) {
+        // Verify itinerary exists and get status
+        String status = bookingRepository.findItineraryStatusById(itineraryId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Itinerary not found"));
+
+        // Validate status
+        if (!"PLANNED".equals(status) && !"IN_PROGRESS".equals(status)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Itinerary must be PLANNED or IN_PROGRESS");
+        }
+
+        // Get user ID from itinerary
+        Long userId = bookingRepository.findUserIdByItineraryId(itineraryId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User ID not found for itinerary"));
+
+        // Create Booking
+        Booking booking = new Booking();
+        booking.setItineraryId(itineraryId);
+        booking.setUserId(userId);
+        booking.setAmount(request.getAmount());
+        booking.setType(request.getType());
+        booking.setStatus(BookingStatus.PENDING);
+
+        Map<String, Object> details = new HashMap<>();
+        if (request.getProviderName() != null) {
+            details.put("providerName", request.getProviderName());
+        }
+        booking.setBookingDetails(details);
+
+        return bookingRepository.save(booking);
     }
 }

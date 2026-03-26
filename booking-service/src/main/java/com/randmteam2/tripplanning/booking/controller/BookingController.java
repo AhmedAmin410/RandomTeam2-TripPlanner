@@ -3,6 +3,7 @@ package com.randmteam2.tripplanning.booking.controller;
 import com.randmteam2.tripplanning.booking.dto.BookingDetailsDTO;
 import com.randmteam2.tripplanning.booking.dto.CouponUsageDTO;
 import com.randmteam2.tripplanning.booking.dto.UserBookingSummaryDTO;
+import com.randmteam2.tripplanning.booking.dto.BookingRequestDTO;
 import com.randmteam2.tripplanning.booking.model.Booking;
 import com.randmteam2.tripplanning.booking.model.BookingCoupon;
 import com.randmteam2.tripplanning.booking.service.BookingService;
@@ -82,4 +83,18 @@ public class BookingController {
             @RequestParam(defaultValue = "10") int limit) {
         return ResponseEntity.ok(bookingService.getTopUsedCoupons(limit));
     }
-}
+
+    // S5-F4: Create Booking for Itinerary
+    @PostMapping("/itinerary/{itineraryId}")
+    public ResponseEntity<Booking> createBookingForItinerary(
+            @PathVariable Long itineraryId,
+            @RequestBody BookingRequestDTO bookingRequest) {
+        
+        try {
+            Booking booking = bookingService.createBooking(itineraryId, bookingRequest);
+            return new ResponseEntity<>(booking, HttpStatus.CREATED);
+        } catch (ResponseStatusException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Error creating booking", e);
+        }
