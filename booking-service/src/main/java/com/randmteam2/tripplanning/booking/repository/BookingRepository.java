@@ -24,4 +24,11 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             @Param("startDate") LocalDateTime startDate,
             @Param("endDate") LocalDateTime endDate
     );
+
+    // S5-F3: check if user exists using native SQL on users table
+    @Query(value = "SELECT COUNT(*) FROM users WHERE id = :userId", nativeQuery = true)
+    int countUserById(@Param("userId") Long userId);
+
+    // S5-F3: find confirmed bookings for a given user
+    List<Booking> findByUserIdAndStatus(Long userId, BookingStatus status);
 }
