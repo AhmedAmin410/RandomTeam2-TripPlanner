@@ -12,6 +12,21 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface UserRepository extends JpaRepository<User, Long> {
+    List<User> findByNameContainingIgnoreCase(String name);
+
+    List<User> findByRole(Role role);
+
+    List<User> findByNameContainingIgnoreCaseAndRole(String name, Role role);
+
+    List<User> findByEmailContainingIgnoreCase(String email);
+
+    List<User> findByNameContainingIgnoreCaseAndEmailContainingIgnoreCase(String name, String email);
+
+    List<User> findByRoleAndEmailContainingIgnoreCase(Role role, String email);
+
+    List<User> findByNameContainingIgnoreCaseAndRoleAndEmailContainingIgnoreCase(
+            String name, Role role, String email
+    );
 
     @Query(value = """
     SELECT 
@@ -24,6 +39,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
     WHERE user_id = :userId
 """, nativeQuery = true)
     List<Object[]> getUserTripSummary(@Param("userId") Long userId);
+
+
+    @Query(value = """
     SELECT * FROM users 
     WHERE preferences ->> :key = :value
 """, nativeQuery = true)

@@ -52,12 +52,42 @@ public class UserService {
         User user = getUserById(id);
         userRepository.delete(user);
     }
-//    public List<User> searchUsers(String name, String email) {
-//        return userRepository.findByNameContainingIgnoreCaseAndEmailContainingIgnoreCase(
-//                name == null ? "" : name,
-//                email == null ? "" : email
-//        );
-//    }
+    public List<User> searchUsers(String name, Role role, String email) {
+
+        if (name != null && role != null && email != null) {
+            return userRepository
+                    .findByNameContainingIgnoreCaseAndRoleAndEmailContainingIgnoreCase(name, role, email);
+        }
+
+        if (name != null && role != null) {
+            return userRepository
+                    .findByNameContainingIgnoreCaseAndRole(name, role);
+        }
+
+        if (name != null && email != null) {
+            return userRepository
+                    .findByNameContainingIgnoreCaseAndEmailContainingIgnoreCase(name, email);
+        }
+
+        if (role != null && email != null) {
+            return userRepository
+                    .findByRoleAndEmailContainingIgnoreCase(role, email);
+        }
+
+        if (name != null) {
+            return userRepository.findByNameContainingIgnoreCase(name);
+        }
+
+        if (role != null) {
+            return userRepository.findByRole(role);
+        }
+
+        if (email != null) {
+            return userRepository.findByEmailContainingIgnoreCase(email);
+        }
+
+        return userRepository.findAll();
+    }
 
     public User updatePreferences(Long id, Map<String, Object> updates) {
 
@@ -75,6 +105,7 @@ public class UserService {
         user.setPreferences(current);
 
         return userRepository.save(user);
+    }
 
     public UserTripSummaryDTO getUserTripSummary(Long userId) {
 
@@ -101,6 +132,7 @@ public class UserService {
                 totalSpent,
                 avgBudget
         );
+        }
     public List<User> searchByPreference(String key, String value) {
 
         if (key == null || key.trim().isEmpty() ||
