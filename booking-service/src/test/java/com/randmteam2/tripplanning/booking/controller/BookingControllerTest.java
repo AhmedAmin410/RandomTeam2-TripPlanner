@@ -17,10 +17,14 @@ import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -82,4 +86,25 @@ public class BookingControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").value(1500.0));
     }
+
+            @Test
+            public void testCancelBooking() throws Exception {
+            Booking cancelledBooking = new Booking();
+            cancelledBooking.setId(1L);
+            cancelledBooking.setStatus(BookingStatus.CANCELLED);
+
+            Mockito.when(bookingService.cancelBooking(eq(1L), eq("change of plans")))
+                .thenReturn(cancelledBooking);
+
+            Map<String, String> body = new HashMap<>();
+            body.put("reason", "change of plans");
+
+            mockMvc.perform(put("/api/bookings/{id}/cancel", 1L)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(1L))
+                .andExpect(jsonPath("$.status").value("CANCELLED"));
+            }
+
 }

@@ -60,6 +60,28 @@ public class BookingService {
         bookingRepository.deleteById(id);
     }
 
+    // S5-F2: Cancel Booking with Refund
+    @Transactional
+    public Booking cancelBooking(Long id, String reason) {
+        Booking booking = getBookingById(id);
+
+        if (booking.getStatus() != BookingStatus.CONFIRMED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking is not CONFIRMED");
+        }
+
+        booking.setStatus(BookingStatus.CANCELLED);
+
+        Map<String, Object> details = booking.getBookingDetails();
+        if (details == null) {
+            details = new HashMap<>();
+        }
+        details.put("cancellationReason", reason);
+        details.put("cancelledAt", LocalDateTime.now().toString());
+        booking.setBookingDetails(details);
+
+        return bookingRepository.save(booking);
+    }
+
     public List<Booking> searchBookings(String status, LocalDateTime startDate, LocalDateTime endDate) {
         return bookingRepository.searchBookings(status, startDate, endDate);
     }
