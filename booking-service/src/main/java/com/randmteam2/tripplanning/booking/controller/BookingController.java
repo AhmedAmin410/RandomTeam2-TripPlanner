@@ -109,6 +109,7 @@ public class BookingController {
         } catch (Exception e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Error creating booking", e);
         }
+    }
 
     // S5-F6: Revenue Report
     @GetMapping("/reports/revenue")
