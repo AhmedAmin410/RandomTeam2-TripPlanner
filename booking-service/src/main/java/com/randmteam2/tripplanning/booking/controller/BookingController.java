@@ -16,6 +16,7 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.format.annotation.DateTimeFormat;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/bookings")
@@ -58,6 +59,13 @@ public class BookingController {
             @RequestParam LocalDateTime startDate,
             @RequestParam LocalDateTime endDate) {
         return ResponseEntity.ok(bookingService.searchBookings(status, startDate, endDate));
+    }
+
+    // S5-F2: Cancel Booking with Refund
+    @PutMapping("/{id}/cancel")
+    public ResponseEntity<Booking> cancelBooking(@PathVariable Long id, @RequestBody Map<String, String> body) {
+        String reason = body.get("reason");
+        return ResponseEntity.ok(bookingService.cancelBooking(id, reason));
     }
 
     // S5-F3: User Booking Summary
@@ -112,3 +120,4 @@ public class BookingController {
 }
 
 }
+
