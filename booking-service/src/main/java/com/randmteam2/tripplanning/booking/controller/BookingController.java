@@ -4,6 +4,7 @@ import com.randmteam2.tripplanning.booking.dto.BookingDetailsDTO;
 import com.randmteam2.tripplanning.booking.dto.CouponUsageDTO;
 import com.randmteam2.tripplanning.booking.dto.UserBookingSummaryDTO;
 import com.randmteam2.tripplanning.booking.dto.BookingRequestDTO;
+import com.randmteam2.tripplanning.booking.dto.RevenueReportDTO;
 import com.randmteam2.tripplanning.booking.model.Booking;
 import com.randmteam2.tripplanning.booking.model.BookingCoupon;
 import com.randmteam2.tripplanning.booking.service.BookingService;
@@ -94,14 +95,6 @@ public class BookingController {
         return ResponseEntity.ok(bookingService.getTopUsedCoupons(limit));
     }
 
-    // S5-F6: Revenue Report
-    @GetMapping("/revenue")
-    public ResponseEntity<Double> getRevenue(
-            @RequestParam("start") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime start,
-            @RequestParam("end") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime end) {
-        return ResponseEntity.ok(bookingService.getRevenue(start, end));
-    }
-
     // S5-F4: Create Booking for Itinerary
     @PostMapping("/itinerary/{itineraryId}")
     public ResponseEntity<Booking> createBookingForItinerary(
@@ -117,7 +110,12 @@ public class BookingController {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Error creating booking", e);
         }
 
-}
-
+    // S5-F6: Revenue Report
+    @GetMapping("/reports/revenue")
+    public ResponseEntity<RevenueReportDTO> getRevenueReport(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate) {
+        return ResponseEntity.ok(bookingService.getRevenueReport(startDate, endDate));
+    }
 }
 

@@ -5,6 +5,7 @@ import com.randmteam2.tripplanning.booking.dto.BookingDetailsDTO;
 import com.randmteam2.tripplanning.booking.dto.CouponUsageDTO;
 import com.randmteam2.tripplanning.booking.dto.UserBookingSummaryDTO;
 import com.randmteam2.tripplanning.booking.dto.BookingRequestDTO;
+import com.randmteam2.tripplanning.booking.dto.RevenueReportDTO;
 import com.randmteam2.tripplanning.booking.model.*;
 import com.randmteam2.tripplanning.booking.repository.BookingCouponRepository;
 import com.randmteam2.tripplanning.booking.repository.BookingRepository;
@@ -268,8 +269,21 @@ public class BookingService {
         return bookingRepository.save(booking);
     }
 
-    public Double getRevenue(LocalDateTime startDate, LocalDateTime endDate) {
-        Double revenue = bookingRepository.calculateRevenue(BookingStatus.CONFIRMED, startDate, endDate);
-        return revenue != null ? revenue : 0.0;
+    public RevenueReportDTO getRevenueReport(LocalDateTime startDate, LocalDateTime endDate) {
+        if (startDate.isAfter(endDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate must be before endDate");
+        }
+        Double rawRevenue = bookingRepository.calculateRevenue(BookingStatus.CONFIRMED, startDate, endDate);
+        Long rawBookings = bookingRepository.countBookingsByStatusAndDateRange(BookingStatus.CONFIRMED, startDate, endDate);
+        Double rawCancelledAmount = bookingRepository.calculateRevenue(BookingStatus.CANCELLED, startDate, endDate);
+        Long rawCancelledCount = bookingRepository.countBookingsByStatusAndDateRange(BookingStatus.CANCELLED, startDate, endDate);
+
+        double totalRevenue = rawRevenue != null ? rawRevenue : 0.0;
+        long totalBookings = rawBookings != null ? rawBookings : 0L;
+        double avgAmount = totalBookings > 0 ? totalRevenue / totalBookings : 0.0;
+        double cancelledAmount = rawCancelledAmount != null ? rawCancelledAmount : 0.0;
+        long cancelledCount = rawCancelledCount != null ? rawCancelledCount : 0L;
+
+        return new RevenueReportDTO(totalRevenue, totalBookings, avgAmount, cancelledAmount, cancelledCount);
     }
 }
