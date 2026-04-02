@@ -21,6 +21,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -81,5 +82,20 @@ public class BookingControllerTest {
                 .param("end", "2026-12-31T23:59:59"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").value(1500.0));
+    }
+
+    @Test
+    public void testRetryFailedBooking() throws Exception {
+        Booking retriedBooking = new Booking();
+        retriedBooking.setId(1L);
+        retriedBooking.setStatus(BookingStatus.CONFIRMED);
+
+        Mockito.when(bookingService.retryFailedBooking(eq(1L)))
+                .thenReturn(retriedBooking);
+
+        mockMvc.perform(put("/api/bookings/{id}/retry", 1L))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(1L))
+                .andExpect(jsonPath("$.status").value("CONFIRMED"));
     }
 }

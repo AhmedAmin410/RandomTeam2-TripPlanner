@@ -66,6 +66,12 @@ public class BookingController {
         return ResponseEntity.ok(bookingService.getUserBookingSummary(userId));
     }
 
+    // S5-F7: Retry Failed Booking
+    @PutMapping("/{id}/retry")
+    public ResponseEntity<Booking> retryBooking(@PathVariable Long id) {
+        return ResponseEntity.ok(bookingService.retryFailedBooking(id));
+    }
+
     // S5-F5: Apply Coupon to Booking
     @PostMapping("/{bookingId}/coupons/{couponId}")
     public ResponseEntity<BookingCoupon> applyCouponToBooking(@PathVariable Long bookingId,
