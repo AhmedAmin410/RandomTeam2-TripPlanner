@@ -93,24 +93,38 @@ public class BookingControllerTest {
             .andExpect(jsonPath("$.cancelledCount").value(1));
     }
 
-            @Test
-            public void testCancelBooking() throws Exception {
-            Booking cancelledBooking = new Booking();
-            cancelledBooking.setId(1L);
-            cancelledBooking.setStatus(BookingStatus.CANCELLED);
+    @Test
+    public void testCancelBooking() throws Exception {
+        Booking cancelledBooking = new Booking();
+        cancelledBooking.setId(1L);
+        cancelledBooking.setStatus(BookingStatus.CANCELLED);
 
-            Mockito.when(bookingService.cancelBooking(eq(1L), eq("change of plans")))
-                .thenReturn(cancelledBooking);
+        Mockito.when(bookingService.cancelBooking(eq(1L), eq("change of plans")))
+            .thenReturn(cancelledBooking);
 
-            Map<String, String> body = new HashMap<>();
-            body.put("reason", "change of plans");
+        Map<String, String> body = new HashMap<>();
+        body.put("reason", "change of plans");
 
-            mockMvc.perform(put("/api/bookings/{id}/cancel", 1L)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(body)))
+        mockMvc.perform(put("/api/bookings/{id}/cancel", 1L)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(body)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.id").value(1L))
+            .andExpect(jsonPath("$.status").value("CANCELLED"));
+    }
+
+    @Test
+    public void testRetryFailedBooking() throws Exception {
+        Booking retriedBooking = new Booking();
+        retriedBooking.setId(1L);
+        retriedBooking.setStatus(BookingStatus.CONFIRMED);
+
+        Mockito.when(bookingService.retryFailedBooking(eq(1L)))
+                .thenReturn(retriedBooking);
+
+        mockMvc.perform(put("/api/bookings/{id}/retry", 1L))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(1L))
-                .andExpect(jsonPath("$.status").value("CANCELLED"));
-            }
-
+                .andExpect(jsonPath("$.status").value("CONFIRMED"));
+    }
 }

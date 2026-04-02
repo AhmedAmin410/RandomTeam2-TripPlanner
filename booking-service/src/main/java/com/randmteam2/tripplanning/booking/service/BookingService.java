@@ -87,6 +87,36 @@ public class BookingService {
         return bookingRepository.searchBookings(status, startDate, endDate);
     }
 
+    // S5-F7: Retry Failed Booking
+    @Transactional
+    public Booking retryFailedBooking(Long id) {
+        Booking booking = getBookingById(id);
+
+        if (booking.getStatus() != BookingStatus.FAILED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking is not FAILED");
+        }
+
+        Map<String, Object> details = booking.getBookingDetails();
+        if (details == null) {
+            details = new HashMap<>();
+        }
+
+        int retryAttempt = 0;
+        Object retryValue = details.get("retryAttempt");
+        if (retryValue instanceof Number number) {
+            retryAttempt = number.intValue();
+        }
+
+        retryAttempt += 1;
+        details.put("retryAttempt", retryAttempt);
+        details.put("confirmationNumber", "RETRY-" + booking.getId() + "-" + retryAttempt);
+
+        booking.setBookingDetails(details);
+        booking.setStatus(BookingStatus.CONFIRMED);
+
+        return bookingRepository.save(booking);
+    }
+
     // S5-F3: User Booking Summary
     public UserBookingSummaryDTO getUserBookingSummary(Long userId) {
         int userCount = bookingRepository.countUserById(userId);
