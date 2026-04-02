@@ -2,6 +2,7 @@ package com.randmteam2.tripplanning.booking.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.randmteam2.tripplanning.booking.dto.BookingRequestDTO;
+import com.randmteam2.tripplanning.booking.dto.RevenueReportDTO;
 import com.randmteam2.tripplanning.booking.model.Booking;
 import com.randmteam2.tripplanning.booking.model.BookingStatus;
 import com.randmteam2.tripplanning.booking.model.BookingType;
@@ -73,13 +74,18 @@ public class BookingControllerTest {
 
     @Test
     public void testRevenueReport() throws Exception {
-        Mockito.when(bookingService.getRevenue(any(), any()))
-                .thenReturn(1500.0);
+        RevenueReportDTO report = new RevenueReportDTO(1500.0, 3L, 500.0, 100.0, 1L);
+        Mockito.when(bookingService.getRevenueReport(any(), any()))
+            .thenReturn(report);
 
-        mockMvc.perform(get("/api/bookings/revenue")
-                .param("start", "2026-01-01T00:00:00")
-                .param("end", "2026-12-31T23:59:59"))
+        mockMvc.perform(get("/api/bookings/reports/revenue")
+            .param("startDate", "2026-01-01T00:00:00")
+            .param("endDate", "2026-12-31T23:59:59"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$").value(1500.0));
+            .andExpect(jsonPath("$.totalRevenue").value(1500.0))
+            .andExpect(jsonPath("$.totalBookings").value(3))
+            .andExpect(jsonPath("$.averageBookingAmount").value(500.0))
+            .andExpect(jsonPath("$.cancelledAmount").value(100.0))
+            .andExpect(jsonPath("$.cancelledCount").value(1));
     }
 }

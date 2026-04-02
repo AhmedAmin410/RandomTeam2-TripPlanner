@@ -1,6 +1,7 @@
 package com.randmteam2.tripplanning.booking.controller;
 
 import com.randmteam2.tripplanning.booking.dto.BookingRequestDTO;
+import com.randmteam2.tripplanning.booking.dto.RevenueReportDTO;
 import com.randmteam2.tripplanning.booking.model.Booking;
 import com.randmteam2.tripplanning.booking.service.BookingService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,10 +36,10 @@ public class BookingController {
     }
 
     // S5-F6: Revenue Report
-    @GetMapping("/revenue")
-    public ResponseEntity<Double> getRevenue(
-            @RequestParam("start") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime start,
-            @RequestParam("end") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime end) {
-        return ResponseEntity.ok(bookingService.getRevenue(start, end));
+    @GetMapping("/reports/revenue")
+    public ResponseEntity<RevenueReportDTO> getRevenueReport(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate) {
+        return ResponseEntity.ok(bookingService.getRevenueReport(startDate, endDate));
     }
 }
