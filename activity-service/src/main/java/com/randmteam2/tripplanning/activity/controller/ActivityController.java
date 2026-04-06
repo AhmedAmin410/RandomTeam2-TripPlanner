@@ -50,4 +50,11 @@ public class ActivityController {
         activityService.delete(id);
         return ResponseEntity.noContent().build();
     }
+
+    @GetMapping("/metadata/search")
+    public ResponseEntity<List<Activity>> searchByMetadata(@RequestParam String key,
+                                                           @RequestParam String operator,
+                                                           @RequestParam String value) {
+        return ResponseEntity.ok(activityService.findByMetadata(key, operator, value));
+    }
 }

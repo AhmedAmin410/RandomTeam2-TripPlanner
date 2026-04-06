@@ -45,4 +45,17 @@ public class ActivityService {
         getById(id);
         activityRepository.deleteById(id);
     }
+
+    public List<Activity> findByMetadata(String key, String operator, String value) {
+        if (key == null || key.isBlank() || operator == null || operator.isBlank() || value == null || value.isBlank()) {
+            throw new IllegalArgumentException("key, operator, and value must not be blank");
+        }
+
+        return switch (operator) {
+            case "eq" -> activityRepository.findByMetadataEq(key, value);
+            case "gt" -> activityRepository.findByMetadataGt(key, value);
+            case "lt" -> activityRepository.findByMetadataLt(key, value);
+            default -> throw new IllegalArgumentException("operator must be one of [eq, gt, lt]");
+        };
+    }
 }
