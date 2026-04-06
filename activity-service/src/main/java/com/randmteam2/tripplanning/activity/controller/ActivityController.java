@@ -7,6 +7,7 @@ import com.randmteam2.tripplanning.activity.service.ActivityService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/activities")
@@ -56,5 +57,11 @@ public class ActivityController {
                                                            @RequestParam String operator,
                                                            @RequestParam String value) {
         return ResponseEntity.ok(activityService.findByMetadata(key, operator, value));
+    }
+
+    @DeleteMapping("/purge")
+    public ResponseEntity<Map<String, Integer>> purge(@RequestParam int olderThanDays) {
+        int deletedCount = activityService.purgeOlderThan(olderThanDays);
+        return ResponseEntity.ok(Map.of("deletedCount", deletedCount));
     }
 }

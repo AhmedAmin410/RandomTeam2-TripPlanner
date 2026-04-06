@@ -2,8 +2,10 @@ package com.randmteam2.tripplanning.activity.service;
 
 import com.randmteam2.tripplanning.activity.model.Activity;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import com.randmteam2.tripplanning.activity.repository.ActivityRepository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -57,5 +59,11 @@ public class ActivityService {
             case "lt" -> activityRepository.findByMetadataLt(key, value);
             default -> throw new IllegalArgumentException("operator must be one of [eq, gt, lt]");
         };
+    }
+
+    @Transactional
+    public int purgeOlderThan(int olderThanDays) {
+        LocalDateTime cutoff = LocalDateTime.now().minusDays(olderThanDays);
+        return activityRepository.deleteOlderThan(cutoff);
     }
 }
