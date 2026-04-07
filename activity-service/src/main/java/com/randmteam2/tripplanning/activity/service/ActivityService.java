@@ -5,9 +5,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.randmteam2.tripplanning.activity.repository.ActivityRepository;
 import com.randmteam2.tripplanning.activity.client.ItineraryClient;
-import com.randmteam2.tripplanning.activity.dto.ActivityRequest;
-import com.randmteam2.tripplanning.activity.dto.BatchActivityRequest;
-import com.randmteam2.tripplanning.activity.dto.BatchActivityResponse;
+import com.randmteam2.tripplanning.activity.request.ActivityRequest;
+import com.randmteam2.tripplanning.activity.request.BatchActivityRequest;
+import com.randmteam2.tripplanning.activity.request.BatchActivityResponse;
 import java.util.ArrayList;
 
 import java.time.LocalDateTime;

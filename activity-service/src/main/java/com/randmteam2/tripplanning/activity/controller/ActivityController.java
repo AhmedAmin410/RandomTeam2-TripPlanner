@@ -1,13 +1,14 @@
 package com.randmteam2.tripplanning.activity.controller;
 
-
-
 import com.randmteam2.tripplanning.activity.model.Activity;
 import com.randmteam2.tripplanning.activity.service.ActivityService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
+import com.randmteam2.tripplanning.activity.request.ActivityRequest;
+import com.randmteam2.tripplanning.activity.request.BatchActivityRequest;
+import com.randmteam2.tripplanning.activity.request.BatchActivityResponse;
 
 @RestController
 @RequestMapping("/api/activities")
@@ -24,6 +25,16 @@ public class ActivityController {
         return ResponseEntity.ok("OK");
     }
 
+    @GetMapping("/itinerary/{id}/latest")
+    public ResponseEntity<Activity> getLatestByItinerary(@PathVariable Long id) {
+        return ResponseEntity.ok(activityService.getLatestByItineraryId(id));
+    }
+
+    @PostMapping("/itinerary/{itineraryId}")
+    public ResponseEntity<Activity> createForItinerary(@PathVariable Long itineraryId,
+                                                    @RequestBody ActivityRequest request) {
+        return ResponseEntity.status(201).body(activityService.createForItinerary(itineraryId, request));
+    }
 
     @PostMapping
     public ResponseEntity<Activity> create(@RequestBody Activity activity) {
@@ -63,5 +74,10 @@ public class ActivityController {
     public ResponseEntity<Map<String, Integer>> purge(@RequestParam int olderThanDays) {
         int deletedCount = activityService.purgeOlderThan(olderThanDays);
         return ResponseEntity.ok(Map.of("deletedCount", deletedCount));
+    }
+
+    @PostMapping("/batch")
+    public ResponseEntity<BatchActivityResponse> createBatch(@RequestBody BatchActivityRequest request) {
+        return ResponseEntity.status(201).body(activityService.createBatch(request));
     }
 }
