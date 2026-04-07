@@ -1,4 +1,4 @@
-package com.randmteam2.tripplanning.activity.dto;
+package com.randmteam2.tripplanning.activity.request;
 
 import com.randmteam2.tripplanning.activity.model.Activity;
 import java.time.LocalDateTime;
