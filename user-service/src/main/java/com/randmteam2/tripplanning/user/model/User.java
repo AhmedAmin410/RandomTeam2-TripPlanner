@@ -13,6 +13,18 @@ import org.hibernate.annotations.Type;
 @Table(name = "users")
 public class User {
 
+//    public enum Role {
+//        TRAVELER,
+//        ADMIN
+//    }
+//
+//    public enum Status {
+//        ACTIVE,
+//        DEACTIVATED
+//    }
+
+
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -135,4 +147,5 @@ public class User {
     public void setSavedDestinations(List<SavedDestination> savedDestinations) {
         this.savedDestinations = savedDestinations;
     }
+
 }

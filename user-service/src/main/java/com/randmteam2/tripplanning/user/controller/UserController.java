@@ -1,13 +1,14 @@
 package com.randmteam2.tripplanning.user.controller;
 
 import com.randmteam2.tripplanning.user.dto.UserTripSummaryDTO;
+import com.randmteam2.tripplanning.user.model.Role;
+import com.randmteam2.tripplanning.user.model.SavedDestination;
 import com.randmteam2.tripplanning.user.model.User;
 import com.randmteam2.tripplanning.user.service.UserService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
-import com.randmteam2.tripplanning.user.model.Role;
 
 @RestController
 @RequestMapping("/api/users")
@@ -80,5 +81,37 @@ public User updatePreferences(
         }
 
         return userService.searchUsers(name, roleEnum, email);
+    }
+
+    @PostMapping("/{userId}/saved-destinations")
+    public SavedDestination createSavedDestination(
+            @PathVariable Long userId,
+            @RequestBody SavedDestination destination
+    ) {
+        return userService.createSavedDestination(userId, destination);
+    }
+
+
+    @GetMapping("/{userId}/saved-destinations")
+    public List<SavedDestination> getSavedDestinations(@PathVariable Long userId) {
+        return userService.getSavedDestinations(userId);
+    }
+
+
+    @GetMapping("/{userId}/saved-destinations/{id}")
+    public SavedDestination getSavedDestinationById(
+            @PathVariable Long userId,
+            @PathVariable Long id
+    ) {
+        return userService.getSavedDestinationById(userId, id);
+    }
+
+
+    @DeleteMapping("/{userId}/saved-destinations/{id}")
+    public void deleteSavedDestination(
+            @PathVariable Long userId,
+            @PathVariable Long id
+    ) {
+        userService.deleteSavedDestination(userId, id);
     }
 }

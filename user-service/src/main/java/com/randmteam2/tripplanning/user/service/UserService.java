@@ -1,7 +1,6 @@
 package com.randmteam2.tripplanning.user.service;
 
 import com.randmteam2.tripplanning.user.dto.UserTripSummaryDTO;
-import com.randmteam2.tripplanning.user.model.Role;
 import com.randmteam2.tripplanning.user.model.User;
 import com.randmteam2.tripplanning.user.repository.UserRepository;
 import org.springframework.stereotype.Service;
@@ -10,19 +9,34 @@ import org.springframework.http.HttpStatus;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.List;
-import org.springframework.http.HttpStatus;
+import com.randmteam2.tripplanning.user.model.Role;
+import com.randmteam2.tripplanning.user.model.Status;
+import com.randmteam2.tripplanning.user.model.SavedDestination;
 
 @Service
 public class UserService {
 
     private final UserRepository userRepository;
 
-    public UserService(UserRepository userRepository) {
+    private final SavedDestinationService savedDestinationService;
+
+
+    public UserService(UserRepository userRepository,
+                       SavedDestinationService savedDestinationService) {
         this.userRepository = userRepository;
+        this.savedDestinationService = savedDestinationService;
     }
 
     public User createUser(User user) {
+
+        if (user.getRole() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Role is required");
+        }
+
+        if (user.getStatus() == null) {
+            user.setStatus(Status.ACTIVE);
+        }
+
         return userRepository.save(user);
     }
 
@@ -36,16 +50,22 @@ public class UserService {
     }
 
     public User updateUser(Long id, User updatedUser) {
-        User existingUser = getUserById(id);
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
 
-        existingUser.setName(updatedUser.getName());
-        existingUser.setEmail(updatedUser.getEmail());
-        existingUser.setPassword(updatedUser.getPassword());
-        existingUser.setPhone(updatedUser.getPhone());
-        existingUser.setRole(updatedUser.getRole());
-        existingUser.setPreferences(updatedUser.getPreferences());
+        if (updatedUser.getName() != null)
+            user.setName(updatedUser.getName());
 
-        return userRepository.save(existingUser);
+        if (updatedUser.getEmail() != null)
+            user.setEmail(updatedUser.getEmail());
+
+        if (updatedUser.getPhone() != null)
+            user.setPhone(updatedUser.getPhone());
+
+        if (updatedUser.getRole() != null)
+            user.setRole(updatedUser.getRole());
+
+        return userRepository.save(user);
     }
 
     public void deleteUser(Long id) {
@@ -145,4 +165,47 @@ public class UserService {
 
         return userRepository.findByPreference(key, value);
     }
+    public SavedDestination createSavedDestination(Long userId, SavedDestination destination) {
+
+        getUserById(userId); // ensure user exists
+
+        User user = getUserById(userId);
+        destination.setUser(user);
+
+        return savedDestinationService.create(destination);
+    }
+
+    public List<SavedDestination> getSavedDestinations(Long userId) {
+
+        getUserById(userId);
+
+        return savedDestinationService.getByUserId(userId);
+    }
+    public SavedDestination getSavedDestinationById(Long userId, Long id) {
+
+        getUserById(userId);
+
+        SavedDestination dest = savedDestinationService.getById(id);
+
+        if (!dest.getUser().getId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+
+        return dest;
+    }
+    public void deleteSavedDestination(Long userId, Long id) {
+
+        getUserById(userId);
+
+        SavedDestination dest = savedDestinationService.getById(id);
+
+        if (!dest.getUser().getId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+
+        savedDestinationService.delete(id);
+    }
+
+
+
 }

@@ -2,8 +2,9 @@ package com.randmteam2.tripplanning.user.service;
 
 import com.randmteam2.tripplanning.user.model.SavedDestination;
 import com.randmteam2.tripplanning.user.repository.SavedDestinationRepository;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-
+import org.springframework.web.server.ResponseStatusException;
 import java.util.List;
 
 @Service
@@ -43,7 +44,14 @@ public class SavedDestinationService {
     }
 
     public void delete(Long id) {
-        SavedDestination existing = getById(id);
-        repository.delete(existing);
+
+        SavedDestination dest = repository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND));
+
+        repository.delete(dest);
+    }
+    public List<SavedDestination> getByUserId(Long userId) {
+        return repository.findByUser_Id(userId);
     }
 }

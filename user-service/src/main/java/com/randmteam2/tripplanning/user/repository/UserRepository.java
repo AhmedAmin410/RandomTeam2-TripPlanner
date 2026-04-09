@@ -2,14 +2,11 @@ package com.randmteam2.tripplanning.user.repository;
 
 import java.util.List;
 import com.randmteam2.tripplanning.user.model.User;
-import com.randmteam2.tripplanning.user.model.Role;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import com.randmteam2.tripplanning.user.model.Role;
 
-import java.util.List;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
 
 public interface UserRepository extends JpaRepository<User, Long> {
     List<User> findByNameContainingIgnoreCase(String name);
