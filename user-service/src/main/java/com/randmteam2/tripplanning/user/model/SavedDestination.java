@@ -3,7 +3,8 @@ package com.randmteam2.tripplanning.user.model;
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
 import java.util.Map;
-import com.vladmihalcea.hibernate.type.json.JsonType;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import org.hibernate.annotations.Type;
 
 @Entity
@@ -32,7 +33,7 @@ public class SavedDestination {
     @Column(nullable = false)
     private Boolean isDefault = false;
 
-    @Type(JsonType.class)
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     private Map<String, Object> metadata;
 
