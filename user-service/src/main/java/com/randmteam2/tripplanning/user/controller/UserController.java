@@ -119,4 +119,13 @@ public User updatePreferences(
 
         return ResponseEntity.noContent().build(); // 204
     }
+
+    @PutMapping("/{userId}/saved-destinations/{id}")
+    public SavedDestination updateSavedDestination(
+            @PathVariable Long userId,
+            @PathVariable Long id,
+            @RequestBody SavedDestination destination) {
+
+        return savedDestinationService.update(id, destination);
+    }
 }

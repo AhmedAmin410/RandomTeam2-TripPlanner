@@ -26,19 +26,36 @@ public class SavedDestinationService {
 
     public SavedDestination getById(Long id) {
         return repository.findById(id)
-                .orElseThrow(() -> new RuntimeException("SavedDestination not found"));
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Saved destination not found"
+                ));
     }
 
     public SavedDestination update(Long id, SavedDestination updated) {
+
         SavedDestination existing = getById(id);
 
-        existing.setLabel(updated.getLabel());
-        existing.setDestinationName(updated.getDestinationName());
-        existing.setCountry(updated.getCountry());
-        existing.setLatitude(updated.getLatitude());
-        existing.setLongitude(updated.getLongitude());
-        existing.setDefault(updated.getDefault());
-        existing.setMetadata(updated.getMetadata());
+        if (updated.getLabel() != null)
+            existing.setLabel(updated.getLabel());
+
+        if (updated.getDestinationName() != null)
+            existing.setDestinationName(updated.getDestinationName());
+
+        if (updated.getCountry() != null)
+            existing.setCountry(updated.getCountry());
+
+        if (updated.getLatitude() != null)
+            existing.setLatitude(updated.getLatitude());
+
+        if (updated.getLongitude() != null)
+            existing.setLongitude(updated.getLongitude());
+
+        if (updated.getDefault() != null)
+            existing.setDefault(updated.getDefault());
+
+        if (updated.getMetadata() != null)
+            existing.setMetadata(updated.getMetadata());
 
         return repository.save(existing);
     }
