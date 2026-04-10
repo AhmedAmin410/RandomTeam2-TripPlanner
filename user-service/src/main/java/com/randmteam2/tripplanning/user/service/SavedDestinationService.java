@@ -47,7 +47,9 @@ public class SavedDestinationService {
 
         SavedDestination dest = repository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND));
+                        HttpStatus.NOT_FOUND,
+                        "Saved destination not found"
+                ));
 
         repository.delete(dest);
     }

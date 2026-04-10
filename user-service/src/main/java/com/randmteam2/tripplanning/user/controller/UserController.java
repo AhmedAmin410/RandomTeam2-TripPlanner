@@ -4,6 +4,7 @@ import com.randmteam2.tripplanning.user.dto.UserTripSummaryDTO;
 import com.randmteam2.tripplanning.user.model.UserRole;
 import com.randmteam2.tripplanning.user.model.SavedDestination;
 import com.randmteam2.tripplanning.user.model.User;
+import com.randmteam2.tripplanning.user.service.SavedDestinationService;
 import com.randmteam2.tripplanning.user.service.UserService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -15,10 +16,12 @@ import java.util.Map;
 public class UserController {
 
     private final UserService userService;
+    private final SavedDestinationService savedDestinationService;
 
-
-    public UserController(UserService userService) {
+    public UserController(UserService userService,
+                          SavedDestinationService savedDestinationService) {
         this.userService = userService;
+        this.savedDestinationService = savedDestinationService;
     }
 
     @PostMapping
@@ -108,10 +111,12 @@ public User updatePreferences(
 
 
     @DeleteMapping("/{userId}/saved-destinations/{id}")
-    public void deleteSavedDestination(
+    public ResponseEntity<Void> deleteSavedDestination(
             @PathVariable Long userId,
-            @PathVariable Long id
-    ) {
-        userService.deleteSavedDestination(userId, id);
+            @PathVariable Long id) {
+
+        savedDestinationService.delete(id);
+
+        return ResponseEntity.noContent().build(); // 204
     }
 }
