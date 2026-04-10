@@ -2,6 +2,7 @@ package com.randmteam2.tripplanning.user.service;
 
 import com.randmteam2.tripplanning.user.dto.UserTripSummaryDTO;
 import com.randmteam2.tripplanning.user.model.User;
+import com.randmteam2.tripplanning.user.model.UserRole;
 import com.randmteam2.tripplanning.user.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -9,8 +10,8 @@ import org.springframework.http.HttpStatus;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import com.randmteam2.tripplanning.user.model.Role;
-import com.randmteam2.tripplanning.user.model.Status;
+import com.randmteam2.tripplanning.user.model.UserRole;
+import com.randmteam2.tripplanning.user.model.UserStatus;
 import com.randmteam2.tripplanning.user.model.SavedDestination;
 
 @Service
@@ -34,7 +35,7 @@ public class UserService {
         }
 
         if (user.getStatus() == null) {
-            user.setStatus(Status.ACTIVE);
+            user.setStatus(UserStatus.ACTIVE);
         }
 
         return userRepository.save(user);
@@ -72,7 +73,7 @@ public class UserService {
         User user = getUserById(id);
         userRepository.delete(user);
     }
-    public List<User> searchUsers(String name, Role role, String email) {
+    public List<User> searchUsers(String name, UserRole role, String email) {
 
         if (name != null && role != null && email != null) {
             return userRepository

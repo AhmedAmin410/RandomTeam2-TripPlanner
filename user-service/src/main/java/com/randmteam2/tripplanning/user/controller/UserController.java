@@ -1,7 +1,7 @@
 package com.randmteam2.tripplanning.user.controller;
 
 import com.randmteam2.tripplanning.user.dto.UserTripSummaryDTO;
-import com.randmteam2.tripplanning.user.model.Role;
+import com.randmteam2.tripplanning.user.model.UserRole;
 import com.randmteam2.tripplanning.user.model.SavedDestination;
 import com.randmteam2.tripplanning.user.model.User;
 import com.randmteam2.tripplanning.user.service.UserService;
@@ -74,10 +74,10 @@ public User updatePreferences(
             @RequestParam(required = false) String role,
             @RequestParam(required = false) String email
     ) {
-        Role roleEnum = null;
+        UserRole roleEnum = null;
 
         if (role != null) {
-            roleEnum = Role.valueOf(role.toUpperCase());
+            roleEnum = UserRole.valueOf(role.toUpperCase());
         }
 
         return userService.searchUsers(name, roleEnum, email);

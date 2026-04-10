@@ -7,21 +7,10 @@ import java.util.List;
 import java.util.Map;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
-import org.hibernate.annotations.Type;
 
 @Entity
 @Table(name = "users")
 public class User {
-
-//    public enum Role {
-//        TRAVELER,
-//        ADMIN
-//    }
-//
-//    public enum Status {
-//        ACTIVE,
-//        DEACTIVATED
-//    }
 
 
 
@@ -41,13 +30,13 @@ public class User {
     @Column(nullable = false, unique = true)
     private String phone;
 
-    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(nullable = false)
-    private Role role;
+    private UserStatus status;
 
-    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(nullable = false)
-    private Status status;
+    private UserRole role;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
@@ -62,10 +51,11 @@ public class User {
 
     public User() {}
 
+
     @PrePersist
-    public void onCreate() {
-        this.createdAt = LocalDateTime.now();
-        this.status = Status.ACTIVE;
+    void setDefaults() {
+        if (status == null) status = UserStatus.ACTIVE;
+        if (createdAt == null) createdAt = LocalDateTime.now();
     }
 
     public Long getId() {
@@ -88,11 +78,11 @@ public class User {
         return phone;
     }
 
-    public Role getRole() {
+    public UserRole getRole() {
         return role;
     }
 
-    public Status getStatus() {
+    public UserStatus getStatus() {
         return status;
     }
 
@@ -128,11 +118,11 @@ public class User {
         this.password = password;
     }
 
-    public void setRole(Role role) {
+    public void setRole(UserRole role) {
         this.role = role;
     }
 
-    public void setStatus(Status status) {
+    public void setStatus(UserStatus status) {
         this.status = status;
     }
 

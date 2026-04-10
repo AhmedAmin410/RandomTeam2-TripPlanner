@@ -1,6 +1,6 @@
 package com.randmteam2.tripplanning.user.model;
 
-public enum Role {
+public enum UserRole {
     TRAVELER,
     ADMIN
 }

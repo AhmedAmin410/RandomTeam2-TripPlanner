@@ -5,24 +5,24 @@ import com.randmteam2.tripplanning.user.model.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import com.randmteam2.tripplanning.user.model.Role;
+import com.randmteam2.tripplanning.user.model.UserRole;
 
 
 public interface UserRepository extends JpaRepository<User, Long> {
     List<User> findByNameContainingIgnoreCase(String name);
 
-    List<User> findByRole(Role role);
+    List<User> findByRole(UserRole role);
 
-    List<User> findByNameContainingIgnoreCaseAndRole(String name, Role role);
+    List<User> findByNameContainingIgnoreCaseAndRole(String name, UserRole role);
 
     List<User> findByEmailContainingIgnoreCase(String email);
 
     List<User> findByNameContainingIgnoreCaseAndEmailContainingIgnoreCase(String name, String email);
 
-    List<User> findByRoleAndEmailContainingIgnoreCase(Role role, String email);
+    List<User> findByRoleAndEmailContainingIgnoreCase(UserRole role, String email);
 
     List<User> findByNameContainingIgnoreCaseAndRoleAndEmailContainingIgnoreCase(
-            String name, Role role, String email
+            String name, UserRole role, String email
     );
 
     @Query(value = """
