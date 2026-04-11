@@ -1,5 +1,6 @@
 package com.randmteam2.tripplanning.activity.service;
 
+import com.randmteam2.tripplanning.activity.dto.ActivitySummaryDTO;
 import com.randmteam2.tripplanning.activity.dto.NearbyActivityDTO;
 import com.randmteam2.tripplanning.activity.model.Activity;
 import org.springframework.beans.factory.annotation.Value;
@@ -145,4 +146,39 @@ public class ActivityService {
         String categoryParam = (category != null && !category.isEmpty()) ? category : null;
         return activityRepository.findByHistory(start, end, categoryParam);
     }
+
+    // --- S4-F8: Activity Summary DTO (Fixed Type Conversion) ---
+    public ActivitySummaryDTO getActivitySummary(Long itineraryId, LocalDate start, LocalDate end) {
+        if (!activityRepository.existsByItineraryId(itineraryId)) {
+            throw new RuntimeException("Itinerary not found with id: " + itineraryId);
+        }
+
+        // 1. Convert LocalDate boundaries to LocalDateTime for the query
+        LocalDateTime startDT = start.atStartOfDay();
+        LocalDateTime endDT = end.atTime(23, 59, 59);
+
+        // 2. Execute query
+        Object result = activityRepository.getActivitySummaryRaw(itineraryId, startDT, endDT);
+        Object[] row = (Object[]) result;
+
+        // 3. Extract and Cast values correctly
+        Long totalActivities = row[0] != null ? ((Number) row[0]).longValue() : 0L;
+        Double averageCost = row[1] != null ? ((Number) row[1]).doubleValue() : 0.0;
+        Double maxCost = row[2] != null ? ((Number) row[2]).doubleValue() : 0.0;
+
+        // 4. FIX: Cast to Timestamp THEN convert to LocalDateTime
+        LocalDateTime firstScheduledTime = row[3] != null ? ((java.sql.Timestamp) row[3]).toLocalDateTime() : null;
+        LocalDateTime lastScheduledTime = row[4] != null ? ((java.sql.Timestamp) row[4]).toLocalDateTime() : null;
+
+        // 5. Return with all 6 arguments
+        return new ActivitySummaryDTO(
+                itineraryId,
+                totalActivities,
+                averageCost,
+                maxCost,
+                firstScheduledTime,
+                lastScheduledTime
+        );
+    }
+
 }
