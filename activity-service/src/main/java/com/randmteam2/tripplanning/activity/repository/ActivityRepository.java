@@ -40,4 +40,23 @@ public interface ActivityRepository extends JpaRepository<Activity, Long> {
             @Param("category") String category
     );
 
+    // Requirement: Used to trigger the 404 if the itinerary doesn't exist
+    boolean existsByItineraryId(Long itineraryId);
+
+    // Requirement: Native SQL with JSONB casting for AVG/MAX/MIN calculations
+    @Query(value = "SELECT COUNT(*), " +
+            "AVG(CAST(metadata->>'cost' AS numeric)), " +
+            "MAX(CAST(metadata->>'cost' AS numeric)), " +
+            "MIN(scheduled_time), " +
+            "MAX(scheduled_time) " +
+            "FROM activities " +
+            "WHERE itinerary_id = :itineraryId " +
+            "AND scheduled_time BETWEEN :start AND :end",
+            nativeQuery = true)
+    Object getActivitySummaryRaw(
+            @Param("itineraryId") Long itineraryId,
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end
+    );
+
 }

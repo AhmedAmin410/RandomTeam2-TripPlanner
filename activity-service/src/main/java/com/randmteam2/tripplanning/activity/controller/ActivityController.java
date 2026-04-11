@@ -2,6 +2,7 @@ package com.randmteam2.tripplanning.activity.controller;
 
 
 
+import com.randmteam2.tripplanning.activity.dto.ActivitySummaryDTO;
 import com.randmteam2.tripplanning.activity.dto.NearbyActivityDTO;
 import com.randmteam2.tripplanning.activity.dto.BatchActivityRequest;
 import com.randmteam2.tripplanning.activity.model.Activity;
@@ -102,6 +103,15 @@ public class ActivityController {
             @RequestParam("endDate") @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate end,
             @RequestParam(value = "category", required = false) String category) {
         return activityService.getActivitiesByHistory(start, end, category);
+    }
+
+    // S4-F8: Summary update to LocalDate
+    @GetMapping("/itinerary/{id}/summary")
+    public ResponseEntity<ActivitySummaryDTO> getItinerarySummary(
+            @PathVariable Long id,
+            @RequestParam("startDate") @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate start,
+            @RequestParam("endDate") @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate end) {
+        return ResponseEntity.ok(activityService.getActivitySummary(id, start, end));
     }
 
 }
