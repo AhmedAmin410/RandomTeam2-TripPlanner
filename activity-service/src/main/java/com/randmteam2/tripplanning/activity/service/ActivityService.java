@@ -132,9 +132,8 @@ public class ActivityService {
                             activity.getLongitude(),
                             distance
                     );
-                })
-                .filter(dto -> dto.getDistanceKm() <= radiusKm)
-                .sorted(Comparator.comparing(NearbyActivityDTO::getDistanceKm))
+                }).filter(dto -> dto.distanceKm() <= radiusKm)
+                .sorted(Comparator.comparing(NearbyActivityDTO::distanceKm))
                 .collect(Collectors.toList());
     }
 
