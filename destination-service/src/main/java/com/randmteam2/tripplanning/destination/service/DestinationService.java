@@ -7,6 +7,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.List;
+
 @Service
 public class DestinationService {
 
@@ -43,5 +45,26 @@ public class DestinationService {
 
         destination.setStatus(newStatus);
         return destinationRepository.save(destination);
+    }
+
+    @Transactional(readOnly = true)
+    public List<Destination> searchByDetailsKeyValue(String key, String value, String statusRaw) {
+        if (key == null || key.isBlank() || value == null || value.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "key and value are required");
+        }
+
+        String statusFilter = null;
+        if (statusRaw != null && !statusRaw.isBlank()) {
+            try {
+                statusFilter = Destination.Status.valueOf(statusRaw.trim().toUpperCase()).name();
+            } catch (IllegalArgumentException e) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid status");
+            }
+        }
+
+        return destinationRepository.searchByDetailsKeyValue(
+                key.trim(),
+                value.trim(),
+                statusFilter);
     }
 }

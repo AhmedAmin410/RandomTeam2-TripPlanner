@@ -9,11 +9,13 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -94,5 +96,43 @@ class DestinationServiceTest {
         Destination updated = destinationService.updateStatus(3L, "inactive");
 
         assertThat(updated.getStatus()).isEqualTo(Destination.Status.INACTIVE);
+    }
+
+    @Test
+    void searchByDetails_blankKey_throws400() {
+        assertThatThrownBy(() -> destinationService.searchByDetailsKeyValue(" ", "tropical", null))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+
+        verify(destinationRepository, never()).searchByDetailsKeyValue(any(), any(), any());
+    }
+
+    @Test
+    void searchByDetails_invalidStatus_throws400() {
+        assertThatThrownBy(() -> destinationService.searchByDetailsKeyValue("climate", "tropical", "BAD"))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+
+        verify(destinationRepository, never()).searchByDetailsKeyValue(any(), any(), any());
+    }
+
+    @Test
+    void searchByDetails_noStatus_passesNullStatusFilter() {
+        when(destinationRepository.searchByDetailsKeyValue("climate", "tropical", null))
+                .thenReturn(List.of());
+
+        assertThat(destinationService.searchByDetailsKeyValue("climate", "tropical", null)).isEmpty();
+
+        verify(destinationRepository).searchByDetailsKeyValue("climate", "tropical", null);
+    }
+
+    @Test
+    void searchByDetails_withStatus_passesNormalizedStatus() {
+        when(destinationRepository.searchByDetailsKeyValue("climate", "tropical", "ACTIVE"))
+                .thenReturn(List.of());
+
+        destinationService.searchByDetailsKeyValue("climate", "tropical", "active");
+
+        verify(destinationRepository).searchByDetailsKeyValue(eq("climate"), eq("tropical"), eq("ACTIVE"));
     }
 }

@@ -1,6 +1,10 @@
 package com.randmteam2.tripplanning.destination.model;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+import java.util.Map;
 
 @Entity
 @Table(name = "destinations")
@@ -16,6 +20,10 @@ public class Destination {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Status status;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(columnDefinition = "jsonb")
+    private Map<String, Object> details;
 
     public enum Status {
         ACTIVE, SEASONAL, INACTIVE
@@ -43,5 +51,13 @@ public class Destination {
 
     public void setStatus(Status status) {
         this.status = status;
+    }
+
+    public Map<String, Object> getDetails() {
+        return details;
+    }
+
+    public void setDetails(Map<String, Object> details) {
+        this.details = details;
     }
 }
