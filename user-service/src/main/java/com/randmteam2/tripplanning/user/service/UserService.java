@@ -4,12 +4,12 @@ import com.randmteam2.tripplanning.user.dto.UserTripSummaryDTO;
 import com.randmteam2.tripplanning.user.model.Role;
 import com.randmteam2.tripplanning.user.model.SavedDestination;
 import com.randmteam2.tripplanning.user.model.User;
+import com.randmteam2.tripplanning.user.model.UserStatus;
 import com.randmteam2.tripplanning.user.repository.SavedDestinationRepository;
 import com.randmteam2.tripplanning.user.repository.UserRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
-
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -40,13 +40,45 @@ public class UserService {
     }
 
     public User updateUser(Long id, User updatedUser) {
+
         User existingUser = getUserById(id);
-        existingUser.setName(updatedUser.getName());
-        existingUser.setEmail(updatedUser.getEmail());
-        existingUser.setPassword(updatedUser.getPassword());
-        existingUser.setPhone(updatedUser.getPhone());
-        existingUser.setRole(updatedUser.getRole());
-        existingUser.setPreferences(updatedUser.getPreferences());
+
+        if (updatedUser.getStatus() != null &&
+                updatedUser.getStatus() == UserStatus.DEACTIVATED &&
+                updatedUser.getName() == null &&
+                updatedUser.getEmail() == null &&
+                updatedUser.getPassword() == null &&
+                updatedUser.getPhone() == null &&
+                updatedUser.getRole() == null &&
+                updatedUser.getPreferences() == null) {
+
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "User has active itinerary"
+            );
+        }
+
+        if (updatedUser.getName() != null)
+            existingUser.setName(updatedUser.getName());
+
+        if (updatedUser.getEmail() != null)
+            existingUser.setEmail(updatedUser.getEmail());
+
+        if (updatedUser.getPassword() != null)
+            existingUser.setPassword(updatedUser.getPassword());
+
+        if (updatedUser.getPhone() != null)
+            existingUser.setPhone(updatedUser.getPhone());
+
+        if (updatedUser.getRole() != null)
+            existingUser.setRole(updatedUser.getRole());
+
+        if (updatedUser.getPreferences() != null)
+            existingUser.setPreferences(updatedUser.getPreferences());
+
+        if (updatedUser.getStatus() != null)
+            existingUser.setStatus(updatedUser.getStatus());
+
         return userRepository.save(existingUser);
     }
 
@@ -122,5 +154,23 @@ public class UserService {
         return savedDestinationRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "SavedDestination not found"));
+    }
+
+    public User deactivateUser(Long id) {
+
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "User not found"
+                ));
+
+        if (user.getStatus() == UserStatus.ACTIVE) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "User has active itineraries"
+            );
+        }
+
+        user.setStatus(UserStatus.DEACTIVATED);
+        return userRepository.save(user);
     }
 }
