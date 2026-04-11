@@ -1,5 +1,6 @@
 package com.randmteam2.tripplanning.destination.service;
 
+import com.randmteam2.tripplanning.destination.dto.DestinationRateRequest;
 import com.randmteam2.tripplanning.destination.dto.TopDestinationDTO;
 import com.randmteam2.tripplanning.destination.model.Destination;
 import com.randmteam2.tripplanning.destination.repository.DestinationRepository;
@@ -170,5 +171,129 @@ class DestinationServiceTest {
         TopDestinationDTO dto = destinationService.getTopRatedDestinationsReport(10).get(0);
 
         assertThat(dto.getRating()).isEqualTo(0.0);
+    }
+
+    @Test
+    void rateAfterVisit_destinationNotFound_throws404() {
+        when(destinationRepository.findById(99L)).thenReturn(Optional.empty());
+
+        DestinationRateRequest req = new DestinationRateRequest();
+        req.setItineraryId(1L);
+        req.setRating(5);
+
+        assertThatThrownBy(() -> destinationService.rateAfterVisit(99L, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(404));
+
+        verify(destinationRepository, never()).findItineraryDestinationIdAndStatus(any());
+    }
+
+    @Test
+    void rateAfterVisit_ratingOutOfRange_throws400() {
+        Destination d = newDestination(1L);
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(d));
+
+        DestinationRateRequest req = new DestinationRateRequest();
+        req.setItineraryId(1L);
+        req.setRating(6);
+
+        assertThatThrownBy(() -> destinationService.rateAfterVisit(1L, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+
+        verify(destinationRepository, never()).findItineraryDestinationIdAndStatus(any());
+    }
+
+    @Test
+    void rateAfterVisit_itineraryNotFound_throws404() {
+        Destination d = newDestination(1L);
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(d));
+        when(destinationRepository.findItineraryDestinationIdAndStatus(10L)).thenReturn(List.of());
+
+        DestinationRateRequest req = new DestinationRateRequest();
+        req.setItineraryId(10L);
+        req.setRating(5);
+
+        assertThatThrownBy(() -> destinationService.rateAfterVisit(1L, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(404));
+    }
+
+    @Test
+    void rateAfterVisit_wrongDestination_throws400() {
+        Destination d = newDestination(1L);
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(d));
+        when(destinationRepository.findItineraryDestinationIdAndStatus(10L))
+                .thenReturn(List.<Object[]>of(new Object[] { 2L, "COMPLETED" }));
+
+        DestinationRateRequest req = new DestinationRateRequest();
+        req.setItineraryId(10L);
+        req.setRating(5);
+
+        assertThatThrownBy(() -> destinationService.rateAfterVisit(1L, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+    }
+
+    @Test
+    void rateAfterVisit_notCompleted_throws400() {
+        Destination d = newDestination(1L);
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(d));
+        when(destinationRepository.findItineraryDestinationIdAndStatus(10L))
+                .thenReturn(List.<Object[]>of(new Object[] { 1L, "PLANNED" }));
+
+        DestinationRateRequest req = new DestinationRateRequest();
+        req.setItineraryId(10L);
+        req.setRating(5);
+
+        assertThatThrownBy(() -> destinationService.rateAfterVisit(1L, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+    }
+
+    @Test
+    void rateAfterVisit_firstRating_setsAverageAndCount() {
+        Destination d = newDestination(1L);
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(d));
+        when(destinationRepository.findItineraryDestinationIdAndStatus(10L))
+                .thenReturn(List.<Object[]>of(new Object[] { 1L, "COMPLETED" }));
+        when(destinationRepository.save(any(Destination.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        DestinationRateRequest req = new DestinationRateRequest();
+        req.setItineraryId(10L);
+        req.setRating(5);
+
+        Destination updated = destinationService.rateAfterVisit(1L, req);
+
+        assertThat(updated.getRating()).isEqualTo(5.0);
+        assertThat(updated.getTotalRatings()).isEqualTo(1);
+    }
+
+    @Test
+    void rateAfterVisit_secondRating_recalculatesRunningAverage() {
+        Destination d = newDestination(1L);
+        d.setRating(5.0);
+        d.setTotalRatings(1);
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(d));
+        when(destinationRepository.findItineraryDestinationIdAndStatus(11L))
+                .thenReturn(List.<Object[]>of(new Object[] { 1L, "COMPLETED" }));
+        when(destinationRepository.save(any(Destination.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        DestinationRateRequest req = new DestinationRateRequest();
+        req.setItineraryId(11L);
+        req.setRating(3);
+
+        Destination updated = destinationService.rateAfterVisit(1L, req);
+
+        assertThat(updated.getRating()).isEqualTo(4.0);
+        assertThat(updated.getTotalRatings()).isEqualTo(2);
+    }
+
+    private static Destination newDestination(long id) {
+        Destination d = new Destination();
+        d.setId(id);
+        d.setName("Test");
+        d.setStatus(Destination.Status.ACTIVE);
+        return d;
     }
 }

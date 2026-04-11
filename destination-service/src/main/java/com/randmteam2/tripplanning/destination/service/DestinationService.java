@@ -1,5 +1,6 @@
 package com.randmteam2.tripplanning.destination.service;
 
+import com.randmteam2.tripplanning.destination.dto.DestinationRateRequest;
 import com.randmteam2.tripplanning.destination.dto.TopDestinationDTO;
 import com.randmteam2.tripplanning.destination.model.Destination;
 import com.randmteam2.tripplanning.destination.repository.DestinationRepository;
@@ -87,5 +88,49 @@ public class DestinationService {
             result.add(dto);
         }
         return result;
+    }
+
+    @Transactional
+    public Destination rateAfterVisit(Long destinationId, DestinationRateRequest request) {
+        Destination destination = destinationRepository.findById(destinationId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Destination not found"));
+
+        if (request == null || request.getItineraryId() == null || request.getRating() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "itineraryId and rating are required");
+        }
+
+        int ratingValue = request.getRating();
+        if (ratingValue < 1 || ratingValue > 5) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "rating must be between 1 and 5");
+        }
+
+        List<Object[]> rows = destinationRepository.findItineraryDestinationIdAndStatus(request.getItineraryId());
+        if (rows.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Itinerary not found");
+        }
+
+        Object[] row = rows.get(0);
+        Long itineraryDestinationId = row[0] != null ? ((Number) row[0]).longValue() : null;
+        String status = row[1] != null ? row[1].toString() : null;
+
+        if (itineraryDestinationId == null || !itineraryDestinationId.equals(destinationId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Itinerary does not reference this destination");
+        }
+        if (!"COMPLETED".equals(status)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Itinerary must be COMPLETED to rate this destination");
+        }
+
+        int priorCount = destination.getTotalRatings() != null ? destination.getTotalRatings() : 0;
+        double priorAvg = destination.getRating() != null ? destination.getRating() : 0.0;
+        int newCount = priorCount + 1;
+        double newAvg = (priorAvg * priorCount + ratingValue) / newCount;
+
+        destination.setRating(newAvg);
+        destination.setTotalRatings(newCount);
+        return destinationRepository.save(destination);
     }
 }

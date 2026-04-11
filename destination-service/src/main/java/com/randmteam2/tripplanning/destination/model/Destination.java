@@ -23,6 +23,8 @@ public class Destination {
 
     private Double rating;
 
+    private Integer totalRatings;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     private Map<String, Object> details;
@@ -61,6 +63,14 @@ public class Destination {
 
     public void setRating(Double rating) {
         this.rating = rating;
+    }
+
+    public Integer getTotalRatings() {
+        return totalRatings;
+    }
+
+    public void setTotalRatings(Integer totalRatings) {
+        this.totalRatings = totalRatings;
     }
 
     public Map<String, Object> getDetails() {

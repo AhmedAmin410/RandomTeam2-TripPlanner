@@ -41,4 +41,11 @@ public interface DestinationRepository extends JpaRepository<Destination, Long> 
             LIMIT :limit
             """, nativeQuery = true)
     List<Object[]> findTopRatedDestinationsReport(@Param("limit") int limit);
+
+    @Query(value = """
+            SELECT i.destination_id, i.status
+            FROM itineraries i
+            WHERE i.id = :itineraryId
+            """, nativeQuery = true)
+    List<Object[]> findItineraryDestinationIdAndStatus(@Param("itineraryId") Long itineraryId);
 }

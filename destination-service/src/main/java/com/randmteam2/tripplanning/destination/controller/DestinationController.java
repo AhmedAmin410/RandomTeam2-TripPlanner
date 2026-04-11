@@ -1,5 +1,6 @@
 package com.randmteam2.tripplanning.destination.controller;
 
+import com.randmteam2.tripplanning.destination.dto.DestinationRateRequest;
 import com.randmteam2.tripplanning.destination.dto.DestinationStatusRequest;
 import com.randmteam2.tripplanning.destination.dto.TopDestinationDTO;
 import com.randmteam2.tripplanning.destination.model.Destination;
@@ -37,5 +38,12 @@ public class DestinationController {
     @GetMapping("/reports/top-rated")
     public ResponseEntity<List<TopDestinationDTO>> topRatedDestinations(@RequestParam int limit) {
         return ResponseEntity.ok(destinationService.getTopRatedDestinationsReport(limit));
+    }
+
+    @PostMapping("/{id}/rate")
+    public ResponseEntity<Destination> rateAfterVisit(
+            @PathVariable Long id,
+            @RequestBody DestinationRateRequest body) {
+        return ResponseEntity.ok(destinationService.rateAfterVisit(id, body));
     }
 }
