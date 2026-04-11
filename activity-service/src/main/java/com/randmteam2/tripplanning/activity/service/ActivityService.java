@@ -76,6 +76,12 @@ public class ActivityService {
         };
     }
 
+    public Activity createForItinerary(Long itineraryId, Activity activity) {
+        validateItineraryExists(itineraryId);
+        activity.setItineraryId(itineraryId);
+        return activityRepository.save(activity);
+    }
+
     public Activity getLatestByItineraryId(Long itineraryId) {
         validateItineraryExists(itineraryId);
         Activity latest = activityRepository.findLatestByItineraryId(itineraryId);

@@ -52,6 +52,12 @@ public class ActivityController {
         return ResponseEntity.noContent().build();
     }
 
+    @PostMapping("/itinerary/{itineraryId}")
+    public ResponseEntity<Activity> createForItinerary(@PathVariable Long itineraryId,
+                                                       @RequestBody Activity activity) {
+        return ResponseEntity.status(201).body(activityService.createForItinerary(itineraryId, activity));
+    }
+
     @GetMapping("/itinerary/{id}/latest")
     public ResponseEntity<Activity> getLatestByItinerary(@PathVariable Long id) {
         return ResponseEntity.ok(activityService.getLatestByItineraryId(id));
