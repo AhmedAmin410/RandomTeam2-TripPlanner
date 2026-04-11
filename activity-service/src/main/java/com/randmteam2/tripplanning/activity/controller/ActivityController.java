@@ -93,4 +93,15 @@ public class ActivityController {
         int deletedCount = activityService.purgeOlderThan(olderThanDays);
         return ResponseEntity.ok(Map.of("deletedCount", deletedCount));
     }
+
+    // F6: History
+// F6: History update to LocalDate
+    @GetMapping("/history")
+    public List<Activity> getHistory(
+            @RequestParam("startDate") @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate start,
+            @RequestParam("endDate") @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate end,
+            @RequestParam(value = "category", required = false) String category) {
+        return activityService.getActivitiesByHistory(start, end, category);
+    }
+
 }
