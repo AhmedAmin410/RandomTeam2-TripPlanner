@@ -13,6 +13,16 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, String>> handleRuntimeException(RuntimeException ex) {
         String message = ex.getMessage();
 
+        // Check cause chain for the original message
+        Throwable cause = ex;
+        while (cause.getCause() != null) {
+            cause = cause.getCause();
+            if (cause.getMessage() != null) {
+                message = cause.getMessage();
+                break;
+            }
+        }
+
         if (message != null && message.contains("not found")) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(Map.of("error", message));
@@ -23,7 +33,9 @@ public class GlobalExceptionHandler {
                 message.contains("must") ||
                 message.contains("already") ||
                 message.contains("only") ||
-                message.contains("exists"))) {
+                message.contains("exists") ||
+                message.contains("ACTIVE") ||
+                message.contains("DRAFT"))) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("error", message));
         }
