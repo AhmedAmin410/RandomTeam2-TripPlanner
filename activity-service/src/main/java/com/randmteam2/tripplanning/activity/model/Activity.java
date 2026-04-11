@@ -21,7 +21,7 @@ public class Activity {
     private String name;
 
     @Enumerated(EnumType.STRING)
-    @Column(columnDefinition = "activity_category")
+    @Column(nullable = false, columnDefinition = "VARCHAR(255)")
     private Category category;
 
     @Column(nullable = false)
@@ -36,6 +36,14 @@ public class Activity {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     private Map<String, Object> metadata;
+
+    @Column(nullable = false)
+    private LocalDateTime createdAt;
+
+    @PrePersist
+    protected void onCreate() {
+        createdAt = LocalDateTime.now();
+    }
 
     public enum Category {
         SIGHTSEEING, ADVENTURE, DINING, CULTURAL, LEISURE
@@ -64,4 +72,7 @@ public class Activity {
 
     public Map<String, Object> getMetadata() { return metadata; }
     public void setMetadata(Map<String, Object> metadata) { this.metadata = metadata; }
+
+    public LocalDateTime getCreatedAt() { return createdAt; }
+    public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
 }
