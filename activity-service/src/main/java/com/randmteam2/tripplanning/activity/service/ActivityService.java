@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 import com.randmteam2.tripplanning.activity.repository.ActivityRepository;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.List;
@@ -137,5 +138,11 @@ public class ActivityService {
                 .filter(dto -> dto.getDistanceKm() <= radiusKm)
                 .sorted(Comparator.comparing(NearbyActivityDTO::getDistanceKm))
                 .collect(Collectors.toList());
+    }
+
+    // --- S4-F6: Activities in Date Range (Using LocalDate) ---
+    public List<Activity> getActivitiesByHistory(LocalDate start, LocalDate end, String category) {
+        String categoryParam = (category != null && !category.isEmpty()) ? category : null;
+        return activityRepository.findByHistory(start, end, categoryParam);
     }
 }
