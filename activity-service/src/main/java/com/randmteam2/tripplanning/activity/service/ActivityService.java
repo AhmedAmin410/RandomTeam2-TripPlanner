@@ -1,5 +1,6 @@
 package com.randmteam2.tripplanning.activity.service;
 
+import com.randmteam2.tripplanning.activity.dto.NearbyActivityDTO;
 import com.randmteam2.tripplanning.activity.model.Activity;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -8,7 +9,9 @@ import org.springframework.web.client.RestTemplate;
 import com.randmteam2.tripplanning.activity.repository.ActivityRepository;
 
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class ActivityService {
@@ -110,5 +113,29 @@ public class ActivityService {
     public int purgeOlderThan(int olderThanDays) {
         LocalDateTime cutoff = LocalDateTime.now().minusDays(olderThanDays);
         return activityRepository.deleteOlderThan(cutoff);
+    }
+
+    // --- S4-F3: Find Nearby Activities DTO ---
+    public List<NearbyActivityDTO> getNearbyActivities(Double userLat, Double userLon, Double radiusKm) {
+        List<Activity> allActivities = activityRepository.findAll();
+
+        return allActivities.stream()
+                .map(activity -> {
+                    double latDiff = activity.getLatitude() - userLat;
+                    double lonDiff = activity.getLongitude() - userLon;
+                    double distance = Math.sqrt(Math.pow(latDiff, 2) + Math.pow(lonDiff, 2)) * 111;
+
+                    return new NearbyActivityDTO(
+                            activity.getId(),
+                            activity.getName(),
+                            activity.getCategory().name(), // Added .name() to fix Enum-to-String error
+                            activity.getLatitude(),
+                            activity.getLongitude(),
+                            distance
+                    );
+                })
+                .filter(dto -> dto.getDistanceKm() <= radiusKm)
+                .sorted(Comparator.comparing(NearbyActivityDTO::getDistanceKm))
+                .collect(Collectors.toList());
     }
 }

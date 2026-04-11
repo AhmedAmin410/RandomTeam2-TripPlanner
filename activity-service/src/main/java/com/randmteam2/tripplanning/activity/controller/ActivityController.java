@@ -2,6 +2,7 @@ package com.randmteam2.tripplanning.activity.controller;
 
 
 
+import com.randmteam2.tripplanning.activity.dto.NearbyActivityDTO;
 import com.randmteam2.tripplanning.activity.dto.BatchActivityRequest;
 import com.randmteam2.tripplanning.activity.model.Activity;
 import com.randmteam2.tripplanning.activity.service.ActivityService;
@@ -31,11 +32,21 @@ public class ActivityController {
         return ResponseEntity.status(201).body(activityService.create(activity));
     }
 
+
+    // --- S4-F3: Find Nearby Activities DTO ---
+    @GetMapping("/nearby")
+    public List<NearbyActivityDTO> getNearby(
+            @RequestParam Double lat,
+            @RequestParam Double lon,
+            @RequestParam Double radiusKm) {
+        return activityService.getNearbyActivities(lat, lon, radiusKm);
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<Activity> getById(@PathVariable Long id) {
         return ResponseEntity.ok(activityService.getById(id));
     }
-
+//getallgit add .
     @GetMapping
     public ResponseEntity<List<Activity>> getAll() {
         return ResponseEntity.ok(activityService.getAll());
