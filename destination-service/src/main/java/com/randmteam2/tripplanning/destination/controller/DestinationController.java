@@ -1,6 +1,7 @@
 package com.randmteam2.tripplanning.destination.controller;
 
 import com.randmteam2.tripplanning.destination.dto.DestinationStatusRequest;
+import com.randmteam2.tripplanning.destination.dto.TopDestinationDTO;
 import com.randmteam2.tripplanning.destination.model.Destination;
 import com.randmteam2.tripplanning.destination.service.DestinationService;
 import org.springframework.http.ResponseEntity;
@@ -31,5 +32,10 @@ public class DestinationController {
             @RequestParam String value,
             @RequestParam(required = false) String status) {
         return ResponseEntity.ok(destinationService.searchByDetailsKeyValue(key, value, status));
+    }
+
+    @GetMapping("/reports/top-rated")
+    public ResponseEntity<List<TopDestinationDTO>> topRatedDestinations(@RequestParam int limit) {
+        return ResponseEntity.ok(destinationService.getTopRatedDestinationsReport(limit));
     }
 }

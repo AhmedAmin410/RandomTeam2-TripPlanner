@@ -28,4 +28,17 @@ public interface DestinationRepository extends JpaRepository<Destination, Long> 
             @Param("key") String key,
             @Param("value") String value,
             @Param("statusFilter") String statusFilter);
+
+    @Query(value = """
+            SELECT d.id, d.name, d.rating,
+                   COALESCE((
+                       SELECT COUNT(*)::bigint FROM bookings b
+                       INNER JOIN itineraries i ON b.itinerary_id = i.id
+                       WHERE i.destination_id = d.id AND b.status = 'CONFIRMED'
+                   ), 0)
+            FROM destinations d
+            ORDER BY d.rating DESC NULLS LAST, d.id ASC
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<Object[]> findTopRatedDestinationsReport(@Param("limit") int limit);
 }

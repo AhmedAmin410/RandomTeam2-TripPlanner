@@ -1,5 +1,6 @@
 package com.randmteam2.tripplanning.destination.service;
 
+import com.randmteam2.tripplanning.destination.dto.TopDestinationDTO;
 import com.randmteam2.tripplanning.destination.model.Destination;
 import com.randmteam2.tripplanning.destination.repository.DestinationRepository;
 import org.junit.jupiter.api.Test;
@@ -15,6 +16,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
@@ -134,5 +136,39 @@ class DestinationServiceTest {
         destinationService.searchByDetailsKeyValue("climate", "tropical", "active");
 
         verify(destinationRepository).searchByDetailsKeyValue(eq("climate"), eq("tropical"), eq("ACTIVE"));
+    }
+
+    @Test
+    void topRatedReport_limitBelowOne_throws400() {
+        assertThatThrownBy(() -> destinationService.getTopRatedDestinationsReport(0))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+
+        verify(destinationRepository, never()).findTopRatedDestinationsReport(anyInt());
+    }
+
+    @Test
+    void topRatedReport_mapsRowsToDto() {
+        Object[] row = new Object[] { 10L, "Luxor", 4.9, 5L };
+        when(destinationRepository.findTopRatedDestinationsReport(2)).thenReturn(List.<Object[]>of(row));
+
+        List<TopDestinationDTO> list = destinationService.getTopRatedDestinationsReport(2);
+
+        assertThat(list).hasSize(1);
+        assertThat(list.get(0).getDestinationId()).isEqualTo(10L);
+        assertThat(list.get(0).getName()).isEqualTo("Luxor");
+        assertThat(list.get(0).getRating()).isEqualTo(4.9);
+        assertThat(list.get(0).getTotalBookings()).isEqualTo(5L);
+        verify(destinationRepository).findTopRatedDestinationsReport(2);
+    }
+
+    @Test
+    void topRatedReport_nullRating_mapsToZero() {
+        Object[] row = new Object[] { 1L, "X", null, 0L };
+        when(destinationRepository.findTopRatedDestinationsReport(10)).thenReturn(List.<Object[]>of(row));
+
+        TopDestinationDTO dto = destinationService.getTopRatedDestinationsReport(10).get(0);
+
+        assertThat(dto.getRating()).isEqualTo(0.0);
     }
 }

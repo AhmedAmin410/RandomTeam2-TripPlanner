@@ -1,5 +1,6 @@
 package com.randmteam2.tripplanning.destination.service;
 
+import com.randmteam2.tripplanning.destination.dto.TopDestinationDTO;
 import com.randmteam2.tripplanning.destination.model.Destination;
 import com.randmteam2.tripplanning.destination.repository.DestinationRepository;
 import org.springframework.http.HttpStatus;
@@ -7,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -66,5 +68,24 @@ public class DestinationService {
                 key.trim(),
                 value.trim(),
                 statusFilter);
+    }
+
+    @Transactional(readOnly = true)
+    public List<TopDestinationDTO> getTopRatedDestinationsReport(int limit) {
+        if (limit < 1) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "limit must be at least 1");
+        }
+
+        List<Object[]> rows = destinationRepository.findTopRatedDestinationsReport(limit);
+        List<TopDestinationDTO> result = new ArrayList<>(rows.size());
+        for (Object[] row : rows) {
+            TopDestinationDTO dto = new TopDestinationDTO();
+            dto.setDestinationId(((Number) row[0]).longValue());
+            dto.setName((String) row[1]);
+            dto.setRating(row[2] != null ? ((Number) row[2]).doubleValue() : 0.0);
+            dto.setTotalBookings(((Number) row[3]).longValue());
+            result.add(dto);
+        }
+        return result;
     }
 }

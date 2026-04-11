@@ -21,6 +21,8 @@ public class Destination {
     @Column(nullable = false)
     private Status status;
 
+    private Double rating;
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     private Map<String, Object> details;
@@ -51,6 +53,14 @@ public class Destination {
 
     public void setStatus(Status status) {
         this.status = status;
+    }
+
+    public Double getRating() {
+        return rating;
+    }
+
+    public void setRating(Double rating) {
+        this.rating = rating;
     }
 
     public Map<String, Object> getDetails() {
