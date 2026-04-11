@@ -1,6 +1,7 @@
 package com.randmteam2.tripplanning.destination.service;
 
 import com.randmteam2.tripplanning.destination.dto.DestinationRateRequest;
+import com.randmteam2.tripplanning.destination.dto.DestinationReviewAlertDTO;
 import com.randmteam2.tripplanning.destination.dto.TopDestinationDTO;
 import com.randmteam2.tripplanning.destination.dto.VerifyDestinationReviewRequest;
 import com.randmteam2.tripplanning.destination.model.Destination;
@@ -16,6 +17,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -193,5 +195,40 @@ public class DestinationService {
 
         return destinationRepository.findByIdWithDestinationReviews(destinationId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Destination not found"));
+    }
+
+    @Transactional(readOnly = true)
+    public List<DestinationReviewAlertDTO> getDestinationsWithLowRatedReviews(int maxRating) {
+        if (maxRating < 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "maxRating must not be negative");
+        }
+
+        List<DestinationReview> reviews =
+                destinationReviewRepository.findLowRatedReviewsWithDestination(maxRating);
+        if (reviews.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, List<DestinationReview>> byDestination = new LinkedHashMap<>();
+        for (DestinationReview review : reviews) {
+            Destination dest = review.getDestination();
+            if (dest == null || dest.getId() == null) {
+                continue;
+            }
+            byDestination.computeIfAbsent(dest.getId(), id -> new ArrayList<>()).add(review);
+        }
+
+        List<DestinationReviewAlertDTO> result = new ArrayList<>(byDestination.size());
+        for (List<DestinationReview> group : byDestination.values()) {
+            Destination destination = group.get(0).getDestination();
+            DestinationReviewAlertDTO dto = new DestinationReviewAlertDTO();
+            dto.setDestinationId(destination.getId());
+            dto.setDestinationName(destination.getName());
+            dto.setDestinationStatus(destination.getStatus().name());
+            dto.setLowRatedReviews(group);
+            dto.setLowRatedCount(group.size());
+            result.add(dto);
+        }
+        return result;
     }
 }

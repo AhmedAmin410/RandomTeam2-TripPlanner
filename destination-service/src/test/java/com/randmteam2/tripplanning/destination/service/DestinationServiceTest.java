@@ -2,6 +2,7 @@ package com.randmteam2.tripplanning.destination.service;
 
 import com.randmteam2.tripplanning.destination.dto.DestinationRateRequest;
 import com.randmteam2.tripplanning.destination.dto.TopDestinationDTO;
+import com.randmteam2.tripplanning.destination.dto.DestinationReviewAlertDTO;
 import com.randmteam2.tripplanning.destination.dto.VerifyDestinationReviewRequest;
 import com.randmteam2.tripplanning.destination.model.Destination;
 import com.randmteam2.tripplanning.destination.model.DestinationReview;
@@ -393,6 +394,42 @@ class DestinationServiceTest {
     }
 
     @Test
+    void lowRatedReviews_negativeMax_throws400() {
+        assertThatThrownBy(() -> destinationService.getDestinationsWithLowRatedReviews(-1))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+
+        verify(destinationReviewRepository, never()).findLowRatedReviewsWithDestination(anyInt());
+    }
+
+    @Test
+    void lowRatedReviews_noMatches_returnsEmpty() {
+        when(destinationReviewRepository.findLowRatedReviewsWithDestination(0)).thenReturn(List.of());
+
+        assertThat(destinationService.getDestinationsWithLowRatedReviews(0)).isEmpty();
+    }
+
+    @Test
+    void lowRatedReviews_groupsByDestinationWithCounts() {
+        Destination d1 = newDestination(1L);
+        Destination d3 = newDestination(3L);
+        DestinationReview r1 = lowRatedReview(1L, d1, 2);
+        DestinationReview r2 = lowRatedReview(2L, d1, 1);
+        DestinationReview r3 = lowRatedReview(3L, d3, 2);
+        when(destinationReviewRepository.findLowRatedReviewsWithDestination(2))
+                .thenReturn(List.of(r1, r2, r3));
+
+        List<DestinationReviewAlertDTO> list = destinationService.getDestinationsWithLowRatedReviews(2);
+
+        assertThat(list).hasSize(2);
+        assertThat(list.get(0).getDestinationId()).isEqualTo(1L);
+        assertThat(list.get(0).getLowRatedCount()).isEqualTo(2);
+        assertThat(list.get(0).getLowRatedReviews()).hasSize(2);
+        assertThat(list.get(1).getDestinationId()).isEqualTo(3L);
+        assertThat(list.get(1).getLowRatedCount()).isEqualTo(1);
+    }
+
+    @Test
     void verifyReview_success_updatesReviewAndReturnsDestinationWithReviews() {
         Destination d1 = newDestination(1L);
         when(destinationRepository.findById(1L)).thenReturn(Optional.of(d1));
@@ -434,5 +471,13 @@ class DestinationServiceTest {
         d.setName("Test");
         d.setStatus(Destination.Status.ACTIVE);
         return d;
+    }
+
+    private static DestinationReview lowRatedReview(Long id, Destination destination, int rating) {
+        DestinationReview r = new DestinationReview();
+        r.setId(id);
+        r.setDestination(destination);
+        r.setRating(rating);
+        return r;
     }
 }

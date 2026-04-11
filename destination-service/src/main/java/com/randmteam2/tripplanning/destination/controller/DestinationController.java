@@ -1,6 +1,7 @@
 package com.randmteam2.tripplanning.destination.controller;
 
 import com.randmteam2.tripplanning.destination.dto.DestinationRateRequest;
+import com.randmteam2.tripplanning.destination.dto.DestinationReviewAlertDTO;
 import com.randmteam2.tripplanning.destination.dto.DestinationStatusRequest;
 import com.randmteam2.tripplanning.destination.dto.TopDestinationDTO;
 import com.randmteam2.tripplanning.destination.dto.VerifyDestinationReviewRequest;
@@ -55,5 +56,11 @@ public class DestinationController {
             @RequestBody VerifyDestinationReviewRequest body) {
         return ResponseEntity.ok(
                 destinationService.verifyDestinationReview(destinationId, reviewId, body));
+    }
+
+    @GetMapping("/reviews/low-rated")
+    public ResponseEntity<List<DestinationReviewAlertDTO>> lowRatedReviews(
+            @RequestParam int maxRating) {
+        return ResponseEntity.ok(destinationService.getDestinationsWithLowRatedReviews(maxRating));
     }
 }
