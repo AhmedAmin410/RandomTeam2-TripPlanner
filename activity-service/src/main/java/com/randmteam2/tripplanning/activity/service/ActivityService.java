@@ -1,6 +1,7 @@
 package com.randmteam2.tripplanning.activity.service;
 
 import com.randmteam2.tripplanning.activity.dto.ActivitySummaryDTO;
+import com.randmteam2.tripplanning.activity.dto.BudgetActivityDTO;
 import com.randmteam2.tripplanning.activity.dto.NearbyActivityDTO;
 import com.randmteam2.tripplanning.activity.model.Activity;
 import org.springframework.beans.factory.annotation.Value;
@@ -179,6 +180,33 @@ public class ActivityService {
                 firstScheduledTime,
                 lastScheduledTime
         );
+    }
+
+    // --- S4-F9: Low-Cost Activities (Updated to new DTO spec) ---
+    public List<BudgetActivityDTO> getBudgetFriendlyActivities(Double maxCost, Integer sinceMinutes) {
+        List<Activity> activities = activityRepository.findBudgetFriendly(maxCost, sinceMinutes);
+
+        return activities.stream().map(activity -> {
+            Double costValue = 0.0;
+            if (activity.getMetadata() != null && activity.getMetadata().containsKey("cost")) {
+                try {
+                    costValue = Double.valueOf(activity.getMetadata().get("cost").toString());
+                } catch (NumberFormatException e) {
+                    costValue = 0.0;
+                }
+            }
+
+            // Updated constructor: activityId, name, category, cost, latitude, longitude, scheduledTime
+            return new BudgetActivityDTO(
+                    activity.getId(),
+                    activity.getName(),
+                    activity.getCategory().name(),
+                    costValue,
+                    activity.getLatitude(),
+                    activity.getLongitude(),
+                    activity.getScheduledTime()
+            );
+        }).collect(Collectors.toList());
     }
 
 }

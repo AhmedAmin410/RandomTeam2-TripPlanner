@@ -58,5 +58,13 @@ public interface ActivityRepository extends JpaRepository<Activity, Long> {
             @Param("start") LocalDateTime start,
             @Param("end") LocalDateTime end
     );
-
+    // S4-F9: Native SQL for JSON metadata and time interval
+    @Query(value = "SELECT * FROM activities a " +
+            "WHERE CAST(a.metadata->>'cost' AS numeric) <= :maxCost " +
+            "AND a.scheduled_time >= NOW() - (:since || ' minutes')::interval",
+            nativeQuery = true)
+    List<Activity> findBudgetFriendly(
+            @Param("maxCost") Double maxCost,
+            @Param("since") Integer sinceMinutes
+    );
 }
