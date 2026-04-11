@@ -46,7 +46,7 @@ public class ActivityController {
     public ResponseEntity<Activity> getById(@PathVariable Long id) {
         return ResponseEntity.ok(activityService.getById(id));
     }
-
+//getallgit add .
     @GetMapping
     public ResponseEntity<List<Activity>> getAll() {
         return ResponseEntity.ok(activityService.getAll());
