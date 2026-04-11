@@ -2,6 +2,7 @@ package com.randmteam2.tripplanning.activity.controller;
 
 
 
+import com.randmteam2.tripplanning.activity.dto.NearbyActivityDTO;
 import com.randmteam2.tripplanning.activity.model.Activity;
 import com.randmteam2.tripplanning.activity.service.ActivityService;
 import org.springframework.http.ResponseEntity;
@@ -28,6 +29,16 @@ public class ActivityController {
     @PostMapping
     public ResponseEntity<Activity> create(@RequestBody Activity activity) {
         return ResponseEntity.status(201).body(activityService.create(activity));
+    }
+
+
+    // --- S4-F3: Find Nearby Activities DTO ---
+    @GetMapping("/nearby")
+    public List<NearbyActivityDTO> getNearby(
+            @RequestParam Double lat,
+            @RequestParam Double lon,
+            @RequestParam Double radiusKm) {
+        return activityService.getNearbyActivities(lat, lon, radiusKm);
     }
 
     @GetMapping("/{id}")
