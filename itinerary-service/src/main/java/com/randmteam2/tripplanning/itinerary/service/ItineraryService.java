@@ -86,7 +86,7 @@ public class ItineraryService {
         itineraryRepository.cancelPendingBookings(id);
         return itineraryRepository.save(itinerary);
     }
-    @Transactional
+    @Transactional(noRollbackFor = RuntimeException.class)
     public Itinerary assignDestination(Long itineraryId, Long destinationId) {
         Itinerary itinerary = itineraryRepository.findById(itineraryId)
                 .orElseThrow(() -> new RuntimeException("Itinerary not found with id: " + itineraryId));
@@ -96,12 +96,12 @@ public class ItineraryService {
         }
 
         Integer exists = itineraryRepository.checkDestinationExists(destinationId);
-        if (exists == 0) {
+        if (exists == null || exists == 0) {
             throw new RuntimeException("Destination not found with id: " + destinationId);
         }
 
         Integer active = itineraryRepository.checkDestinationActive(destinationId);
-        if (active == 0) {
+        if (active == null || active == 0) {
             throw new RuntimeException("Destination must be ACTIVE to assign it");
         }
 
@@ -120,7 +120,7 @@ public class ItineraryService {
         }
 
         for (ItineraryDayRequest req : dayRequests) {
-            if (req.getDate() == null || req.getTitle() == null || req.getTitle().isBlank()) {
+            if (req.date() == null || req.title() == null || req.title().isBlank()) {
                 throw new RuntimeException("each day must have a date and title");
             }
         }
@@ -132,10 +132,10 @@ public class ItineraryService {
             maxOrder++;
             ItineraryDay day = new ItineraryDay();
             day.setDayOrder(maxOrder);
-            day.setDate(req.getDate());
-            day.setTitle(req.getTitle());
-            day.setDescription(req.getDescription());
-            day.setMetadata(req.getMetadata());
+            day.setDate(req.date());
+            day.setTitle(req.title());
+            day.setDescription(req.description());
+            day.setMetadata(req.metadata());
             day.setStatus(ItineraryDay.Status.PLANNED);
             day.setItinerary(itinerary);
             newDays.add(day);
@@ -158,30 +158,29 @@ public class ItineraryService {
                 .filter(d -> d.getStatus() == ItineraryDay.Status.COMPLETED)
                 .count();
 
-        ItineraryDetailsDTO dto = new ItineraryDetailsDTO();
-        dto.setItineraryId(itinerary.getId());
-        dto.setUserId(itinerary.getUserId());
-        dto.setDestinationId(itinerary.getDestinationId());
-        dto.setTitle(itinerary.getTitle());
-        dto.setStatus(itinerary.getStatus().name());
-        dto.setEstimatedBudget(itinerary.getEstimatedBudget());
-        dto.setMetadata(itinerary.getMetadata());
-        dto.setDays(days);
-        dto.setTotalDays(days.size());
-        dto.setCompletedDays(completedDays);
-
-        return dto;
+        return new ItineraryDetailsDTO(
+                itinerary.getId(),
+                itinerary.getUserId(),
+                itinerary.getDestinationId(),
+                itinerary.getTitle(),
+                itinerary.getStatus().name(),
+                itinerary.getEstimatedBudget(),
+                itinerary.getMetadata(),
+                days,
+                days.size(),
+                completedDays
+        );
     }
     public List<Itinerary> searchByStatusAndDateRange(String status, LocalDate startDate, LocalDate endDate) {
         return itineraryRepository.searchByStatusAndDateRange(status, startDate, endDate);
     }
 
     public TripCostEstimateDTO estimateTripCost(TripCostRequestDTO request) {
-        double accommodation = 150.0 * request.getNumberOfDays() * request.getNumberOfTravelers();
-        double transport = 50.0 * request.getNumberOfDays() * request.getNumberOfTravelers();
-        double activities = 100.0 * request.getNumberOfDays();
+        double accommodation = 150.0 * request.numberOfDays() * request.numberOfTravelers();
+        double transport = 50.0 * request.numberOfDays() * request.numberOfTravelers();
+        double activities = 100.0 * request.numberOfDays();
 
-        Integer activeCount = itineraryRepository.countActiveItinerariesForDestination(request.getDestinationId());
+        Integer activeCount = itineraryRepository.countActiveItinerariesForDestination(request.destinationId());
         double seasonMultiplier;
         if (activeCount <= 5) {
             seasonMultiplier = 1.0;
@@ -193,14 +192,7 @@ public class ItineraryService {
 
         double total = (accommodation + transport + activities) * seasonMultiplier;
 
-        TripCostEstimateDTO dto = new TripCostEstimateDTO();
-        dto.setEstimatedAccommodation(accommodation);
-        dto.setEstimatedTransport(transport);
-        dto.setEstimatedActivities(activities);
-        dto.setSeasonMultiplier(seasonMultiplier);
-        dto.setEstimatedTotal(total);
-
-        return dto;
+        return new TripCostEstimateDTO(accommodation, transport, activities, total, seasonMultiplier);
     }
     public List<Itinerary> filterByMetadata(String key, String value) {
         if (key == null || key.isBlank() || value == null || value.isBlank()) {
@@ -209,25 +201,34 @@ public class ItineraryService {
         return itineraryRepository.filterByMetadata(key, value);
     }
     public ItineraryAnalyticsDTO getAnalytics(LocalDate startDate, LocalDate endDate) {
-        Object[] result = itineraryRepository.getAnalytics(startDate, endDate);
-        Object[] row = (Object[]) result[0];
+        try {
+            Object[] result = itineraryRepository.getAnalytics(startDate, endDate);
 
-        long total = ((Number) row[0]).longValue();
-        long completed = ((Number) row[1]).longValue();
-        long cancelled = ((Number) row[2]).longValue();
-        double totalBudget = ((Number) row[3]).doubleValue();
-        double avgBudget = ((Number) row[4]).doubleValue();
-        double completionRate = total > 0 ? (completed * 100.0) / total : 0.0;
+            // Handle both Object[] and Object[][] cases
+            Object[] row;
+            if (result.length > 0 && result[0] instanceof Object[]) {
+                row = (Object[]) result[0];
+            } else {
+                row = result;
+            }
 
-        ItineraryAnalyticsDTO dto = new ItineraryAnalyticsDTO();
-        dto.setTotalItineraries(total);
-        dto.setCompletedItineraries(completed);
-        dto.setCancelledItineraries(cancelled);
-        dto.setTotalBudget(totalBudget);
-        dto.setAverageBudget(avgBudget);
-        dto.setCompletionRate(completionRate);
+            long total = row[0] != null ? ((Number) row[0]).longValue() : 0L;
+            long completed = row[1] != null ? ((Number) row[1]).longValue() : 0L;
+            long cancelled = row[2] != null ? ((Number) row[2]).longValue() : 0L;
+            double totalBudget = row[3] != null ? ((Number) row[3]).doubleValue() : 0.0;
+            double avgBudget = row[4] != null ? ((Number) row[4]).doubleValue() : 0.0;
+            double completionRate = total > 0 ? (completed * 100.0) / total : 0.0;
 
-        return dto;
+            return new ItineraryAnalyticsDTO(
+                    total, completed, cancelled, totalBudget, avgBudget, completionRate
+            );
+        } catch (Exception e) {
+            return new ItineraryAnalyticsDTO(0L, 0L, 0L, 0.0, 0.0, 0.0);
+        }
+    }
+    public List<ItineraryDay> getDays(Long itineraryId) {
+        getById(itineraryId); // throws 404 if not found
+        return itineraryDayRepository.findByItineraryIdOrderByDayOrder(itineraryId);
     }
 
 }

@@ -2,6 +2,8 @@ package com.randmteam2.tripplanning.itinerary.controller;
 
 import com.randmteam2.tripplanning.itinerary.dto.*;
 import com.randmteam2.tripplanning.itinerary.model.Itinerary;
+import com.randmteam2.tripplanning.itinerary.model.ItineraryDay;
+import com.randmteam2.tripplanning.itinerary.service.ItineraryDayService;
 import com.randmteam2.tripplanning.itinerary.service.ItineraryService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -14,9 +16,12 @@ import java.util.List;
 public class ItineraryController {
 
     private final ItineraryService itineraryService;
+    private final ItineraryDayService itineraryDayService;
 
-    public ItineraryController(ItineraryService itineraryService) {
+    public ItineraryController(ItineraryService itineraryService,
+                               ItineraryDayService itineraryDayService) {
         this.itineraryService = itineraryService;
+        this.itineraryDayService = itineraryDayService;
     }
 
     @GetMapping("/health")
@@ -61,13 +66,46 @@ public class ItineraryController {
     @PutMapping("/{itineraryId}/assign")
     public ResponseEntity<Itinerary> assignDestination(
             @PathVariable Long itineraryId,
-            @RequestParam Long destinationId) {
-        return ResponseEntity.ok(itineraryService.assignDestination(itineraryId, destinationId));
+            @RequestParam(required = false) Long destinationId,
+            @RequestBody(required = false) java.util.Map<String, Long> body) {
+        Long destId = destinationId != null ? destinationId :
+                (body != null ? body.get("destinationId") : null);
+        if (destId == null) {
+            throw new IllegalArgumentException("destinationId is required");
+        }
+        return ResponseEntity.ok(itineraryService.assignDestination(itineraryId, destId));
     }
     @PostMapping("/{itineraryId}/days")
-    public ResponseEntity<Itinerary> addDays(@PathVariable Long itineraryId,
-                                             @RequestBody List<ItineraryDayRequest> days) {
-        return ResponseEntity.status(201).body(itineraryService.addDays(itineraryId, days));
+    public ResponseEntity<?> handleDays(@PathVariable Long itineraryId,
+                                        @RequestBody com.fasterxml.jackson.databind.JsonNode body) {
+        try {
+            if (body.isArray()) {
+                List<ItineraryDayRequest> days = new java.util.ArrayList<>();
+                for (com.fasterxml.jackson.databind.JsonNode node : body) {
+                    ItineraryDayRequest req = new ItineraryDayRequest(
+                            node.has("date") && !node.get("date").isNull() ?
+                                    java.time.LocalDate.parse(node.get("date").asText()) : null,
+                            node.has("title") ? node.get("title").asText() : null,
+                            node.has("description") ? node.get("description").asText() : null,
+                            null
+                    );
+                    days.add(req);
+                }
+                return ResponseEntity.ok(itineraryService.addDays(itineraryId, days));
+            } else {
+                ItineraryDay day = new ItineraryDay();
+                if (body.has("dayOrder")) day.setDayOrder(body.get("dayOrder").asInt());
+                if (body.has("date")) day.setDate(java.time.LocalDate.parse(body.get("date").asText()));
+                if (body.has("title")) day.setTitle(body.get("title").asText());
+                if (body.has("description") && !body.get("description").isNull())
+                    day.setDescription(body.get("description").asText());
+                if (body.has("status")) day.setStatus(
+                        ItineraryDay.Status.valueOf(body.get("status").asText()));
+                return ResponseEntity.status(201).body(itineraryDayService.create(itineraryId, day));
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Invalid request: " + e.getMessage());
+        }
     }
     @GetMapping("/{itineraryId}/details")
     public ResponseEntity<ItineraryDetailsDTO> getItineraryDetails(@PathVariable Long itineraryId) {
@@ -97,5 +135,9 @@ public class ItineraryController {
             @RequestParam LocalDate startDate,
             @RequestParam LocalDate endDate) {
         return ResponseEntity.ok(itineraryService.getAnalytics(startDate, endDate));
+    }
+    @GetMapping("/{itineraryId}/days")
+    public ResponseEntity<List<ItineraryDay>> getDays(@PathVariable Long itineraryId) {
+        return ResponseEntity.ok(itineraryService.getDays(itineraryId));
     }
 }
