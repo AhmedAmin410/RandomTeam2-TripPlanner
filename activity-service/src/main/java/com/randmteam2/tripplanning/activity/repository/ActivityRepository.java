@@ -31,9 +31,12 @@ public interface ActivityRepository extends JpaRepository<Activity, Long> {
     @Query(value = "SELECT * FROM activities WHERE itinerary_id = :itineraryId ORDER BY scheduled_time DESC LIMIT 1", nativeQuery = true)
     Activity findLatestByItineraryId(@Param("itineraryId") Long itineraryId);
     // S4-F6: Handles optional category and sorts by time
-    @Query("SELECT a FROM Activity a WHERE CAST(a.scheduledTime AS date) BETWEEN :start AND :end " +
-            "AND (:category IS NULL OR a.category = :category) " +
-            "ORDER BY a.scheduledTime ASC")
+    @Query(value = """
+    SELECT * FROM activities 
+    WHERE DATE(scheduled_time) BETWEEN :start AND :end
+    AND (:category IS NULL OR CAST(category AS VARCHAR) = :category)
+    ORDER BY scheduled_time ASC
+    """, nativeQuery = true)
     List<Activity> findByHistory(
             @Param("start") java.time.LocalDate start,
             @Param("end") java.time.LocalDate end,
@@ -67,4 +70,7 @@ public interface ActivityRepository extends JpaRepository<Activity, Long> {
             @Param("maxCost") Double maxCost,
             @Param("since") Integer sinceMinutes
     );
+
+    @Query(value = "SELECT COUNT(*) FROM itineraries WHERE id = :itineraryId", nativeQuery = true)
+    Integer checkItineraryExists(@Param("itineraryId") Long itineraryId);
 }

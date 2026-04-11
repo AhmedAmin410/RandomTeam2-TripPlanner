@@ -20,20 +20,16 @@ import java.util.stream.Collectors;
 public class ActivityService {
 
     private final ActivityRepository activityRepository;
-    private final RestTemplate restTemplate;
 
-    @Value("${itinerary.service.url:http://localhost:8083}")
+
     private String itineraryServiceUrl;
 
-    public ActivityService(ActivityRepository activityRepository, RestTemplate restTemplate) {
+    public ActivityService(ActivityRepository activityRepository) {
         this.activityRepository = activityRepository;
-        this.restTemplate = restTemplate;
     }
-
     private void validateItineraryExists(Long itineraryId) {
-        try {
-            restTemplate.getForEntity(itineraryServiceUrl + "/api/itineraries/" + itineraryId, Object.class);
-        } catch (Exception e) {
+        Integer count = activityRepository.checkItineraryExists(itineraryId);
+        if (count == null || count == 0) {
             throw new RuntimeException("Itinerary not found with id: " + itineraryId);
         }
     }

@@ -23,5 +23,17 @@
     "name": "Hassan Gouda",
     "githubUsername": "Gaminggouda",
     "service": "itinerary-and-activity-service"
+  },
+  {
+    "studentId": "37-12982",
+    "name": "Mostafa Ahmed",
+    "githubUsername": "mostafah404",
+    "service": "user-service"
+  },
+  {
+    "studentId": "67-25209",
+    "name": "Mariam Tarek",
+    "githubUsername": "mariammtarekk44",
+    "service": "activity-service"
   }
 ]
