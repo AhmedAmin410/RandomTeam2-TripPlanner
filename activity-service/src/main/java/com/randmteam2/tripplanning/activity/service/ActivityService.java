@@ -1,8 +1,10 @@
 package com.randmteam2.tripplanning.activity.service;
 
 import com.randmteam2.tripplanning.activity.model.Activity;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestTemplate;
 import com.randmteam2.tripplanning.activity.repository.ActivityRepository;
 
 import java.time.LocalDateTime;
@@ -12,9 +14,22 @@ import java.util.List;
 public class ActivityService {
 
     private final ActivityRepository activityRepository;
+    private final RestTemplate restTemplate;
 
-    public ActivityService(ActivityRepository activityRepository) {
+    @Value("${itinerary.service.url:http://localhost:8083}")
+    private String itineraryServiceUrl;
+
+    public ActivityService(ActivityRepository activityRepository, RestTemplate restTemplate) {
         this.activityRepository = activityRepository;
+        this.restTemplate = restTemplate;
+    }
+
+    private void validateItineraryExists(Long itineraryId) {
+        try {
+            restTemplate.getForEntity(itineraryServiceUrl + "/api/itineraries/" + itineraryId, Object.class);
+        } catch (Exception e) {
+            throw new RuntimeException("Itinerary not found with id: " + itineraryId);
+        }
     }
 
 
@@ -59,6 +74,15 @@ public class ActivityService {
             case "lt" -> activityRepository.findByMetadataLt(key, value);
             default -> throw new IllegalArgumentException("operator must be one of [eq, gt, lt]");
         };
+    }
+
+    public Activity getLatestByItineraryId(Long itineraryId) {
+        validateItineraryExists(itineraryId);
+        Activity latest = activityRepository.findLatestByItineraryId(itineraryId);
+        if (latest == null) {
+            throw new RuntimeException("No activities not found for itinerary: " + itineraryId);
+        }
+        return latest;
     }
 
     @Transactional

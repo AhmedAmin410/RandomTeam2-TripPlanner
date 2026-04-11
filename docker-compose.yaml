@@ -52,6 +52,7 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tripplanningdb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
+      ITINERARY_SERVICE_URL: http://itinerary-service:8080
     depends_on:
       - postgres
 

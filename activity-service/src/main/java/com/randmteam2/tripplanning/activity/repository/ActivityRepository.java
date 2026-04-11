@@ -25,4 +25,9 @@ public interface ActivityRepository extends JpaRepository<Activity, Long> {
     @Modifying
     @Query(value = "DELETE FROM activities WHERE scheduled_time < :cutoff", nativeQuery = true)
     int deleteOlderThan(@Param("cutoff") LocalDateTime cutoff);
+
+    List<Activity> findByItineraryId(Long itineraryId);
+
+    @Query(value = "SELECT * FROM activities WHERE itinerary_id = :itineraryId ORDER BY scheduled_time DESC LIMIT 1", nativeQuery = true)
+    Activity findLatestByItineraryId(@Param("itineraryId") Long itineraryId);
 }

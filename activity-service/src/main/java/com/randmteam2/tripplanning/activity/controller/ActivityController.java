@@ -52,6 +52,11 @@ public class ActivityController {
         return ResponseEntity.noContent().build();
     }
 
+    @GetMapping("/itinerary/{id}/latest")
+    public ResponseEntity<Activity> getLatestByItinerary(@PathVariable Long id) {
+        return ResponseEntity.ok(activityService.getLatestByItineraryId(id));
+    }
+
     @GetMapping("/metadata/search")
     public ResponseEntity<List<Activity>> searchByMetadata(@RequestParam String key,
                                                            @RequestParam String operator,
