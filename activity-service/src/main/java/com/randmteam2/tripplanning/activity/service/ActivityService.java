@@ -92,6 +92,21 @@ public class ActivityService {
     }
 
     @Transactional
+    public List<Activity> createBatch(Long itineraryId, List<Activity> activities) {
+        validateItineraryExists(itineraryId);
+        for (Activity activity : activities) {
+            if (activity.getLatitude() == null || activity.getLatitude() < -90 || activity.getLatitude() > 90) {
+                throw new IllegalArgumentException("Latitude must be between -90 and 90");
+            }
+            if (activity.getLongitude() == null || activity.getLongitude() < -180 || activity.getLongitude() > 180) {
+                throw new IllegalArgumentException("Longitude must be between -180 and 180");
+            }
+            activity.setItineraryId(itineraryId);
+        }
+        return activityRepository.saveAll(activities);
+    }
+
+    @Transactional
     public int purgeOlderThan(int olderThanDays) {
         LocalDateTime cutoff = LocalDateTime.now().minusDays(olderThanDays);
         return activityRepository.deleteOlderThan(cutoff);

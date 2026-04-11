@@ -2,6 +2,7 @@ package com.randmteam2.tripplanning.activity.controller;
 
 
 
+import com.randmteam2.tripplanning.activity.dto.BatchActivityRequest;
 import com.randmteam2.tripplanning.activity.model.Activity;
 import com.randmteam2.tripplanning.activity.service.ActivityService;
 import org.springframework.http.ResponseEntity;
@@ -56,6 +57,12 @@ public class ActivityController {
     public ResponseEntity<Activity> createForItinerary(@PathVariable Long itineraryId,
                                                        @RequestBody Activity activity) {
         return ResponseEntity.status(201).body(activityService.createForItinerary(itineraryId, activity));
+    }
+
+    @PostMapping("/batch")
+    public ResponseEntity<Map<String, Integer>> createBatch(@RequestBody BatchActivityRequest request) {
+        List<Activity> saved = activityService.createBatch(request.getItineraryId(), request.getActivities());
+        return ResponseEntity.status(201).body(Map.of("count", saved.size()));
     }
 
     @GetMapping("/itinerary/{id}/latest")
