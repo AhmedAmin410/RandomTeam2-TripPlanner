@@ -2,6 +2,7 @@ package com.randmteam2.tripplanning.booking.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.randmteam2.tripplanning.booking.dto.BookingRequestDTO;
+import com.randmteam2.tripplanning.booking.dto.RevenueReportDTO;
 import com.randmteam2.tripplanning.booking.model.Booking;
 import com.randmteam2.tripplanning.booking.model.BookingStatus;
 import com.randmteam2.tripplanning.booking.model.BookingType;
@@ -12,15 +13,19 @@ import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+
+import java.util.HashMap;
+import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -35,7 +40,7 @@ public class BookingControllerTest {
     @Autowired
     private ObjectMapper objectMapper;
 
-    @MockitoBean
+    @MockBean
     private BookingService bookingService;
 
     private BookingRequestDTO requestDTO;
@@ -73,13 +78,53 @@ public class BookingControllerTest {
 
     @Test
     public void testRevenueReport() throws Exception {
-        Mockito.when(bookingService.getRevenue(any(), any()))
-                .thenReturn(1500.0);
+        RevenueReportDTO report = new RevenueReportDTO(1500.0, 3L, 500.0, 100.0, 1L);
+        Mockito.when(bookingService.getRevenueReport(any(), any()))
+            .thenReturn(report);
 
-        mockMvc.perform(get("/api/bookings/revenue")
-                .param("start", "2026-01-01T00:00:00")
-                .param("end", "2026-12-31T23:59:59"))
+        mockMvc.perform(get("/api/bookings/reports/revenue")
+            .param("startDate", "2026-01-01T00:00:00")
+            .param("endDate", "2026-12-31T23:59:59"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$").value(1500.0));
+            .andExpect(jsonPath("$.totalRevenue").value(1500.0))
+            .andExpect(jsonPath("$.totalBookings").value(3))
+            .andExpect(jsonPath("$.averageBookingAmount").value(500.0))
+            .andExpect(jsonPath("$.cancelledAmount").value(100.0))
+            .andExpect(jsonPath("$.cancelledCount").value(1));
+    }
+
+    @Test
+    public void testCancelBooking() throws Exception {
+        Booking cancelledBooking = new Booking();
+        cancelledBooking.setId(1L);
+        cancelledBooking.setStatus(BookingStatus.CANCELLED);
+
+        Mockito.when(bookingService.cancelBooking(eq(1L), eq("change of plans")))
+            .thenReturn(cancelledBooking);
+
+        Map<String, String> body = new HashMap<>();
+        body.put("reason", "change of plans");
+
+        mockMvc.perform(put("/api/bookings/{id}/cancel", 1L)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(objectMapper.writeValueAsString(body)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.id").value(1L))
+            .andExpect(jsonPath("$.status").value("CANCELLED"));
+    }
+
+    @Test
+    public void testRetryFailedBooking() throws Exception {
+        Booking retriedBooking = new Booking();
+        retriedBooking.setId(1L);
+        retriedBooking.setStatus(BookingStatus.CONFIRMED);
+
+        Mockito.when(bookingService.retryFailedBooking(eq(1L)))
+                .thenReturn(retriedBooking);
+
+        mockMvc.perform(put("/api/bookings/{id}/retry", 1L))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(1L))
+                .andExpect(jsonPath("$.status").value("CONFIRMED"));
     }
 }

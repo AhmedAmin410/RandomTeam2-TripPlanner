@@ -5,12 +5,14 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
-import com.vladmihalcea.hibernate.type.json.JsonType;
-import org.hibernate.annotations.Type;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 @Entity
 @Table(name = "users")
 public class User {
+
+
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -28,15 +30,15 @@ public class User {
     @Column(nullable = false, unique = true)
     private String phone;
 
-    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(nullable = false)
+    private UserStatus status;
+
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(nullable = false)
     private Role role;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private Status status;
-
-    @Type(JsonType.class)
+    @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     private Map<String, Object> preferences;
 
@@ -49,10 +51,11 @@ public class User {
 
     public User() {}
 
+
     @PrePersist
-    public void onCreate() {
-        this.createdAt = LocalDateTime.now();
-        this.status = Status.ACTIVE;
+    void setDefaults() {
+        if (status == null) status = UserStatus.ACTIVE;
+        if (createdAt == null) createdAt = LocalDateTime.now();
     }
 
     public Long getId() {
@@ -79,7 +82,7 @@ public class User {
         return role;
     }
 
-    public Status getStatus() {
+    public UserStatus getStatus() {
         return status;
     }
 
@@ -119,7 +122,7 @@ public class User {
         this.role = role;
     }
 
-    public void setStatus(Status status) {
+    public void setStatus(UserStatus status) {
         this.status = status;
     }
 
@@ -134,4 +137,5 @@ public class User {
     public void setSavedDestinations(List<SavedDestination> savedDestinations) {
         this.savedDestinations = savedDestinations;
     }
+
 }

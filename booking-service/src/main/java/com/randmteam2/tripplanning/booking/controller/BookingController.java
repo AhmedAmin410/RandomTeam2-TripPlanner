@@ -4,6 +4,7 @@ import com.randmteam2.tripplanning.booking.dto.BookingDetailsDTO;
 import com.randmteam2.tripplanning.booking.dto.CouponUsageDTO;
 import com.randmteam2.tripplanning.booking.dto.UserBookingSummaryDTO;
 import com.randmteam2.tripplanning.booking.dto.BookingRequestDTO;
+import com.randmteam2.tripplanning.booking.dto.RevenueReportDTO;
 import com.randmteam2.tripplanning.booking.model.Booking;
 import com.randmteam2.tripplanning.booking.model.BookingCoupon;
 import com.randmteam2.tripplanning.booking.service.BookingService;
@@ -16,6 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.format.annotation.DateTimeFormat;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/bookings")
@@ -60,10 +62,23 @@ public class BookingController {
         return ResponseEntity.ok(bookingService.searchBookings(status, startDate, endDate));
     }
 
+    // S5-F2: Cancel Booking with Refund
+    @PutMapping("/{id}/cancel")
+    public ResponseEntity<Booking> cancelBooking(@PathVariable Long id, @RequestBody Map<String, String> body) {
+        String reason = body.get("reason");
+        return ResponseEntity.ok(bookingService.cancelBooking(id, reason));
+    }
+
     // S5-F3: User Booking Summary
     @GetMapping("/user/{userId}/summary")
     public ResponseEntity<UserBookingSummaryDTO> getUserBookingSummary(@PathVariable Long userId) {
         return ResponseEntity.ok(bookingService.getUserBookingSummary(userId));
+    }
+
+    // S5-F7: Retry Failed Booking
+    @PutMapping("/{id}/retry")
+    public ResponseEntity<Booking> retryBooking(@PathVariable Long id) {
+        return ResponseEntity.ok(bookingService.retryFailedBooking(id));
     }
 
     // S5-F5: Apply Coupon to Booking
@@ -86,14 +101,6 @@ public class BookingController {
         return ResponseEntity.ok(bookingService.getTopUsedCoupons(limit));
     }
 
-    // S5-F6: Revenue Report
-    @GetMapping("/revenue")
-    public ResponseEntity<Double> getRevenue(
-            @RequestParam("start") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime start,
-            @RequestParam("end") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime end) {
-        return ResponseEntity.ok(bookingService.getRevenue(start, end));
-    }
-
     // S5-F4: Create Booking for Itinerary
     @PostMapping("/itinerary/{itineraryId}")
     public ResponseEntity<Booking> createBookingForItinerary(
@@ -108,7 +115,14 @@ public class BookingController {
         } catch (Exception e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Error creating booking", e);
         }
+    }
 
+    // S5-F6: Revenue Report
+    @GetMapping("/reports/revenue")
+    public ResponseEntity<RevenueReportDTO> getRevenueReport(
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate) {
+        return ResponseEntity.ok(bookingService.getRevenueReport(startDate, endDate));
+    }
 }
 
-}

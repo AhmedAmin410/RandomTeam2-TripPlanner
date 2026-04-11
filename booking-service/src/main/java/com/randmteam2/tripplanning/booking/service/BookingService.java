@@ -5,6 +5,7 @@ import com.randmteam2.tripplanning.booking.dto.BookingDetailsDTO;
 import com.randmteam2.tripplanning.booking.dto.CouponUsageDTO;
 import com.randmteam2.tripplanning.booking.dto.UserBookingSummaryDTO;
 import com.randmteam2.tripplanning.booking.dto.BookingRequestDTO;
+import com.randmteam2.tripplanning.booking.dto.RevenueReportDTO;
 import com.randmteam2.tripplanning.booking.model.*;
 import com.randmteam2.tripplanning.booking.repository.BookingCouponRepository;
 import com.randmteam2.tripplanning.booking.repository.BookingRepository;
@@ -60,8 +61,60 @@ public class BookingService {
         bookingRepository.deleteById(id);
     }
 
+    // S5-F2: Cancel Booking with Refund
+    @Transactional
+    public Booking cancelBooking(Long id, String reason) {
+        Booking booking = getBookingById(id);
+
+        if (booking.getStatus() != BookingStatus.CONFIRMED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking is not CONFIRMED");
+        }
+
+        booking.setStatus(BookingStatus.CANCELLED);
+
+        Map<String, Object> details = booking.getBookingDetails();
+        if (details == null) {
+            details = new HashMap<>();
+        }
+        details.put("cancellationReason", reason);
+        details.put("cancelledAt", LocalDateTime.now().toString());
+        booking.setBookingDetails(details);
+
+        return bookingRepository.save(booking);
+    }
+
     public List<Booking> searchBookings(String status, LocalDateTime startDate, LocalDateTime endDate) {
         return bookingRepository.searchBookings(status, startDate, endDate);
+    }
+
+    // S5-F7: Retry Failed Booking
+    @Transactional
+    public Booking retryFailedBooking(Long id) {
+        Booking booking = getBookingById(id);
+
+        if (booking.getStatus() != BookingStatus.FAILED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking is not FAILED");
+        }
+
+        Map<String, Object> details = booking.getBookingDetails();
+        if (details == null) {
+            details = new HashMap<>();
+        }
+
+        int retryAttempt = 0;
+        Object retryValue = details.get("retryAttempt");
+        if (retryValue instanceof Number number) {
+            retryAttempt = number.intValue();
+        }
+
+        retryAttempt += 1;
+        details.put("retryAttempt", retryAttempt);
+        details.put("confirmationNumber", "RETRY-" + booking.getId() + "-" + retryAttempt);
+
+        booking.setBookingDetails(details);
+        booking.setStatus(BookingStatus.CONFIRMED);
+
+        return bookingRepository.save(booking);
     }
 
     // S5-F3: User Booking Summary
@@ -246,8 +299,21 @@ public class BookingService {
         return bookingRepository.save(booking);
     }
 
-    public Double getRevenue(LocalDateTime startDate, LocalDateTime endDate) {
-        Double revenue = bookingRepository.calculateRevenue(BookingStatus.CONFIRMED, startDate, endDate);
-        return revenue != null ? revenue : 0.0;
+    public RevenueReportDTO getRevenueReport(LocalDateTime startDate, LocalDateTime endDate) {
+        if (startDate.isAfter(endDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate must be before endDate");
+        }
+        Double rawRevenue = bookingRepository.calculateRevenue(BookingStatus.CONFIRMED, startDate, endDate);
+        Long rawBookings = bookingRepository.countBookingsByStatusAndDateRange(BookingStatus.CONFIRMED, startDate, endDate);
+        Double rawCancelledAmount = bookingRepository.calculateRevenue(BookingStatus.CANCELLED, startDate, endDate);
+        Long rawCancelledCount = bookingRepository.countBookingsByStatusAndDateRange(BookingStatus.CANCELLED, startDate, endDate);
+
+        double totalRevenue = rawRevenue != null ? rawRevenue : 0.0;
+        long totalBookings = rawBookings != null ? rawBookings : 0L;
+        double avgAmount = totalBookings > 0 ? totalRevenue / totalBookings : 0.0;
+        double cancelledAmount = rawCancelledAmount != null ? rawCancelledAmount : 0.0;
+        long cancelledCount = rawCancelledCount != null ? rawCancelledCount : 0L;
+
+        return new RevenueReportDTO(totalRevenue, totalBookings, avgAmount, cancelledAmount, cancelledCount);
     }
 }
