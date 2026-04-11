@@ -3,6 +3,7 @@ package com.randmteam2.tripplanning.activity.controller;
 
 
 import com.randmteam2.tripplanning.activity.dto.ActivitySummaryDTO;
+import com.randmteam2.tripplanning.activity.dto.BudgetActivityDTO;
 import com.randmteam2.tripplanning.activity.dto.NearbyActivityDTO;
 import com.randmteam2.tripplanning.activity.dto.BatchActivityRequest;
 import com.randmteam2.tripplanning.activity.model.Activity;
@@ -112,6 +113,14 @@ public class ActivityController {
             @RequestParam("startDate") @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate start,
             @RequestParam("endDate") @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate end) {
         return ResponseEntity.ok(activityService.getActivitySummary(id, start, end));
+    }
+
+    // AC-F9: Budget-Friendly
+    @GetMapping("/budget-friendly")
+    public List<BudgetActivityDTO> getBudgetActivities(
+            @RequestParam Double maxCost,
+            @RequestParam Integer sinceMinutes) {
+        return activityService.getBudgetFriendlyActivities(maxCost, sinceMinutes);
     }
 
 }
