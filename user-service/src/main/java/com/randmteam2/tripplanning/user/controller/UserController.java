@@ -6,8 +6,11 @@ import com.randmteam2.tripplanning.user.model.SavedDestination;
 import com.randmteam2.tripplanning.user.model.User;
 import com.randmteam2.tripplanning.user.service.SavedDestinationService;
 import com.randmteam2.tripplanning.user.service.UserService;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
+
 import java.util.List;
 import java.util.Map;
 
@@ -79,8 +82,15 @@ public User updatePreferences(
     ) {
         Role roleEnum = null;
 
-        if (role != null) {
-            roleEnum = Role.valueOf(role.toUpperCase());
+        if (role != null && !role.trim().isEmpty()) {
+            try {
+                roleEnum = Role.valueOf(role.trim().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "Invalid role"
+                );
+            }
         }
 
         return userService.searchUsers(name, roleEnum, email);

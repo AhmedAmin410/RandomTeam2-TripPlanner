@@ -131,6 +131,10 @@ public class UserService {
     }
 
     public List<User> searchUsers(String name, Role role, String email) {
+
+        if (name != null && name.trim().isEmpty()) name = null;
+        if (email != null && email.trim().isEmpty()) email = null;
+
         return userRepository.searchUsers(
                 name,
                 role != null ? role.name() : null,

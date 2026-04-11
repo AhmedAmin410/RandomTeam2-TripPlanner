@@ -31,7 +31,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
     SELECT * FROM users
     WHERE (:name IS NULL OR LOWER(name) LIKE LOWER(CONCAT('%', :name, '%')))
     AND (:email IS NULL OR LOWER(email) LIKE LOWER(CONCAT('%', :email, '%')))
-    AND (:role IS NULL OR role = :role)
+    AND (:role IS NULL OR role::text = :role)
 """, nativeQuery = true)
     List<User> searchUsers(
             @Param("name") String name,
