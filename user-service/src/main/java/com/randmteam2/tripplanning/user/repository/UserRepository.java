@@ -1,31 +1,41 @@
 package com.randmteam2.tripplanning.user.repository;
 
-import java.util.List;
 import com.randmteam2.tripplanning.user.model.User;
-import com.randmteam2.tripplanning.user.model.Role;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
 
 public interface UserRepository extends JpaRepository<User, Long> {
 
     @Query(value = """
-    SELECT 
-        COUNT(*) AS total_trips,
-        COUNT(CASE WHEN status = 'COMPLETED' THEN 1 END) AS completed_trips,
-        COUNT(CASE WHEN status = 'CANCELLED' THEN 1 END) AS cancelled_trips,
-        COALESCE(SUM(CASE WHEN status = 'COMPLETED' THEN estimated_budget END), 0) AS total_spent,
-        COALESCE(AVG(CASE WHEN status = 'COMPLETED' THEN estimated_budget END), 0) AS avg_budget
-    FROM itineraries
-    WHERE user_id = :userId
-""", nativeQuery = true)
+        SELECT 
+            COUNT(*) AS total_trips,
+            COUNT(CASE WHEN status = 'COMPLETED' THEN 1 END) AS completed_trips,
+            COUNT(CASE WHEN status = 'CANCELLED' THEN 1 END) AS cancelled_trips,
+            COALESCE(SUM(CASE WHEN status = 'COMPLETED' THEN estimated_budget END), 0) AS total_spent,
+            COALESCE(AVG(CASE WHEN status = 'COMPLETED' THEN estimated_budget END), 0) AS avg_budget
+        FROM itineraries
+        WHERE user_id = :userId
+    """, nativeQuery = true)
     List<Object[]> getUserTripSummary(@Param("userId") Long userId);
-    SELECT * FROM users 
-    WHERE preferences ->> :key = :value
-""", nativeQuery = true)
+
+    @Query(value = """
+        SELECT * FROM users 
+        WHERE preferences ->> :key = :value
+    """, nativeQuery = true)
     List<User> findByPreference(@Param("key") String key, @Param("value") String value);
+
+    @Query(value = """
+    SELECT * FROM users
+    WHERE (:name IS NULL OR LOWER(name) LIKE LOWER(CONCAT('%', :name, '%')))
+    AND (:email IS NULL OR LOWER(email) LIKE LOWER(CONCAT('%', :email, '%')))
+    AND (:role IS NULL OR role = :role)
+""", nativeQuery = true)
+    List<User> searchUsers(
+            @Param("name") String name,
+            @Param("role") String role,
+            @Param("email") String email
+    );
 }
