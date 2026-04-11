@@ -3,6 +3,7 @@ package com.randmteam2.tripplanning.destination.controller;
 import com.randmteam2.tripplanning.destination.dto.DestinationRateRequest;
 import com.randmteam2.tripplanning.destination.dto.DestinationStatusRequest;
 import com.randmteam2.tripplanning.destination.dto.TopDestinationDTO;
+import com.randmteam2.tripplanning.destination.dto.VerifyDestinationReviewRequest;
 import com.randmteam2.tripplanning.destination.model.Destination;
 import com.randmteam2.tripplanning.destination.service.DestinationService;
 import org.springframework.http.ResponseEntity;
@@ -45,5 +46,14 @@ public class DestinationController {
             @PathVariable Long id,
             @RequestBody DestinationRateRequest body) {
         return ResponseEntity.ok(destinationService.rateAfterVisit(id, body));
+    }
+
+    @PutMapping("/{destinationId}/reviews/{reviewId}/verify")
+    public ResponseEntity<Destination> verifyDestinationReview(
+            @PathVariable Long destinationId,
+            @PathVariable Long reviewId,
+            @RequestBody VerifyDestinationReviewRequest body) {
+        return ResponseEntity.ok(
+                destinationService.verifyDestinationReview(destinationId, reviewId, body));
     }
 }

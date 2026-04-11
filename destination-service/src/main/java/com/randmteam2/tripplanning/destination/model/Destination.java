@@ -1,9 +1,11 @@
 package com.randmteam2.tripplanning.destination.model;
 
+import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
+import java.util.List;
 import java.util.Map;
 
 @Entity
@@ -28,6 +30,10 @@ public class Destination {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     private Map<String, Object> details;
+
+    @OneToMany(mappedBy = "destination", cascade = CascadeType.ALL, orphanRemoval = false)
+    @JsonManagedReference
+    private List<DestinationReview> destinationReviews;
 
     public enum Status {
         ACTIVE, SEASONAL, INACTIVE
@@ -79,5 +85,13 @@ public class Destination {
 
     public void setDetails(Map<String, Object> details) {
         this.details = details;
+    }
+
+    public List<DestinationReview> getDestinationReviews() {
+        return destinationReviews;
+    }
+
+    public void setDestinationReviews(List<DestinationReview> destinationReviews) {
+        this.destinationReviews = destinationReviews;
     }
 }

@@ -2,23 +2,34 @@ package com.randmteam2.tripplanning.destination.service;
 
 import com.randmteam2.tripplanning.destination.dto.DestinationRateRequest;
 import com.randmteam2.tripplanning.destination.dto.TopDestinationDTO;
+import com.randmteam2.tripplanning.destination.dto.VerifyDestinationReviewRequest;
 import com.randmteam2.tripplanning.destination.model.Destination;
+import com.randmteam2.tripplanning.destination.model.DestinationReview;
 import com.randmteam2.tripplanning.destination.repository.DestinationRepository;
+import com.randmteam2.tripplanning.destination.repository.DestinationReviewRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class DestinationService {
 
     private final DestinationRepository destinationRepository;
+    private final DestinationReviewRepository destinationReviewRepository;
 
-    public DestinationService(DestinationRepository destinationRepository) {
+    public DestinationService(
+            DestinationRepository destinationRepository,
+            DestinationReviewRepository destinationReviewRepository) {
         this.destinationRepository = destinationRepository;
+        this.destinationReviewRepository = destinationReviewRepository;
     }
 
     @Transactional
@@ -132,5 +143,55 @@ public class DestinationService {
         destination.setRating(newAvg);
         destination.setTotalRatings(newCount);
         return destinationRepository.save(destination);
+    }
+
+    @Transactional
+    public Destination verifyDestinationReview(
+            Long destinationId,
+            Long reviewId,
+            VerifyDestinationReviewRequest request) {
+        destinationRepository.findById(destinationId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Destination not found"));
+
+        if (request == null || request.getVerifiedBy() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "verifiedBy is required");
+        }
+
+        long adminCount = destinationRepository.countAdminUserById(request.getVerifiedBy());
+        if (adminCount == 0) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only an ADMIN user may verify reviews");
+        }
+
+        DestinationReview review = destinationReviewRepository.findById(reviewId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Review not found"));
+
+        if (review.getDestination() == null || !destinationId.equals(review.getDestination().getId())) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Review does not belong to this destination");
+        }
+
+        LocalDate visitDate = review.getVisitDate();
+        if (visitDate != null && visitDate.isAfter(LocalDate.now())) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Cannot verify a review for a future visit date");
+        }
+
+        review.setVerified(true);
+        Map<String, Object> metadata = review.getMetadata();
+        if (metadata == null) {
+            metadata = new HashMap<>();
+        } else {
+            metadata = new HashMap<>(metadata);
+        }
+        metadata.put("verifiedAt", LocalDateTime.now().toString());
+        metadata.put("verifiedBy", request.getVerifiedBy());
+        review.setMetadata(metadata);
+
+        destinationReviewRepository.save(review);
+
+        return destinationRepository.findByIdWithDestinationReviews(destinationId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Destination not found"));
     }
 }

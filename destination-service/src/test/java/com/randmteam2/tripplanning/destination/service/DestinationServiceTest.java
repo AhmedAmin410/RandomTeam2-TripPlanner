@@ -2,15 +2,21 @@ package com.randmteam2.tripplanning.destination.service;
 
 import com.randmteam2.tripplanning.destination.dto.DestinationRateRequest;
 import com.randmteam2.tripplanning.destination.dto.TopDestinationDTO;
+import com.randmteam2.tripplanning.destination.dto.VerifyDestinationReviewRequest;
 import com.randmteam2.tripplanning.destination.model.Destination;
+import com.randmteam2.tripplanning.destination.model.DestinationReview;
+import com.randmteam2.tripplanning.destination.model.ReviewType;
 import com.randmteam2.tripplanning.destination.repository.DestinationRepository;
+import com.randmteam2.tripplanning.destination.repository.DestinationReviewRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
@@ -18,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
@@ -26,6 +33,9 @@ class DestinationServiceTest {
 
     @Mock
     private DestinationRepository destinationRepository;
+
+    @Mock
+    private DestinationReviewRepository destinationReviewRepository;
 
     @InjectMocks
     private DestinationService destinationService;
@@ -287,6 +297,135 @@ class DestinationServiceTest {
 
         assertThat(updated.getRating()).isEqualTo(4.0);
         assertThat(updated.getTotalRatings()).isEqualTo(2);
+    }
+
+    @Test
+    void verifyReview_destinationNotFound_throws404() {
+        when(destinationRepository.findById(1L)).thenReturn(Optional.empty());
+
+        VerifyDestinationReviewRequest req = new VerifyDestinationReviewRequest();
+        req.setVerifiedBy(3L);
+
+        assertThatThrownBy(() -> destinationService.verifyDestinationReview(1L, 10L, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(404));
+
+        verify(destinationRepository, never()).countAdminUserById(anyLong());
+    }
+
+    @Test
+    void verifyReview_missingVerifiedBy_throws400() {
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(newDestination(1L)));
+
+        VerifyDestinationReviewRequest req = new VerifyDestinationReviewRequest();
+
+        assertThatThrownBy(() -> destinationService.verifyDestinationReview(1L, 10L, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+    }
+
+    @Test
+    void verifyReview_nonAdmin_throws403() {
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(newDestination(1L)));
+        when(destinationRepository.countAdminUserById(3L)).thenReturn(0L);
+
+        VerifyDestinationReviewRequest req = new VerifyDestinationReviewRequest();
+        req.setVerifiedBy(3L);
+
+        assertThatThrownBy(() -> destinationService.verifyDestinationReview(1L, 10L, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(403));
+    }
+
+    @Test
+    void verifyReview_reviewNotFound_throws404() {
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(newDestination(1L)));
+        when(destinationRepository.countAdminUserById(3L)).thenReturn(1L);
+        when(destinationReviewRepository.findById(99L)).thenReturn(Optional.empty());
+
+        VerifyDestinationReviewRequest req = new VerifyDestinationReviewRequest();
+        req.setVerifiedBy(3L);
+
+        assertThatThrownBy(() -> destinationService.verifyDestinationReview(1L, 99L, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(404));
+    }
+
+    @Test
+    void verifyReview_wrongDestination_throws400() {
+        Destination d1 = newDestination(1L);
+        Destination d2 = newDestination(2L);
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(d1));
+        when(destinationRepository.countAdminUserById(3L)).thenReturn(1L);
+
+        DestinationReview review = new DestinationReview();
+        review.setId(10L);
+        review.setDestination(d2);
+        review.setVisitDate(LocalDate.now().minusDays(1));
+        when(destinationReviewRepository.findById(10L)).thenReturn(Optional.of(review));
+
+        VerifyDestinationReviewRequest req = new VerifyDestinationReviewRequest();
+        req.setVerifiedBy(3L);
+
+        assertThatThrownBy(() -> destinationService.verifyDestinationReview(1L, 10L, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+    }
+
+    @Test
+    void verifyReview_futureVisit_throws400() {
+        Destination d1 = newDestination(1L);
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(d1));
+        when(destinationRepository.countAdminUserById(3L)).thenReturn(1L);
+
+        DestinationReview review = new DestinationReview();
+        review.setId(10L);
+        review.setDestination(d1);
+        review.setVisitDate(LocalDate.now().plusDays(1));
+        when(destinationReviewRepository.findById(10L)).thenReturn(Optional.of(review));
+
+        VerifyDestinationReviewRequest req = new VerifyDestinationReviewRequest();
+        req.setVerifiedBy(3L);
+
+        assertThatThrownBy(() -> destinationService.verifyDestinationReview(1L, 10L, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+    }
+
+    @Test
+    void verifyReview_success_updatesReviewAndReturnsDestinationWithReviews() {
+        Destination d1 = newDestination(1L);
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(d1));
+        when(destinationRepository.countAdminUserById(3L)).thenReturn(1L);
+
+        DestinationReview review = new DestinationReview();
+        review.setId(10L);
+        review.setType(ReviewType.VISITOR);
+        review.setContent("Great");
+        review.setRating(5);
+        review.setDestination(d1);
+        review.setVisitDate(LocalDate.now().minusDays(2));
+        review.setVerified(false);
+        when(destinationReviewRepository.findById(10L)).thenReturn(Optional.of(review));
+        when(destinationReviewRepository.save(any(DestinationReview.class))).thenAnswer(i -> i.getArgument(0));
+
+        Destination withReviews = newDestination(1L);
+        withReviews.setDestinationReviews(List.of(review));
+        when(destinationRepository.findByIdWithDestinationReviews(1L)).thenReturn(Optional.of(withReviews));
+
+        VerifyDestinationReviewRequest req = new VerifyDestinationReviewRequest();
+        req.setVerifiedBy(3L);
+
+        Destination result = destinationService.verifyDestinationReview(1L, 10L, req);
+
+        ArgumentCaptor<DestinationReview> captor = ArgumentCaptor.forClass(DestinationReview.class);
+        verify(destinationReviewRepository).save(captor.capture());
+        assertThat(captor.getValue().getVerified()).isTrue();
+        assertThat(captor.getValue().getMetadata()).containsKeys("verifiedAt", "verifiedBy");
+        assertThat(captor.getValue().getMetadata().get("verifiedBy")).isEqualTo(3L);
+
+        assertThat(result.getDestinationReviews()).hasSize(1);
+        assertThat(result.getDestinationReviews().get(0).getVerified()).isTrue();
     }
 
     private static Destination newDestination(long id) {

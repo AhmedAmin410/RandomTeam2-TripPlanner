@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.data.rest.core.annotation.RepositoryRestResource;
 
 import java.util.List;
+import java.util.Optional;
 
 @RepositoryRestResource(exported = false)
 public interface DestinationRepository extends JpaRepository<Destination, Long> {
@@ -48,4 +49,17 @@ public interface DestinationRepository extends JpaRepository<Destination, Long> 
             WHERE i.id = :itineraryId
             """, nativeQuery = true)
     List<Object[]> findItineraryDestinationIdAndStatus(@Param("itineraryId") Long itineraryId);
+
+    @Query(value = """
+            SELECT COUNT(*) FROM users u
+            WHERE u.id = :userId AND u.role::text = 'ADMIN'
+            """, nativeQuery = true)
+    long countAdminUserById(@Param("userId") Long userId);
+
+    @Query("""
+            SELECT DISTINCT d FROM Destination d
+            LEFT JOIN FETCH d.destinationReviews
+            WHERE d.id = :id
+            """)
+    Optional<Destination> findByIdWithDestinationReviews(@Param("id") Long id);
 }
