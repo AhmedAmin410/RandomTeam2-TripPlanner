@@ -38,4 +38,22 @@ public interface UserRepository extends JpaRepository<User, Long> {
             @Param("role") String role,
             @Param("email") String email
     );
+
+    @Query(value = """
+    SELECT 
+        u.id,
+        u.name,
+        COALESCE(SUM(i.estimated_budget), 0) AS total_spent,
+        COUNT(i.id) AS trip_count
+    FROM users u
+    LEFT JOIN itineraries i 
+        ON u.id = i.user_id 
+        AND i.status = 'COMPLETED'
+    GROUP BY u.id, u.name
+    ORDER BY total_spent DESC
+    LIMIT :limit
+""", nativeQuery = true)
+    List<Object[]> getTopTravelers(
+            @Param("limit") int limit
+    );
 }

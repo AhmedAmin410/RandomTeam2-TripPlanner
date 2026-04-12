@@ -51,8 +51,20 @@ public class SavedDestinationService {
         if (updated.getLongitude() != null)
             existing.setLongitude(updated.getLongitude());
 
-        if (updated.getDefault() != null)
-            existing.setDefault(updated.getDefault());
+        if (updated.getDefault() != null && updated.getDefault()) {
+
+            List<SavedDestination> userDestinations =
+                    repository.findByUser_Id(existing.getUser().getId());
+
+            for (SavedDestination d : userDestinations) {
+                d.setDefault(false);
+            }
+
+            existing.setDefault(true);
+
+        } else if (updated.getDefault() != null) {
+            existing.setDefault(false);
+        }
 
         if (updated.getMetadata() != null)
             existing.setMetadata(updated.getMetadata());
@@ -73,4 +85,6 @@ public class SavedDestinationService {
     public List<SavedDestination> getByUserId(Long userId) {
         return repository.findByUser_Id(userId);
     }
+
+
 }
