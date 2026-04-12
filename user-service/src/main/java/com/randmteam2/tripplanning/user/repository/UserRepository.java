@@ -70,4 +70,12 @@ public interface UserRepository extends JpaRepository<User, Long> {
             @Param("style") String style,
             @Param("minTrips") int minTrips
     );
+
+    @Query(value = """
+    SELECT COUNT(*)
+    FROM itineraries
+    WHERE user_id = :userId
+      AND status IN ('DRAFT', 'IN_PROGRESS')
+""", nativeQuery = true)
+    long countActiveItineraries(@Param("userId") Long userId);
 }

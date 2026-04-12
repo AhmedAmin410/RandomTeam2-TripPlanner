@@ -170,7 +170,9 @@ public class UserService {
                         HttpStatus.NOT_FOUND, "User not found"
                 ));
 
-        if (user.getStatus() == UserStatus.ACTIVE) {
+        long activeItineraries = userRepository.countActiveItineraries(id);
+
+        if (activeItineraries > 0) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "User has active itineraries"
