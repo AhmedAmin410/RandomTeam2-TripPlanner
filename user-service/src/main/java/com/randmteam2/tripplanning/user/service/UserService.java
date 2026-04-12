@@ -1,6 +1,8 @@
 package com.randmteam2.tripplanning.user.service;
 
+import com.randmteam2.tripplanning.user.dto.SavedDestinationDTO;
 import com.randmteam2.tripplanning.user.dto.TopTravelerDTO;
+import com.randmteam2.tripplanning.user.dto.UserProfileDTO;
 import com.randmteam2.tripplanning.user.dto.UserTripSummaryDTO;
 import com.randmteam2.tripplanning.user.model.Role;
 import com.randmteam2.tripplanning.user.model.SavedDestination;
@@ -226,6 +228,37 @@ public class UserService {
         savedDestinationRepository.saveAll(userDestinations);
 
         return userRepository.findById(userId).get();
+    }
+
+    public UserProfileDTO getUserProfile(Long id) {
+
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "User not found"));
+
+        List<SavedDestination> destinations = user.getSavedDestinations();
+
+        List<SavedDestinationDTO> destinationDTOs = destinations.stream()
+                .map(d -> new SavedDestinationDTO(
+                        d.getLabel(),
+                        d.getDestinationName(),
+                        d.getCountry(),
+                        d.getLatitude(),
+                        d.getLongitude(),
+                        d.getDefault(),
+                        d.getMetadata()
+                ))
+                .toList();
+
+        return new UserProfileDTO(
+                user.getId(),
+                user.getName(),
+                user.getEmail(),
+                user.getPhone(),
+                user.getPreferences(),
+                destinationDTOs,
+                destinationDTOs.size()
+        );
     }
 
 

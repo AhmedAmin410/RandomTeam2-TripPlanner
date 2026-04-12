@@ -1,6 +1,7 @@
 package com.randmteam2.tripplanning.user.controller;
 
 import com.randmteam2.tripplanning.user.dto.TopTravelerDTO;
+import com.randmteam2.tripplanning.user.dto.UserProfileDTO;
 import com.randmteam2.tripplanning.user.dto.UserTripSummaryDTO;
 import com.randmteam2.tripplanning.user.model.Role;
 import com.randmteam2.tripplanning.user.model.SavedDestination;
@@ -160,6 +161,11 @@ public User updatePreferences(
             @PathVariable Long destinationId) {
 
         return userService.setDefaultDestination(userId, destinationId);
+    }
+
+    @GetMapping("/{id}/profile")
+    public UserProfileDTO getUserProfile(@PathVariable Long id) {
+        return userService.getUserProfile(id);
     }
 
 
