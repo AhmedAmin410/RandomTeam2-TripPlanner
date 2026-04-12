@@ -21,7 +21,7 @@ public class Activity {
     private String name;
 
     @Enumerated(EnumType.STRING)
-    @Column(columnDefinition = "activity_category")
+    @Column(nullable = false)
     private Category category;
 
     @Column(nullable = false)
