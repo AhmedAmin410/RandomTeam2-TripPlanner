@@ -56,4 +56,18 @@ public interface UserRepository extends JpaRepository<User, Long> {
     List<Object[]> getTopTravelers(
             @Param("limit") int limit
     );
+
+    @Query(value = """
+    SELECT u.*
+    FROM users u
+    JOIN itineraries i ON u.id = i.user_id
+    WHERE u.preferences ->> 'travelStyle' = :style
+      AND i.status = 'COMPLETED'
+    GROUP BY u.id
+    HAVING COUNT(i.id) >= :minTrips
+""", nativeQuery = true)
+    List<User> findUsersByTravelStyleAndMinTrips(
+            @Param("style") String style,
+            @Param("minTrips") int minTrips
+    );
 }
