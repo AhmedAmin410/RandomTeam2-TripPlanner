@@ -1,5 +1,6 @@
 package com.randmteam2.tripplanning.user.controller;
 
+import com.randmteam2.tripplanning.user.dto.TopTravelerDTO;
 import com.randmteam2.tripplanning.user.dto.UserTripSummaryDTO;
 import com.randmteam2.tripplanning.user.model.Role;
 import com.randmteam2.tripplanning.user.model.SavedDestination;
@@ -143,4 +144,15 @@ public User updatePreferences(
     public User deactivateUser(@PathVariable Long id) {
         return userService.deactivateUser(id);
     }
+
+    @GetMapping("/reports/top-travelers")
+    public ResponseEntity<List<TopTravelerDTO>> getTopTravelers(
+            @RequestParam String startDate,
+            @RequestParam String endDate,
+            @RequestParam Integer limit
+    ) {
+        return ResponseEntity.ok(userService.getTopTravelers(startDate, endDate, limit));
+    }
+
+
 }

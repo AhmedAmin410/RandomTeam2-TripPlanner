@@ -1,5 +1,6 @@
 package com.randmteam2.tripplanning.user.service;
 
+import com.randmteam2.tripplanning.user.dto.TopTravelerDTO;
 import com.randmteam2.tripplanning.user.dto.UserTripSummaryDTO;
 import com.randmteam2.tripplanning.user.model.Role;
 import com.randmteam2.tripplanning.user.model.SavedDestination;
@@ -177,4 +178,24 @@ public class UserService {
         user.setStatus(UserStatus.DEACTIVATED);
         return userRepository.save(user);
     }
+
+    public List<TopTravelerDTO> getTopTravelers(String startDate, String endDate, Integer limit) {
+
+        if (startDate.compareTo(endDate) > 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid date range");
+        }
+
+        List<Object[]> results = userRepository.getTopTravelers(limit);
+
+        return results.stream()
+                .map(r -> new TopTravelerDTO(
+                        ((Number) r[0]).longValue(),
+                        (String) r[1],
+                        ((Number) r[2]).doubleValue(),
+                        ((Number) r[3]).longValue()
+                ))
+                .toList();
+    }
+
+
 }
