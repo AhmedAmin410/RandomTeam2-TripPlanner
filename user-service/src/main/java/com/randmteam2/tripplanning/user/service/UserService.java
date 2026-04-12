@@ -197,5 +197,36 @@ public class UserService {
                 .toList();
     }
 
+    public User setDefaultDestination(Long userId, Long destinationId) {
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "User not found"));
+
+        SavedDestination target = savedDestinationRepository.findById(destinationId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Destination not found"));
+
+        if (!target.getUser().getId().equals(userId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Destination does not belong to user"
+            );
+        }
+
+        List<SavedDestination> userDestinations =
+                savedDestinationRepository.findByUser_Id(userId);
+
+        for (SavedDestination d : userDestinations) {
+            d.setDefault(false);
+        }
+
+        target.setDefault(true);
+
+        savedDestinationRepository.saveAll(userDestinations);
+
+        return userRepository.findById(userId).get();
+    }
+
 
 }

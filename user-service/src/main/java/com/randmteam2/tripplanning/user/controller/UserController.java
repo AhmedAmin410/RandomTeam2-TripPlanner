@@ -154,5 +154,13 @@ public User updatePreferences(
         return ResponseEntity.ok(userService.getTopTravelers(startDate, endDate, limit));
     }
 
+    @PutMapping("/{userId}/destinations/{destinationId}/default")
+    public User setDefaultDestination(
+            @PathVariable Long userId,
+            @PathVariable Long destinationId) {
+
+        return userService.setDefaultDestination(userId, destinationId);
+    }
+
 
 }
