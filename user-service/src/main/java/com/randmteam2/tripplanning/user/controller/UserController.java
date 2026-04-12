@@ -168,5 +168,13 @@ public User updatePreferences(
         return userService.getUserProfile(id);
     }
 
+    @GetMapping("/preferences/travel-style")
+    public List<User> findUsersByTravelStyle(
+            @RequestParam String style,
+            @RequestParam int minTrips) {
+
+        return userService.findUsersByTravelStyle(style, minTrips);
+    }
+
 
 }

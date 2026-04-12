@@ -261,5 +261,17 @@ public class UserService {
         );
     }
 
+    public List<User> findUsersByTravelStyle(String style, int minTrips) {
+
+        if (style == null || style.trim().isEmpty()) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Style must not be blank"
+            );
+        }
+
+        return userRepository.findUsersByTravelStyleAndMinTrips(style, minTrips);
+    }
+
 
 }
