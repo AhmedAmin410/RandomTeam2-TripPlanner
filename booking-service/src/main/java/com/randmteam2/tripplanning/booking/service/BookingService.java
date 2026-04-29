@@ -1,40 +1,32 @@
 package com.randmteam2.tripplanning.booking.service;
 
-import com.randmteam2.tripplanning.booking.dto.AppliedCouponDTO;
-import com.randmteam2.tripplanning.booking.dto.BookingDetailsDTO;
-import com.randmteam2.tripplanning.booking.dto.CouponUsageDTO;
-import com.randmteam2.tripplanning.booking.dto.UserBookingSummaryDTO;
-import com.randmteam2.tripplanning.booking.dto.BookingRequestDTO;
-import com.randmteam2.tripplanning.booking.dto.RevenueReportDTO;
+import com.randmteam2.tripplanning.booking.dto.*;
 import com.randmteam2.tripplanning.booking.model.*;
-import com.randmteam2.tripplanning.booking.repository.BookingCouponRepository;
-import com.randmteam2.tripplanning.booking.repository.BookingRepository;
-import com.randmteam2.tripplanning.booking.repository.CouponRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.randmteam2.tripplanning.booking.repository.*;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.sql.Timestamp;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Service
 public class BookingService {
 
-    @Autowired
-    private BookingRepository bookingRepository;
+    private final BookingRepository bookingRepository;
+    private final CouponRepository couponRepository;
+    private final BookingCouponRepository bookingCouponRepository;
 
-    @Autowired
-    private CouponRepository couponRepository;
+    public BookingService(BookingRepository bookingRepository,
+                          CouponRepository couponRepository,
+                          BookingCouponRepository bookingCouponRepository) {
+        this.bookingRepository = bookingRepository;
+        this.couponRepository = couponRepository;
+        this.bookingCouponRepository = bookingCouponRepository;
+    }
 
-    @Autowired
-    private BookingCouponRepository bookingCouponRepository;
-
+    // ── CRUD ──────────────────────────────────────────────────────────────
     public List<Booking> getAllBookings() {
         return bookingRepository.findAll();
     }
@@ -42,7 +34,7 @@ public class BookingService {
     public Booking getBookingById(Long id) {
         return bookingRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Booking not found with id: " + id));
+                        HttpStatus.NOT_FOUND, "Booking not found"));
     }
 
     public Booking createBooking(Booking booking) {
@@ -61,259 +53,217 @@ public class BookingService {
         bookingRepository.deleteById(id);
     }
 
-    // S5-F2: Cancel Booking with Refund
-    @Transactional
-    public Booking cancelBooking(Long id, String reason) {
-        Booking booking = getBookingById(id);
-
-        if (booking.getStatus() != BookingStatus.CONFIRMED) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking is not CONFIRMED");
-        }
-
-        booking.setStatus(BookingStatus.CANCELLED);
-
-        Map<String, Object> details = booking.getBookingDetails();
-        if (details == null) {
-            details = new HashMap<>();
-        }
-        details.put("cancellationReason", reason);
-        details.put("cancelledAt", LocalDateTime.now().toString());
-        booking.setBookingDetails(details);
-
-        return bookingRepository.save(booking);
-    }
-
+    // ── S5-F1 ─────────────────────────────────────────────────────────────
     public List<Booking> searchBookings(String status, LocalDateTime startDate, LocalDateTime endDate) {
+        if (startDate == null) startDate = LocalDateTime.of(2000, 1, 1, 0, 0);
+        if (endDate == null) endDate = LocalDateTime.of(2100, 1, 1, 0, 0);
         return bookingRepository.searchBookings(status, startDate, endDate);
     }
 
-    // S5-F7: Retry Failed Booking
+    // ── S5-F2 ─────────────────────────────────────────────────────────────
     @Transactional
-    public Booking retryFailedBooking(Long id) {
+    public Booking cancelBooking(Long id, String reason) {
         Booking booking = getBookingById(id);
-
-        if (booking.getStatus() != BookingStatus.FAILED) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Booking is not FAILED");
+        if (booking.getStatus() != BookingStatus.CONFIRMED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Only CONFIRMED bookings can be cancelled");
         }
-
+        booking.setStatus(BookingStatus.CANCELLED);
         Map<String, Object> details = booking.getBookingDetails();
-        if (details == null) {
-            details = new HashMap<>();
-        }
-
-        int retryAttempt = 0;
-        Object retryValue = details.get("retryAttempt");
-        if (retryValue instanceof Number number) {
-            retryAttempt = number.intValue();
-        }
-
-        retryAttempt += 1;
-        details.put("retryAttempt", retryAttempt);
-        details.put("confirmationNumber", "RETRY-" + booking.getId() + "-" + retryAttempt);
-
+        if (details == null) details = new HashMap<>();
+        details.put("cancellationReason", reason);
+        details.put("cancelledAt", LocalDateTime.now().toString());
         booking.setBookingDetails(details);
-        booking.setStatus(BookingStatus.CONFIRMED);
-
         return bookingRepository.save(booking);
     }
 
-    // S5-F3: User Booking Summary
+    // ── S5-F3 ─────────────────────────────────────────────────────────────
+    // ── S5-F3 ─────────────────────────────────────────────────────────────
     public UserBookingSummaryDTO getUserBookingSummary(Long userId) {
-        int userCount = bookingRepository.countUserById(userId);
-        if (userCount == 0) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found with id: " + userId);
+        List<Object[]> userCheck = bookingRepository.checkUserExists(userId);
+        if (userCheck == null || userCheck.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
         }
-
-        List<Booking> confirmedBookings = bookingRepository.findByUserIdAndStatus(userId, BookingStatus.CONFIRMED);
-
-        int totalBookings = confirmedBookings.size();
-        double totalAmount = 0.0;
+        List<Object[]> results = bookingRepository.getUserBookingSummary(userId);
         Map<String, Double> typeBreakdown = new HashMap<>();
-
-        for (Booking booking : confirmedBookings) {
-            totalAmount += booking.getAmount();
-            String typeName = booking.getType().name();
-            typeBreakdown.merge(typeName, booking.getAmount(), Double::sum);
+        int totalBookings = 0;
+        double totalAmount = 0;
+        for (Object[] row : results) {
+            String type = (String) row[0];
+            int count = ((Number) row[1]).intValue();
+            double amount = ((Number) row[2]).doubleValue();
+            typeBreakdown.put(type, amount);
+            totalBookings += count;
+            totalAmount += amount;
         }
-
         return new UserBookingSummaryDTO(userId, totalBookings, totalAmount, typeBreakdown);
     }
 
-    // S5-F5: Apply Coupon to Booking
+    // ── S5-F4 ─────────────────────────────────────────────────────────────
     @Transactional
-    public BookingCoupon applyCouponToBooking(Long bookingId, Long couponId) {
-        Booking booking = bookingRepository.findById(bookingId)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Booking not found with id: " + bookingId));
+    public Booking createBookingForItinerary(Long itineraryId, Map<String, Object> body) {
+        List<Object[]> itinerary = bookingRepository.findItineraryById(itineraryId);
+        if (itinerary == null || itinerary.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Itinerary not found");
+        }
+        String itineraryStatus = (String) itinerary.get(0)[0];
+        if (!itineraryStatus.equals("PLANNED") && !itineraryStatus.equals("IN_PROGRESS")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Itinerary must be PLANNED or IN_PROGRESS");
+        }
+        Booking booking = new Booking();
+        booking.setItineraryId(itineraryId);
+        booking.setUserId(((Number) body.getOrDefault("userId", 1)).longValue());
+        booking.setAmount(((Number) body.get("amount")).doubleValue());
+        booking.setType(BookingType.valueOf((String) body.get("type")));
+        booking.setStatus(BookingStatus.PENDING);
+        Map<String, Object> details = new HashMap<>();
+        if (body.containsKey("providerName")) {
+            details.put("providerName", body.get("providerName"));
+        }
+        booking.setBookingDetails(details);
+        return bookingRepository.save(booking);
+    }
 
-        Coupon coupon = couponRepository.findById(couponId)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Coupon not found with id: " + couponId));
-
-        // booking must be PENDING
+    // ── S5-F5 ─────────────────────────────────────────────────────────────
+    @Transactional
+    public Booking applyCoupon(Long bookingId, Long couponId) {
+        Booking booking = getBookingById(bookingId);
         if (booking.getStatus() != BookingStatus.PENDING) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "cannot apply coupon to a confirmed/cancelled booking");
         }
-
-        // coupon must be active
+        Coupon coupon = couponRepository.findById(couponId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Coupon not found"));
         if (!coupon.getActive()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Coupon is not active");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Coupon is inactive");
         }
-
-        // coupon must not be expired
         if (coupon.getExpiryDate().isBefore(LocalDateTime.now())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Coupon has expired");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Coupon is expired");
         }
-
-        // coupon usage limit check
         if (coupon.getCurrentUses() >= coupon.getMaxUses()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Coupon usage limit reached");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Coupon limit reached");
         }
-
-        // check if coupon already applied to this booking
-        if (bookingCouponRepository.findByBookingAndCoupon(booking, coupon).isPresent()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "coupon already applied");
+        boolean alreadyApplied = bookingCouponRepository
+                .existsByBookingIdAndCouponId(bookingId, couponId);
+        if (alreadyApplied) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "coupon already applied");
         }
-
-        // calculate discount
         double discount;
         if (coupon.getDiscountType() == DiscountType.PERCENTAGE) {
-            discount = booking.getAmount() * (coupon.getDiscountValue() / 100.0);
+            discount = booking.getAmount() * coupon.getDiscountValue() / 100;
         } else {
             discount = coupon.getDiscountValue();
         }
-        // cap discount at booking amount
-        discount = Math.min(discount, booking.getAmount());
+        if (discount > booking.getAmount()) discount = booking.getAmount();
 
-        // create BookingCoupon record
-        BookingCoupon bookingCoupon = new BookingCoupon();
-        bookingCoupon.setBooking(booking);
-        bookingCoupon.setCoupon(coupon);
-        bookingCoupon.setDiscountApplied(discount);
-        bookingCoupon.setAppliedAt(LocalDateTime.now());
+        BookingCoupon bc = new BookingCoupon();
+        bc.setBooking(booking);
+        bc.setCoupon(coupon);
+        bc.setDiscountApplied(discount);
+        bc.setAppliedAt(LocalDateTime.now());
+        bookingCouponRepository.save(bc);
 
-        BookingCoupon saved = bookingCouponRepository.save(bookingCoupon);
-
-        // increment currentUses on coupon
         coupon.setCurrentUses(coupon.getCurrentUses() + 1);
         couponRepository.save(coupon);
-
-        // save the booking as well
-        bookingRepository.save(booking);
-
-        return saved;
-    }
-
-    // S5-F8: Booking Details with Coupons
-    public BookingDetailsDTO getBookingDetails(Long bookingId) {
-        Booking booking = bookingRepository.findById(bookingId)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Booking not found with id: " + bookingId));
-
-        List<BookingCoupon> bookingCoupons = bookingCouponRepository.findByBookingId(bookingId);
-
-        List<AppliedCouponDTO> appliedCoupons = new ArrayList<>();
-        double totalDiscount = 0.0;
-
-        for (BookingCoupon bc : bookingCoupons) {
-            Coupon coupon = bc.getCoupon();
-            AppliedCouponDTO dto = new AppliedCouponDTO(
-                    coupon.getCode(),
-                    coupon.getDiscountType().name(),
-                    bc.getDiscountApplied(),
-                    bc.getAppliedAt()
-            );
-            appliedCoupons.add(dto);
-            totalDiscount += bc.getDiscountApplied();
-        }
-
-        BookingDetailsDTO details = new BookingDetailsDTO();
-        details.setBookingId(booking.getId());
-        details.setItineraryId(booking.getItineraryId());
-        details.setUserId(booking.getUserId());
-        details.setOriginalAmount(booking.getAmount());
-        details.setType(booking.getType().name());
-        details.setStatus(booking.getStatus().name());
-        details.setBookingDetails(booking.getBookingDetails());
-        details.setAppliedCoupons(appliedCoupons);
-        details.setTotalDiscount(totalDiscount);
-        details.setFinalAmount(booking.getAmount() - totalDiscount);
-
-        return details;
-    }
-
-    // S5-F9: Most Used Coupons Report
-    public List<CouponUsageDTO> getTopUsedCoupons(int limit) {
-        List<Object[]> rows = bookingCouponRepository.findTopUsedCoupons(limit);
-        List<CouponUsageDTO> result = new ArrayList<>();
-
-        for (Object[] row : rows) {
-            Long couponId = ((Number) row[0]).longValue();
-            String code = (String) row[1];
-            String discountType = (String) row[2];
-            Double discountValue = ((Number) row[3]).doubleValue();
-            Long timesUsed = ((Number) row[4]).longValue();
-            Double totalDiscountGiven = ((Number) row[5]).doubleValue();
-            Boolean active = (Boolean) row[6];
-            LocalDateTime expiryDate = ((Timestamp) row[7]).toLocalDateTime();
-
-            result.add(new CouponUsageDTO(couponId, code, discountType, discountValue,
-                    timesUsed, totalDiscountGiven, active, expiryDate));
-        }
-
-        return result;
-    }
-
-    // S5-F4: Create Booking for Itinerary
-    @Transactional
-    public Booking createBooking(Long itineraryId, BookingRequestDTO request) {
-        // Verify itinerary exists and get status
-        String status = bookingRepository.findItineraryStatusById(itineraryId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Itinerary not found"));
-
-        // Validate status
-        if (!"PLANNED".equals(status) && !"IN_PROGRESS".equals(status)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Itinerary must be PLANNED or IN_PROGRESS");
-        }
-
-        // Get user ID from itinerary
-        Long userId = bookingRepository.findUserIdByItineraryId(itineraryId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User ID not found for itinerary"));
-
-        // Create Booking
-        Booking booking = new Booking();
-        booking.setItineraryId(itineraryId);
-        booking.setUserId(userId);
-        booking.setAmount(request.getAmount());
-        booking.setType(request.getType());
-        booking.setStatus(BookingStatus.PENDING);
-
-        Map<String, Object> details = new HashMap<>();
-        if (request.getProviderName() != null) {
-            details.put("providerName", request.getProviderName());
-        }
-        booking.setBookingDetails(details);
 
         return bookingRepository.save(booking);
     }
 
+    // ── S5-F6 ─────────────────────────────────────────────────────────────
     public RevenueReportDTO getRevenueReport(LocalDateTime startDate, LocalDateTime endDate) {
+        if (startDate == null) startDate = LocalDateTime.of(2000, 1, 1, 0, 0);
+        if (endDate == null) endDate = LocalDateTime.of(2100, 1, 1, 0, 0);
         if (startDate.isAfter(endDate)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate must be before endDate");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "startDate must be before endDate");
         }
-        Double rawRevenue = bookingRepository.calculateRevenue(BookingStatus.CONFIRMED, startDate, endDate);
-        Long rawBookings = bookingRepository.countBookingsByStatusAndDateRange(BookingStatus.CONFIRMED, startDate, endDate);
-        Double rawCancelledAmount = bookingRepository.calculateRevenue(BookingStatus.CANCELLED, startDate, endDate);
-        Long rawCancelledCount = bookingRepository.countBookingsByStatusAndDateRange(BookingStatus.CANCELLED, startDate, endDate);
+        List<Object[]> results = bookingRepository.getRevenueReport(startDate, endDate);
+        double totalRevenue = 0;
+        int totalBookings = 0;
+        double cancelledAmount = 0;
+        int cancelledCount = 0;
+        for (Object[] row : results) {
+            String status = (String) row[0];
+            int count = ((Number) row[1]).intValue();
+            double amount = ((Number) row[2]).doubleValue();
+            if ("CONFIRMED".equals(status)) {
+                totalRevenue = amount;
+                totalBookings = count;
+            } else if ("CANCELLED".equals(status)) {
+                cancelledAmount = amount;
+                cancelledCount = count;
+            }
+        }
+        double avg = totalBookings > 0 ? totalRevenue / totalBookings : 0;
+        return new RevenueReportDTO(totalRevenue, totalBookings, avg, cancelledAmount, cancelledCount);
+    }
 
-        double totalRevenue = rawRevenue != null ? rawRevenue : 0.0;
-        long totalBookings = rawBookings != null ? rawBookings : 0L;
-        double avgAmount = totalBookings > 0 ? totalRevenue / totalBookings : 0.0;
-        double cancelledAmount = rawCancelledAmount != null ? rawCancelledAmount : 0.0;
-        long cancelledCount = rawCancelledCount != null ? rawCancelledCount : 0L;
+    // ── S5-F7 ─────────────────────────────────────────────────────────────
+    @Transactional
+    public Booking retryBooking(Long id) {
+        Booking booking = getBookingById(id);
+        if (booking.getStatus() != BookingStatus.FAILED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Only FAILED bookings can be retried");
+        }
+        booking.setStatus(BookingStatus.CONFIRMED);
+        Map<String, Object> details = booking.getBookingDetails();
+        if (details == null) details = new HashMap<>();
+        int attempt = ((Number) details.getOrDefault("retryAttempt", 0)).intValue() + 1;
+        details.put("retryAttempt", attempt);
+        details.put("confirmationNumber", "RETRY-" + id + "-" + attempt);
+        booking.setBookingDetails(details);
+        return bookingRepository.save(booking);
+    }
 
-        return new RevenueReportDTO(totalRevenue, totalBookings, avgAmount, cancelledAmount, cancelledCount);
+    // ── S5-F8 ─────────────────────────────────────────────────────────────
+    public BookingDetailsDTO getBookingDetails(Long bookingId) {
+        Booking booking = getBookingById(bookingId);
+        List<BookingCoupon> coupons = bookingCouponRepository.findByBookingId(bookingId);
+        List<AppliedCouponDTO> appliedCoupons = coupons.stream()
+                .map(bc -> new AppliedCouponDTO(
+                        bc.getCoupon().getCode(),
+                        bc.getCoupon().getDiscountType().name(),
+                        bc.getDiscountApplied(),
+                        bc.getAppliedAt()))
+                .toList();
+        double totalDiscount = appliedCoupons.stream()
+                .mapToDouble(c -> c.discountApplied())
+                .sum();
+        double finalAmount = booking.getAmount() - totalDiscount;
+        return new BookingDetailsDTO(
+                booking.getId(),
+                booking.getItineraryId(),
+                booking.getUserId(),
+                booking.getAmount(),
+                booking.getType().name(),
+                booking.getStatus().name(),
+                booking.getBookingDetails(),
+                appliedCoupons,
+                totalDiscount,
+                finalAmount
+        );
+    }
+
+    // ── S5-F9 ─────────────────────────────────────────────────────────────
+    public List<CouponUsageDTO> getTopUsedCoupons(int limit) {
+        List<Object[]> results = bookingRepository.getTopUsedCoupons(limit);
+        List<CouponUsageDTO> dtos = new ArrayList<>();
+        for (Object[] row : results) {
+            Long couponId = ((Number) row[0]).longValue();
+            String code = (String) row[1];
+            String discountType = (String) row[2];
+            double discountValue = ((Number) row[3]).doubleValue();
+            long timesUsed = ((Number) row[4]).longValue();
+            double totalDiscountGiven = ((Number) row[5]).doubleValue();
+            boolean active = (Boolean) row[6];
+            LocalDateTime expiryDate = ((java.sql.Timestamp) row[7]).toLocalDateTime();
+            boolean expired = expiryDate.isBefore(LocalDateTime.now());
+            dtos.add(new CouponUsageDTO(couponId, code, discountType, discountValue,
+                    timesUsed, totalDiscountGiven, active, expired));
+        }
+        return dtos;
     }
 }
