@@ -8,7 +8,7 @@ import com.randmteam2.tripplanning.booking.service.BookingService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
+import com.randmteam2.tripplanning.booking.dto.RefundCancellationRequest;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -132,5 +132,13 @@ public class BookingController {
     public ResponseEntity<List<?>> getTopUsedCoupons(
             @RequestParam int limit) {
         return ResponseEntity.ok(bookingService.getTopUsedCoupons(limit));
+    }
+
+    // ── S5-F12 ────────────────────────────────────────────────────────────
+    @PostMapping("/{id}/refund-cancellation-tier")
+    public ResponseEntity<Booking> processRefundCancellation(
+            @PathVariable Long id,
+            @RequestBody RefundCancellationRequest request) {
+        return ResponseEntity.ok(bookingService.processRefundCancellation(id, request));
     }
 }

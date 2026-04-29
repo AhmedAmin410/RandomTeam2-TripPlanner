@@ -79,4 +79,9 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     AND status IN ('PLANNED', 'IN_PROGRESS')
     """, nativeQuery = true)
     long countActiveItinerariesForDestination(@Param("destinationId") Long destinationId);
+
+    // DP-1: get itinerary startDate and status for refund strategy selection
+    @Query(value = "SELECT start_date, status FROM itineraries WHERE id = :itineraryId",
+            nativeQuery = true)
+    List<Object[]> findItineraryStartDateAndStatus(@Param("itineraryId") Long itineraryId);
 }
