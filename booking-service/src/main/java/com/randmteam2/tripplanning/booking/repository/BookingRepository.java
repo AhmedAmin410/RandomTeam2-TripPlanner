@@ -84,4 +84,33 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     @Query(value = "SELECT start_date, status FROM itineraries WHERE id = :itineraryId",
             nativeQuery = true)
     List<Object[]> findItineraryStartDateAndStatus(@Param("itineraryId") Long itineraryId);
+
+    // S5-F10
+    @Query(value = """
+    SELECT
+        d.id                                                                    AS destinationId,
+        d.name                                                                  AS destinationName,
+        SUM(b.amount)                                                           AS totalRevenue,
+        SUM(COALESCE(CAST(b.booking_details->>'seasonalSurcharge' AS numeric), 0.0))
+                                                                                AS surchargeRevenue,
+        SUM(b.amount)
+            - SUM(COALESCE(CAST(b.booking_details->>'seasonalSurcharge' AS numeric), 0.0))
+                                                                                AS baseRevenue,
+        COUNT(*) FILTER (
+            WHERE COALESCE(CAST(b.booking_details->>'seasonalSurcharge' AS numeric), 0.0) > 0
+        )                                                                       AS peakBookingCount,
+        COUNT(*) FILTER (
+            WHERE COALESCE(CAST(b.booking_details->>'seasonalSurcharge' AS numeric), 0.0) = 0
+        )                                                                       AS offPeakBookingCount
+    FROM bookings b
+    JOIN itineraries i  ON i.id  = b.itin_id
+    JOIN destinations d ON d.id  = i.destination_id
+    WHERE b.status     = 'CONFIRMED'
+      AND b.created_at BETWEEN :startDate AND :endDate
+    GROUP BY d.id, d.name
+    ORDER BY SUM(b.amount) DESC
+    """, nativeQuery = true)
+    List<Object[]> findRevenueByDestinationAndSeason(
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate")   LocalDateTime endDate);
 }
