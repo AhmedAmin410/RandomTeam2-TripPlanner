@@ -13,6 +13,10 @@ import com.randmteam2.tripplanning.booking.mongo.PaymentAuditEventRepository;
 
 import java.time.LocalDateTime;
 import java.util.*;
+import com.randmteam2.tripplanning.booking.strategy.*;
+import com.randmteam2.tripplanning.booking.dto.RefundCancellationRequest;
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 
 @Service
 public class BookingService {
@@ -325,5 +329,84 @@ public class BookingService {
                     timesUsed, totalDiscountGiven, active, expired));
         }
         return dtos;
+    }
+
+    // ── S5-F12 ────────────────────────────────────────────────────────────
+    @Transactional
+    public Booking processRefundCancellation(Long bookingId, RefundCancellationRequest request) {
+        // 1. fetch booking
+        Booking booking = getBookingById(bookingId);
+
+        // 2. must be CONFIRMED
+        if (booking.getStatus() != BookingStatus.CONFIRMED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Only CONFIRMED bookings can be refunded");
+        }
+
+        // 3. fetch itinerary startDate and status
+        List<Object[]> rows = bookingRepository.findItineraryStartDateAndStatus(booking.getItineraryId());
+        if (rows == null || rows.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Linked itinerary not found");
+        }
+        java.sql.Date startDateSql = (java.sql.Date) rows.get(0)[0];
+        String itiStatus = (String) rows.get(0)[1];
+        LocalDate startDate = startDateSql.toLocalDate();
+        boolean itineraryStarted = "IN_PROGRESS".equals(itiStatus) || "COMPLETED".equals(itiStatus);
+
+        // 4. select strategy — no if/else chains here, selector does it
+        RefundStrategySelector selector = new RefundStrategySelector();
+        RefundStrategy strategy = selector.select(startDate, itineraryStarted);
+        RefundResult result = strategy.calculateRefund(booking);
+
+        // 5. NoRefund → log REFUND_DENIED then throw 400
+        if (strategy instanceof NoRefundStrategy) {
+            writeAuditEventWithDetails(booking, "REFUND_DENIED", Map.of(
+                    "strategyName", "NoRefundStrategy",
+                    "reason", result.getReasonCode(),
+                    "itineraryStatus", itiStatus
+            ));
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "trip already started or completed");
+        }
+
+        // 6. update booking
+        booking.setStatus(BookingStatus.CANCELLED);
+        Map<String, Object> details = booking.getBookingDetails();
+        if (details == null) details = new HashMap<>();
+        details.put("refundAmount",       result.getRefundAmount());
+        details.put("tier",               result.getTier());
+        details.put("strategyName",       strategy.getClass().getSimpleName());
+        details.put("refundReason",       request.getReason());
+        details.put("daysBeforeDeparture", ChronoUnit.DAYS.between(LocalDate.now(), startDate));
+        details.put("refundedAt",         LocalDateTime.now().toString());
+        booking.setBookingDetails(details);
+        Booking saved = bookingRepository.save(booking);
+
+        // 7. log REFUNDED
+        writeAuditEventWithDetails(saved, "REFUNDED", Map.of(
+                "strategyName",  strategy.getClass().getSimpleName(),
+                "tier",          result.getTier(),
+                "refundAmount",  result.getRefundAmount(),
+                "originalAmount", booking.getAmount(),
+                "reason",        request.getReason() != null ? request.getReason() : ""
+        ));
+
+        return saved;
+    }
+
+    // enhanced audit helper with custom details
+    private void writeAuditEventWithDetails(Booking booking, String action, Map<String, Object> details) {
+        try {
+            PaymentAuditEvent ev = new PaymentAuditEvent();
+            ev.setBookingId(booking.getId());
+            ev.setAction(action);
+            ev.setTimestamp(LocalDateTime.now());
+            ev.setMethod(booking.getType().name());
+            ev.setAmount(booking.getAmount());
+            ev.setDetails(details);
+            auditRepository.save(ev);
+        } catch (Exception e) {
+            System.err.println("[WARN] MongoDB write failed: " + e.getMessage());
+        }
     }
 }
