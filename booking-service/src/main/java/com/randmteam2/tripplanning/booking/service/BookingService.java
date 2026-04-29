@@ -7,6 +7,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+// Add this import at the top of the file
+import com.randmteam2.tripplanning.booking.mongo.PaymentAuditEvent;
+import com.randmteam2.tripplanning.booking.mongo.PaymentAuditEventRepository;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -17,13 +20,16 @@ public class BookingService {
     private final BookingRepository bookingRepository;
     private final CouponRepository couponRepository;
     private final BookingCouponRepository bookingCouponRepository;
+    private final PaymentAuditEventRepository auditRepository;
 
     public BookingService(BookingRepository bookingRepository,
                           CouponRepository couponRepository,
-                          BookingCouponRepository bookingCouponRepository) {
+                          BookingCouponRepository bookingCouponRepository,
+                          PaymentAuditEventRepository auditRepository) {
         this.bookingRepository = bookingRepository;
         this.couponRepository = couponRepository;
         this.bookingCouponRepository = bookingCouponRepository;
+        this.auditRepository = auditRepository;
     }
 
     // ── CRUD ──────────────────────────────────────────────────────────────
@@ -100,8 +106,13 @@ public class BookingService {
     }
 
     // ── S5-F4 ─────────────────────────────────────────────────────────────
+
+    // ── S5-F4 ─────────────────────────────────────────────────────────────
     @Transactional
-    public Booking createBookingForItinerary(Long itineraryId, Map<String, Object> body) {
+    public Booking createBookingForItinerary(Long itineraryId,
+                                             Map<String, Object> body,
+                                             boolean simulateFailure) {
+        // validation (unchanged from M1)
         List<Object[]> itinerary = bookingRepository.findItineraryById(itineraryId);
         if (itinerary == null || itinerary.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Itinerary not found");
@@ -111,20 +122,64 @@ public class BookingService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Itinerary must be PLANNED or IN_PROGRESS");
         }
+
+        // build booking (unchanged from M1)
         Booking booking = new Booking();
         booking.setItineraryId(itineraryId);
         booking.setUserId(((Number) body.getOrDefault("userId", 1)).longValue());
         booking.setAmount(((Number) body.get("amount")).doubleValue());
         booking.setType(BookingType.valueOf((String) body.get("type")));
-        booking.setStatus(BookingStatus.PENDING);
-        Map<String, Object> details = new HashMap<>();
-        if (body.containsKey("providerName")) {
-            details.put("providerName", body.get("providerName"));
+
+        // NEW: compute seasonalSurcharge
+        Long destinationId = bookingRepository.findDestinationIdByItineraryId(itineraryId);
+        double surcharge = 0.0;
+        if (destinationId != null) {
+            long activeCount = bookingRepository.countActiveItinerariesForDestination(destinationId);
+            double multiplier = activeCount <= 5 ? 1.0 : activeCount <= 15 ? 1.3 : 1.6;
+            surcharge = (multiplier == 1.0) ? 0.0
+                    : booking.getAmount() * (multiplier - 1) / multiplier;
         }
+
+        Map<String, Object> details = new HashMap<>();
+        if (body.containsKey("providerName")) details.put("providerName", body.get("providerName"));
+        details.put("seasonalSurcharge", surcharge);
         booking.setBookingDetails(details);
-        return bookingRepository.save(booking);
+
+        // NEW: simulateFailure support
+        if (simulateFailure) {
+            booking.setStatus(BookingStatus.FAILED);
+            Booking saved = bookingRepository.save(booking);
+            writeAuditEvent(saved, "FAILED");
+            return saved;
+        }
+
+        // normal flow: PENDING then CONFIRMED
+        booking.setStatus(BookingStatus.PENDING);
+        Booking saved = bookingRepository.save(booking);
+        writeAuditEvent(saved, "CREATED");
+
+        saved.setStatus(BookingStatus.CONFIRMED);
+        saved = bookingRepository.save(saved);
+        writeAuditEvent(saved, "COMPLETED");
+
+        return saved;
     }
 
+    // helper: write a PaymentAuditEvent to MongoDB
+    private void writeAuditEvent(Booking booking, String action) {
+        try {
+            PaymentAuditEvent ev = new PaymentAuditEvent();
+            ev.setBookingId(booking.getId());
+            ev.setAction(action);
+            ev.setTimestamp(LocalDateTime.now());
+            ev.setMethod(booking.getType().name());
+            ev.setAmount(booking.getAmount());
+            ev.setDetails(Map.of("status", booking.getStatus().name()));
+            auditRepository.save(ev);
+        } catch (Exception e) {
+            System.err.println("[WARN] MongoDB audit write failed: " + e.getMessage());
+        }
+    }
     // ── S5-F5 ─────────────────────────────────────────────────────────────
     @Transactional
     public Booking applyCoupon(Long bookingId, Long couponId) {
