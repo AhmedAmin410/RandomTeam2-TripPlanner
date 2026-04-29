@@ -22,19 +22,19 @@ public class Coupon {
     private String code;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(name = "discount_type", nullable = false)
     private DiscountType discountType;
 
-    @Column(nullable = false)
+    @Column(name = "discount_value", nullable = false)
     private Double discountValue;
 
-    @Column(nullable = false)
+    @Column(name = "max_uses", nullable = false)
     private Integer maxUses;
 
-    @Column(nullable = false)
+    @Column(name = "current_uses", nullable = false)
     private Integer currentUses = 0;
 
-    @Column(nullable = false)
+    @Column(name = "expiry_date", nullable = false)
     private LocalDateTime expiryDate;
 
     @Column(nullable = false)
@@ -50,31 +50,22 @@ public class Coupon {
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
-
     public String getCode() { return code; }
     public void setCode(String code) { this.code = code; }
-
     public DiscountType getDiscountType() { return discountType; }
     public void setDiscountType(DiscountType discountType) { this.discountType = discountType; }
-
     public Double getDiscountValue() { return discountValue; }
     public void setDiscountValue(Double discountValue) { this.discountValue = discountValue; }
-
     public Integer getMaxUses() { return maxUses; }
     public void setMaxUses(Integer maxUses) { this.maxUses = maxUses; }
-
     public Integer getCurrentUses() { return currentUses; }
     public void setCurrentUses(Integer currentUses) { this.currentUses = currentUses; }
-
     public LocalDateTime getExpiryDate() { return expiryDate; }
     public void setExpiryDate(LocalDateTime expiryDate) { this.expiryDate = expiryDate; }
-
     public Boolean getActive() { return active; }
     public void setActive(Boolean active) { this.active = active; }
-
     public Map<String, Object> getMetadata() { return metadata; }
     public void setMetadata(Map<String, Object> metadata) { this.metadata = metadata; }
-
     public List<BookingCoupon> getBookingCoupons() { return bookingCoupons; }
     public void setBookingCoupons(List<BookingCoupon> bookingCoupons) { this.bookingCoupons = bookingCoupons; }
 }

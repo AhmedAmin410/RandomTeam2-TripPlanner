@@ -1,31 +1,28 @@
 package com.randmteam2.tripplanning.booking.controller;
 
 import com.randmteam2.tripplanning.booking.dto.BookingDetailsDTO;
-import com.randmteam2.tripplanning.booking.dto.CouponUsageDTO;
-import com.randmteam2.tripplanning.booking.dto.UserBookingSummaryDTO;
-import com.randmteam2.tripplanning.booking.dto.BookingRequestDTO;
 import com.randmteam2.tripplanning.booking.dto.RevenueReportDTO;
+import com.randmteam2.tripplanning.booking.dto.UserBookingSummaryDTO;
 import com.randmteam2.tripplanning.booking.model.Booking;
-import com.randmteam2.tripplanning.booking.model.BookingCoupon;
 import com.randmteam2.tripplanning.booking.service.BookingService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.server.ResponseStatusException;
 
-import org.springframework.format.annotation.DateTimeFormat;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/bookings")
 public class BookingController {
 
-    @Autowired
-    private BookingService bookingService;
+    private final BookingService bookingService;
 
+    public BookingController(BookingService bookingService) {
+        this.bookingService = bookingService;
+    }
+
+    // ── CRUD ──────────────────────────────────────────────────────────────
     @GetMapping
     public ResponseEntity<List<Booking>> getAllBookings() {
         return ResponseEntity.ok(bookingService.getAllBookings());
@@ -54,75 +51,84 @@ public class BookingController {
         return ResponseEntity.noContent().build();
     }
 
+
+    // ── S5-F1 ─────────────────────────────────────────────────────────────
     @GetMapping("/search")
     public ResponseEntity<List<Booking>> searchBookings(
             @RequestParam(required = false) String status,
-            @RequestParam LocalDateTime startDate,
-            @RequestParam LocalDateTime endDate) {
-        return ResponseEntity.ok(bookingService.searchBookings(status, startDate, endDate));
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate) {
+        LocalDateTime start = startDate != null ?
+                LocalDateTime.parse(startDate.replace(" ", "T")) :
+                LocalDateTime.of(2000, 1, 1, 0, 0);
+        LocalDateTime end = endDate != null ?
+                LocalDateTime.parse(endDate.replace(" ", "T")) :
+                LocalDateTime.of(2100, 1, 1, 0, 0);
+        return ResponseEntity.ok(bookingService.searchBookings(status, start, end));
     }
 
-    // S5-F2: Cancel Booking with Refund
+    // ── S5-F2 ─────────────────────────────────────────────────────────────
     @PutMapping("/{id}/cancel")
-    public ResponseEntity<Booking> cancelBooking(@PathVariable Long id, @RequestBody Map<String, String> body) {
-        String reason = body.get("reason");
-        return ResponseEntity.ok(bookingService.cancelBooking(id, reason));
+    public ResponseEntity<Booking> cancelBooking(
+            @PathVariable Long id,
+            @RequestBody java.util.Map<String, String> body) {
+        return ResponseEntity.ok(bookingService.cancelBooking(id, body.get("reason")));
     }
 
-    // S5-F3: User Booking Summary
+    // ── S5-F3 ─────────────────────────────────────────────────────────────
     @GetMapping("/user/{userId}/summary")
-    public ResponseEntity<UserBookingSummaryDTO> getUserBookingSummary(@PathVariable Long userId) {
+    public ResponseEntity<UserBookingSummaryDTO> getUserBookingSummary(
+            @PathVariable Long userId) {
         return ResponseEntity.ok(bookingService.getUserBookingSummary(userId));
     }
 
-    // S5-F7: Retry Failed Booking
-    @PutMapping("/{id}/retry")
-    public ResponseEntity<Booking> retryBooking(@PathVariable Long id) {
-        return ResponseEntity.ok(bookingService.retryFailedBooking(id));
-    }
-
-    // S5-F5: Apply Coupon to Booking
-    @PostMapping("/{bookingId}/coupons/{couponId}")
-    public ResponseEntity<BookingCoupon> applyCouponToBooking(@PathVariable Long bookingId,
-                                                              @PathVariable Long couponId) {
-        return ResponseEntity.ok(bookingService.applyCouponToBooking(bookingId, couponId));
-    }
-
-    // S5-F8: Booking Details with Coupons
-    @GetMapping("/{bookingId}/details")
-    public ResponseEntity<BookingDetailsDTO> getBookingDetails(@PathVariable Long bookingId) {
-        return ResponseEntity.ok(bookingService.getBookingDetails(bookingId));
-    }
-
-    // S5-F9: Most Used Coupons Report
-    @GetMapping("/coupons/top-used")
-    public ResponseEntity<List<CouponUsageDTO>> getTopUsedCoupons(
-            @RequestParam(defaultValue = "10") int limit) {
-        return ResponseEntity.ok(bookingService.getTopUsedCoupons(limit));
-    }
-
-    // S5-F4: Create Booking for Itinerary
+    // ── S5-F4 ─────────────────────────────────────────────────────────────
     @PostMapping("/itinerary/{itineraryId}")
     public ResponseEntity<Booking> createBookingForItinerary(
             @PathVariable Long itineraryId,
-            @RequestBody BookingRequestDTO bookingRequest) {
-        
-        try {
-            Booking booking = bookingService.createBooking(itineraryId, bookingRequest);
-            return new ResponseEntity<>(booking, HttpStatus.CREATED);
-        } catch (ResponseStatusException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Error creating booking", e);
-        }
+            @RequestBody java.util.Map<String, Object> body) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(bookingService.createBookingForItinerary(itineraryId, body));
     }
 
-    // S5-F6: Revenue Report
+    // ── S5-F5 ─────────────────────────────────────────────────────────────
+    @PostMapping("/{bookingId}/coupons/{couponId}")
+    public ResponseEntity<Booking> applyCoupon(
+            @PathVariable Long bookingId,
+            @PathVariable Long couponId) {
+        return ResponseEntity.ok(bookingService.applyCoupon(bookingId, couponId));
+    }
+
+    // ── S5-F6 ─────────────────────────────────────────────────────────────
     @GetMapping("/reports/revenue")
     public ResponseEntity<RevenueReportDTO> getRevenueReport(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startDate,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endDate) {
-        return ResponseEntity.ok(bookingService.getRevenueReport(startDate, endDate));
+            @RequestParam(required = false) String startDate,
+            @RequestParam(required = false) String endDate) {
+        LocalDateTime start = startDate != null ?
+                LocalDateTime.parse(startDate.replace(" ", "T")) :
+                LocalDateTime.of(2000, 1, 1, 0, 0);
+        LocalDateTime end = endDate != null ?
+                LocalDateTime.parse(endDate.replace(" ", "T")) :
+                LocalDateTime.of(2100, 1, 1, 0, 0);
+        return ResponseEntity.ok(bookingService.getRevenueReport(start, end));
+    }
+    // ── S5-F7 ─────────────────────────────────────────────────────────────
+    @PutMapping("/{id}/retry")
+    public ResponseEntity<Booking> retryBooking(@PathVariable Long id) {
+        return ResponseEntity.ok(bookingService.retryBooking(id));
+    }
+
+    // ── S5-F8 ─────────────────────────────────────────────────────────────
+    @GetMapping("/{bookingId}/details")
+    public ResponseEntity<BookingDetailsDTO> getBookingDetails(
+            @PathVariable Long bookingId) {
+        return ResponseEntity.ok(bookingService.getBookingDetails(bookingId));
+    }
+
+    // ── S5-F9 ─────────────────────────────────────────────────────────────
+    @GetMapping("/coupons/top-used")
+    public ResponseEntity<List<?>> getTopUsedCoupons(
+            @RequestParam int limit) {
+        return ResponseEntity.ok(bookingService.getTopUsedCoupons(limit));
     }
 }
-

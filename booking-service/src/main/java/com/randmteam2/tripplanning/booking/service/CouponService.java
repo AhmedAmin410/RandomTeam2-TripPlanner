@@ -2,52 +2,43 @@ package com.randmteam2.tripplanning.booking.service;
 
 import com.randmteam2.tripplanning.booking.model.Coupon;
 import com.randmteam2.tripplanning.booking.repository.CouponRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
-import java.util.Optional;
 
 @Service
 public class CouponService {
 
-    @Autowired
-    private CouponRepository couponRepository;
+    private final CouponRepository couponRepository;
+
+    public CouponService(CouponRepository couponRepository) {
+        this.couponRepository = couponRepository;
+    }
 
     public List<Coupon> getAllCoupons() {
         return couponRepository.findAll();
     }
 
-    public Optional<Coupon> getCouponById(Long id) {
-        return couponRepository.findById(id);
+    public Coupon getCouponById(Long id) {
+        return couponRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Coupon not found"));
     }
 
-    public Optional<Coupon> getCouponByCode(String code) {
-        return couponRepository.findByCode(code);
-    }
-
-    @Transactional
     public Coupon createCoupon(Coupon coupon) {
         return couponRepository.save(coupon);
     }
 
-    @Transactional
-    public Coupon updateCoupon(Long id, Coupon couponDetails) {
-        return couponRepository.findById(id).map(coupon -> {
-            coupon.setCode(couponDetails.getCode());
-            coupon.setDiscountType(couponDetails.getDiscountType());
-            coupon.setDiscountValue(couponDetails.getDiscountValue());
-            coupon.setMaxUses(couponDetails.getMaxUses());
-            coupon.setExpiryDate(couponDetails.getExpiryDate());
-            coupon.setActive(couponDetails.getActive());
-            coupon.setMetadata(couponDetails.getMetadata());
-            return couponRepository.save(coupon);
-        }).orElseThrow(() -> new RuntimeException("Coupon not found with id " + id));
+    public Coupon updateCoupon(Long id, Coupon coupon) {
+        getCouponById(id);
+        coupon.setId(id);
+        return couponRepository.save(coupon);
     }
 
-    @Transactional
     public void deleteCoupon(Long id) {
+        getCouponById(id);
         couponRepository.deleteById(id);
     }
 }
