@@ -83,12 +83,14 @@ public class BookingController {
     }
 
     // ── S5-F4 ─────────────────────────────────────────────────────────────
+    // ── S5-F4 ─────────────────────────────────────────────────────────────
     @PostMapping("/itinerary/{itineraryId}")
     public ResponseEntity<Booking> createBookingForItinerary(
             @PathVariable Long itineraryId,
-            @RequestBody java.util.Map<String, Object> body) {
+            @RequestBody java.util.Map<String, Object> body,
+            @RequestParam(defaultValue = "false") boolean simulateFailure) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(bookingService.createBookingForItinerary(itineraryId, body));
+                .body(bookingService.createBookingForItinerary(itineraryId, body, simulateFailure));
     }
 
     // ── S5-F5 ─────────────────────────────────────────────────────────────

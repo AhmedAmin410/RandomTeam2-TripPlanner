@@ -64,5 +64,19 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
         ORDER BY c.current_uses DESC
         LIMIT :limit
         """, nativeQuery = true)
+
     List<Object[]> getTopUsedCoupons(@Param("limit") int limit);
+
+    // MOD-BK1: get destination_id from an itinerary
+    @Query(value = "SELECT destination_id FROM itineraries WHERE id = :itineraryId",
+            nativeQuery = true)
+    Long findDestinationIdByItineraryId(@Param("itineraryId") Long itineraryId);
+
+    // MOD-BK1: count active itineraries for a destination
+    @Query(value = """
+    SELECT COUNT(*) FROM itineraries
+    WHERE destination_id = :destinationId
+    AND status IN ('PLANNED', 'IN_PROGRESS')
+    """, nativeQuery = true)
+    long countActiveItinerariesForDestination(@Param("destinationId") Long destinationId);
 }
