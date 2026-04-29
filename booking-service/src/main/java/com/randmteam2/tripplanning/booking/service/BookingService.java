@@ -80,7 +80,9 @@ public class BookingService {
         details.put("cancellationReason", reason);
         details.put("cancelledAt", LocalDateTime.now().toString());
         booking.setBookingDetails(details);
-        return bookingRepository.save(booking);
+        Booking saved = bookingRepository.save(booking);
+        writeAuditEvent(saved, "REFUNDED");
+        return saved;
     }
 
     // ── S5-F3 ─────────────────────────────────────────────────────────────
@@ -222,8 +224,9 @@ public class BookingService {
 
         coupon.setCurrentUses(coupon.getCurrentUses() + 1);
         couponRepository.save(coupon);
-
-        return bookingRepository.save(booking);
+        Booking saved = bookingRepository.save(booking);
+        writeAuditEvent(saved, "COUPON_APPLIED");
+        return saved;
     }
 
     // ── S5-F6 ─────────────────────────────────────────────────────────────
@@ -270,7 +273,9 @@ public class BookingService {
         details.put("retryAttempt", attempt);
         details.put("confirmationNumber", "RETRY-" + id + "-" + attempt);
         booking.setBookingDetails(details);
-        return bookingRepository.save(booking);
+        Booking saved = bookingRepository.save(booking);
+        writeAuditEvent(saved, "RETRY_ATTEMPTED");
+        return saved;
     }
 
     // ── S5-F8 ─────────────────────────────────────────────────────────────
