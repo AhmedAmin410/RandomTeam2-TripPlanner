@@ -10,6 +10,8 @@ import org.springframework.web.server.ResponseStatusException;
 // Add this import at the top of the file
 import com.randmteam2.tripplanning.booking.mongo.PaymentAuditEvent;
 import com.randmteam2.tripplanning.booking.mongo.PaymentAuditEventRepository;
+import com.randmteam2.tripplanning.booking.observer.BookingEvent;
+import com.randmteam2.tripplanning.booking.observer.BookingEventPublisher;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -25,15 +27,18 @@ public class BookingService {
     private final CouponRepository couponRepository;
     private final BookingCouponRepository bookingCouponRepository;
     private final PaymentAuditEventRepository auditRepository;
+    private final BookingEventPublisher eventPublisher;
 
     public BookingService(BookingRepository bookingRepository,
                           CouponRepository couponRepository,
                           BookingCouponRepository bookingCouponRepository,
-                          PaymentAuditEventRepository auditRepository) {
+                          PaymentAuditEventRepository auditRepository,
+                          BookingEventPublisher eventPublisher) {
         this.bookingRepository = bookingRepository;
         this.couponRepository = couponRepository;
         this.bookingCouponRepository = bookingCouponRepository;
         this.auditRepository = auditRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     // ── CRUD ──────────────────────────────────────────────────────────────
@@ -229,7 +234,15 @@ public class BookingService {
         coupon.setCurrentUses(coupon.getCurrentUses() + 1);
         couponRepository.save(coupon);
         Booking saved = bookingRepository.save(booking);
-        writeAuditEvent(saved, "COUPON_APPLIED");
+
+        Map<String, Object> eventDetails = new HashMap<>();
+        eventDetails.put("status", saved.getStatus().name());
+        eventDetails.put("couponId", coupon.getId());
+        eventDetails.put("couponCode", coupon.getCode());
+        eventDetails.put("discountType", coupon.getDiscountType().name());
+        eventDetails.put("discountApplied", discount);
+        eventPublisher.publish(new BookingEvent("COUPON_APPLIED", saved, eventDetails));
+
         return saved;
     }
 
