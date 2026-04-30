@@ -141,6 +141,22 @@ public User updatePreferences(
         return savedDestinationService.update(id, destination);
     }
 
+    @PutMapping("/{id}/role")
+    public ResponseEntity<User> changeRole(@PathVariable Long id,
+                                           @RequestBody Map<String, String> body) {
+        String roleStr = body.get("role");
+        if (roleStr == null || roleStr.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Role is required");
+        }
+        Role role;
+        try {
+            role = Role.valueOf(roleStr.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid role");
+        }
+        return ResponseEntity.ok(userService.changeRole(id, role));
+    }
+
     @PutMapping("/{id}/deactivate")
     public User deactivateUser(@PathVariable Long id) {
         return userService.deactivateUser(id);
