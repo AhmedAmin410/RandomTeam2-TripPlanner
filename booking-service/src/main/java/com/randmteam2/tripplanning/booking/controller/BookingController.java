@@ -1,10 +1,13 @@
 package com.randmteam2.tripplanning.booking.controller;
 
 import com.randmteam2.tripplanning.booking.dto.BookingDetailsDTO;
+import com.randmteam2.tripplanning.booking.dto.PaymentHistoryEntryDTO;
 import com.randmteam2.tripplanning.booking.dto.RevenueReportDTO;
 import com.randmteam2.tripplanning.booking.dto.UserBookingSummaryDTO;
 import com.randmteam2.tripplanning.booking.model.Booking;
 import com.randmteam2.tripplanning.booking.service.BookingService;
+import com.randmteam2.tripplanning.booking.service.PaymentHistoryService;
+import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -17,9 +20,12 @@ import java.util.List;
 public class BookingController {
 
     private final BookingService bookingService;
+    private final PaymentHistoryService paymentHistoryService;
 
-    public BookingController(BookingService bookingService) {
+    public BookingController(BookingService bookingService,
+                             PaymentHistoryService paymentHistoryService) {
         this.bookingService = bookingService;
+        this.paymentHistoryService = paymentHistoryService;
     }
 
     // ── CRUD ──────────────────────────────────────────────────────────────
@@ -140,5 +146,14 @@ public class BookingController {
             @PathVariable Long id,
             @RequestBody RefundCancellationRequest request) {
         return ResponseEntity.ok(bookingService.processRefundCancellation(id, request));
+    }
+
+    // ── S5-F11 ────────────────────────────────────────────────────────────
+    @GetMapping("/{id}/payment-history")
+    public ResponseEntity<Page<PaymentHistoryEntryDTO>> getPaymentHistory(
+            @PathVariable Long id,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size) {
+        return ResponseEntity.ok(paymentHistoryService.getPaymentHistory(id, page, size));
     }
 }
