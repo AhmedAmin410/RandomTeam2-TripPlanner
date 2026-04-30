@@ -11,9 +11,12 @@ import java.util.List;
 public class SavedDestinationService {
 
     private final SavedDestinationRepository repository;
+    private final UserCacheInvalidationService cacheInvalidationService;
 
-    public SavedDestinationService(SavedDestinationRepository repository) {
+    public SavedDestinationService(SavedDestinationRepository repository,
+                                   UserCacheInvalidationService cacheInvalidationService) {
         this.repository = repository;
+        this.cacheInvalidationService = cacheInvalidationService;
     }
 
     public SavedDestination create(SavedDestination destination) {
@@ -69,7 +72,9 @@ public class SavedDestinationService {
         if (updated.getMetadata() != null)
             existing.setMetadata(updated.getMetadata());
 
-        return repository.save(existing);
+        SavedDestination saved = repository.save(existing);
+        cacheInvalidationService.evictUserReadCaches();
+        return saved;
     }
 
     public void delete(Long id) {
@@ -81,6 +86,7 @@ public class SavedDestinationService {
                 ));
 
         repository.delete(dest);
+        cacheInvalidationService.evictUserReadCaches();
     }
     public List<SavedDestination> getByUserId(Long userId) {
         return repository.findByUser_Id(userId);
