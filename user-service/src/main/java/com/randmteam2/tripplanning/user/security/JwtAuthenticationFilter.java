@@ -18,12 +18,22 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.regex.Pattern;
 
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     @Autowired private JwtService jwtService;
     @Autowired @Lazy private UserDetailsService userDetailsService;
+
+    private static final Pattern ADMIN_ROLE_PATTERN =
+            Pattern.compile("^PUT:/api/users/\\d+/role$");
+
+    private String resolveRequiredRole(HttpServletRequest request) {
+        String key = request.getMethod() + ":" + request.getServletPath();
+        if (ADMIN_ROLE_PATTERN.matcher(key).matches()) return "ADMIN";
+        return null;
+    }
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
@@ -39,10 +49,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     FilterChain filterChain)
             throws ServletException, IOException {
 
+        String requiredRole = resolveRequiredRole(request);
         AuthHandler head = new TokenExtractionHandler();
         head.setNext(new SignatureValidationHandler(jwtService))
                 .setNext(new UserLoaderHandler(userDetailsService))
-                .setNext(new RoleAuthorizationHandler(null));
+                .setNext(new RoleAuthorizationHandler(requiredRole));
 
         AuthContext ctx = new AuthContext(request);
         try {
