@@ -291,7 +291,13 @@ public class BookingService {
         details.put("confirmationNumber", "RETRY-" + id + "-" + attempt);
         booking.setBookingDetails(details);
         Booking saved = bookingRepository.save(booking);
-        writeAuditEvent(saved, "RETRY_ATTEMPTED");
+
+        Map<String, Object> eventDetails = new HashMap<>();
+        eventDetails.put("status", saved.getStatus().name());
+        eventDetails.put("retryAttempt", attempt);
+        eventDetails.put("confirmationNumber", details.get("confirmationNumber"));
+        eventPublisher.publish(new BookingEvent("RETRY_ATTEMPTED", saved, eventDetails));
+
         return saved;
     }
 
