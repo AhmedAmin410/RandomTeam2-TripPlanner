@@ -30,6 +30,19 @@ public class BookingCacheInvalidationService {
         );
     }
 
+    public void evictRefundRelatedCaches() {
+        evictPatterns(
+                cacheKey("booking::*"),
+                cacheKey("S5-F1::*"),
+                cacheKey("S5-F3::*"),
+                cacheKey("S5-F6::*"),
+                cacheKey("S5-F8::*"),
+                cacheKey("S5-F9::*"),
+                cacheKey("S5-F10::*"),
+                cacheKey("S5-F11::*")
+        );
+    }
+
     private String cacheKey(String keyPattern) {
         return CACHE_PREFIX + keyPattern;
     }

@@ -423,6 +423,7 @@ public class BookingService {
                     "reason", result.getReasonCode(),
                     "itineraryStatus", itiStatus
             ));
+            cacheInvalidationService.evictRefundRelatedCaches();
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "trip already started or completed");
         }
@@ -448,6 +449,7 @@ public class BookingService {
                 "originalAmount", booking.getAmount(),
                 "reason",        request.getReason() != null ? request.getReason() : ""
         ));
+        cacheInvalidationService.evictRefundRelatedCaches();
 
         return saved;
     }
