@@ -11,6 +11,7 @@ import com.randmteam2.tripplanning.user.model.UserStatus;
 import com.randmteam2.tripplanning.user.repository.SavedDestinationRepository;
 import com.randmteam2.tripplanning.user.repository.UserRepository;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 import java.util.HashMap;
@@ -22,14 +23,22 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final SavedDestinationRepository savedDestinationRepository;
+    private final PasswordEncoder passwordEncoder;
 
     public UserService(UserRepository userRepository,
-                       SavedDestinationRepository savedDestinationRepository) {
+                       SavedDestinationRepository savedDestinationRepository,
+                       PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.savedDestinationRepository = savedDestinationRepository;
+        this.passwordEncoder = passwordEncoder;
     }
 
     public User createUser(User user) {
+        user.setPassword(passwordEncoder.encode(user.getPassword()));
+        user.setRole(Role.TRAVELER);
+        if (user.getStatus() == null) {
+            user.setStatus(UserStatus.ACTIVE);
+        }
         return userRepository.save(user);
     }
 
@@ -68,7 +77,7 @@ public class UserService {
             existingUser.setEmail(updatedUser.getEmail());
 
         if (updatedUser.getPassword() != null)
-            existingUser.setPassword(updatedUser.getPassword());
+            existingUser.setPassword(passwordEncoder.encode(updatedUser.getPassword()));
 
         if (updatedUser.getPhone() != null)
             existingUser.setPhone(updatedUser.getPhone());
@@ -275,5 +284,37 @@ public class UserService {
         return userRepository.findUsersByTravelStyleAndMinTrips(style, minTrips);
     }
 
+    public User changeRole(Long id, Role role) {
+        User user = getUserById(id);
+        user.setRole(role);
+        return userRepository.save(user);
+    }
 
+    public User seedAdminUser(String name, String email, String rawPassword, String phone) {
+        return userRepository.findByEmail(email)
+                .map(existing -> ensureAdminSeed(existing, name, rawPassword, phone))
+                .orElseGet(() -> createAdminSeed(name, email, rawPassword, phone));
+    }
+
+    private User ensureAdminSeed(User existing, String name, String rawPassword, String phone) {
+        existing.setName(name);
+        existing.setPhone(phone);
+        existing.setRole(Role.ADMIN);
+        existing.setStatus(UserStatus.ACTIVE);
+        if (!passwordEncoder.matches(rawPassword, existing.getPassword())) {
+            existing.setPassword(passwordEncoder.encode(rawPassword));
+        }
+        return userRepository.save(existing);
+    }
+
+    private User createAdminSeed(String name, String email, String rawPassword, String phone) {
+        User admin = new User();
+        admin.setName(name);
+        admin.setEmail(email);
+        admin.setPassword(passwordEncoder.encode(rawPassword));
+        admin.setPhone(phone);
+        admin.setRole(Role.ADMIN);
+        admin.setStatus(UserStatus.ACTIVE);
+        return userRepository.save(admin);
+    }
 }
