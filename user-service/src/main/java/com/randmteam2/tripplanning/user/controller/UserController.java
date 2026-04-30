@@ -142,19 +142,23 @@ public User updatePreferences(
     }
 
     @PutMapping("/{id}/role")
-    public ResponseEntity<User> changeRole(@PathVariable Long id,
-                                           @RequestBody Map<String, String> body) {
+    public ResponseEntity<?> changeRole(@PathVariable Long id,
+                                        @RequestBody Map<String, String> body) {
         String roleStr = body.get("role");
         if (roleStr == null || roleStr.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Role is required");
+            return ResponseEntity.badRequest().body(Map.of("error", "Role is required"));
         }
         Role role;
         try {
             role = Role.valueOf(roleStr.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid role");
+            return ResponseEntity.badRequest().body(Map.of("error", "Invalid role"));
         }
-        return ResponseEntity.ok(userService.changeRole(id, role));
+        try {
+            return ResponseEntity.ok(userService.changeRole(id, role));
+        } catch (org.springframework.web.server.ResponseStatusException e) {
+            return ResponseEntity.status(e.getStatusCode()).body(Map.of("error", e.getReason()));
+        }
     }
 
     @PutMapping("/{id}/deactivate")

@@ -4,16 +4,20 @@ import com.randmteam2.tripplanning.user.dto.SavedDestinationDTO;
 import com.randmteam2.tripplanning.user.dto.TopTravelerDTO;
 import com.randmteam2.tripplanning.user.dto.UserProfileDTO;
 import com.randmteam2.tripplanning.user.dto.UserTripSummaryDTO;
+import com.randmteam2.tripplanning.user.model.AuthEvent;
 import com.randmteam2.tripplanning.user.model.Role;
 import com.randmteam2.tripplanning.user.model.SavedDestination;
 import com.randmteam2.tripplanning.user.model.User;
 import com.randmteam2.tripplanning.user.model.UserStatus;
+import com.randmteam2.tripplanning.user.repository.AuthEventRepository;
 import com.randmteam2.tripplanning.user.repository.SavedDestinationRepository;
 import com.randmteam2.tripplanning.user.repository.UserRepository;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,13 +28,19 @@ public class UserService {
     private final UserRepository userRepository;
     private final SavedDestinationRepository savedDestinationRepository;
     private final PasswordEncoder passwordEncoder;
+    private final UserCacheInvalidationService cacheInvalidationService;
+    private final AuthEventRepository authEventRepository;
 
     public UserService(UserRepository userRepository,
                        SavedDestinationRepository savedDestinationRepository,
-                       PasswordEncoder passwordEncoder) {
+                       PasswordEncoder passwordEncoder,
+                       UserCacheInvalidationService cacheInvalidationService,
+                       AuthEventRepository authEventRepository) {
         this.userRepository = userRepository;
         this.savedDestinationRepository = savedDestinationRepository;
         this.passwordEncoder = passwordEncoder;
+        this.cacheInvalidationService = cacheInvalidationService;
+        this.authEventRepository = authEventRepository;
     }
 
     public User createUser(User user) {
@@ -39,20 +49,23 @@ public class UserService {
         if (user.getStatus() == null) {
             user.setStatus(UserStatus.ACTIVE);
         }
-        return userRepository.save(user);
+        User saved = userRepository.save(user);
+        cacheInvalidationService.evictUserReadCaches();
+        return saved;
     }
 
     public List<User> getAllUsers() {
         return userRepository.findAll();
     }
 
+    @Cacheable(value = "user-service", key = "'user::' + #id")
     public User getUserById(Long id) {
         return userRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
     }
 
     public User updateUser(Long id, User updatedUser) {
-
+        cacheInvalidationService.evictUserReadCaches();
         User existingUser = getUserById(id);
 
         if (updatedUser.getStatus() != null &&
@@ -97,6 +110,7 @@ public class UserService {
     public void deleteUser(Long id) {
         User user = getUserById(id);
         userRepository.delete(user);
+        cacheInvalidationService.evictUserReadCaches();
     }
 
     public User updatePreferences(Long id, Map<String, Object> updates) {
@@ -108,9 +122,12 @@ public class UserService {
         }
         current.putAll(updates);
         user.setPreferences(current);
-        return userRepository.save(user);
+        User saved = userRepository.save(user);
+        cacheInvalidationService.evictUserReadCaches();
+        return saved;
     }
 
+    @Cacheable(value = "user-service", key = "'S1-F3::' + #userId")
     public UserTripSummaryDTO getUserTripSummary(Long userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(
@@ -133,6 +150,7 @@ public class UserService {
         );
     }
 
+    @Cacheable(value = "user-service", key = "'S1-F5::' + #key + '::' + #value")
     public List<User> searchByPreference(String key, String value) {
         if (key == null || key.trim().isEmpty() ||
                 value == null || value.trim().isEmpty()) {
@@ -142,6 +160,8 @@ public class UserService {
         return userRepository.findByPreference(key, value);
     }
 
+    @Cacheable(value = "user-service",
+            key = "'S1-F1::' + (#name == null ? '' : #name) + '::' + (#role == null ? '' : #role.name()) + '::' + (#email == null ? '' : #email)")
     public List<User> searchUsers(String name, Role role, String email) {
 
         if (name != null && name.trim().isEmpty()) name = null;
@@ -157,7 +177,9 @@ public class UserService {
     public SavedDestination createSavedDestination(Long userId, SavedDestination destination) {
         User user = getUserById(userId);
         destination.setUser(user);
-        return savedDestinationRepository.save(destination);
+        SavedDestination saved = savedDestinationRepository.save(destination);
+        cacheInvalidationService.evictUserReadCaches();
+        return saved;
     }
 
     public List<SavedDestination> getSavedDestinations(Long userId) {
@@ -165,6 +187,7 @@ public class UserService {
         return savedDestinationRepository.findByUser_Id(userId);
     }
 
+    @Cacheable(value = "user-service", key = "'saved-destination::' + #id")
     public SavedDestination getSavedDestinationById(Long userId, Long id) {
         getUserById(userId);
         return savedDestinationRepository.findById(id)
@@ -189,9 +212,12 @@ public class UserService {
         }
 
         user.setStatus(UserStatus.DEACTIVATED);
-        return userRepository.save(user);
+        User saved = userRepository.save(user);
+        cacheInvalidationService.evictUserReadCaches();
+        return saved;
     }
 
+    @Cacheable(value = "user-service", key = "'S1-F6::' + #startDate + '::' + #endDate + '::' + #limit")
     public List<TopTravelerDTO> getTopTravelers(String startDate, String endDate, Integer limit) {
 
         if (startDate.compareTo(endDate) > 0) {
@@ -211,7 +237,7 @@ public class UserService {
     }
 
     public User setDefaultDestination(Long userId, Long destinationId) {
-
+        cacheInvalidationService.evictUserReadCaches();
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "User not found"));
@@ -241,6 +267,7 @@ public class UserService {
         return userRepository.findById(userId).get();
     }
 
+    @Cacheable(value = "user-service", key = "'S1-F8::' + #id")
     public UserProfileDTO getUserProfile(Long id) {
 
         User user = userRepository.findById(id)
@@ -272,6 +299,7 @@ public class UserService {
         );
     }
 
+    @Cacheable(value = "user-service", key = "'S1-F9::' + #style + '::' + #minTrips")
     public List<User> findUsersByTravelStyle(String style, int minTrips) {
 
         if (style == null || style.trim().isEmpty()) {
@@ -286,8 +314,14 @@ public class UserService {
 
     public User changeRole(Long id, Role role) {
         User user = getUserById(id);
+        String previousRole = user.getRole().name();
         user.setRole(role);
-        return userRepository.save(user);
+        User saved = userRepository.save(user);
+        authEventRepository.save(new AuthEvent(
+                saved.getId(), "ROLE_CHANGED", LocalDateTime.now(),
+                Map.of("previousRole", previousRole, "newRole", role.name())));
+        cacheInvalidationService.evictUserReadCaches();
+        return saved;
     }
 
     public User seedAdminUser(String name, String email, String rawPassword, String phone) {
