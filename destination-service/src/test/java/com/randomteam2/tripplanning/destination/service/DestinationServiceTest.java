@@ -1,14 +1,14 @@
-package com.randmteam2.tripplanning.destination.service;
+package com.randomteam2.tripplanning.destination.service;
 
-import com.randmteam2.tripplanning.destination.dto.DestinationRateRequest;
-import com.randmteam2.tripplanning.destination.dto.TopDestinationDTO;
-import com.randmteam2.tripplanning.destination.dto.DestinationReviewAlertDTO;
-import com.randmteam2.tripplanning.destination.dto.VerifyDestinationReviewRequest;
-import com.randmteam2.tripplanning.destination.model.Destination;
-import com.randmteam2.tripplanning.destination.model.DestinationReview;
-import com.randmteam2.tripplanning.destination.model.ReviewType;
-import com.randmteam2.tripplanning.destination.repository.DestinationRepository;
-import com.randmteam2.tripplanning.destination.repository.DestinationReviewRepository;
+import com.randomteam2.tripplanning.destination.dto.DestinationRateRequest;
+import com.randomteam2.tripplanning.destination.dto.DestinationReviewAlertDTO;
+import com.randomteam2.tripplanning.destination.dto.TopDestinationDTO;
+import com.randomteam2.tripplanning.destination.dto.VerifyDestinationReviewRequest;
+import com.randomteam2.tripplanning.destination.model.Destination;
+import com.randomteam2.tripplanning.destination.model.DestinationReview;
+import com.randomteam2.tripplanning.destination.model.ReviewType;
+import com.randomteam2.tripplanning.destination.repository.DestinationRepository;
+import com.randomteam2.tripplanning.destination.repository.DestinationReviewRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -18,7 +18,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -27,7 +29,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class DestinationServiceTest {
@@ -40,6 +44,49 @@ class DestinationServiceTest {
 
     @InjectMocks
     private DestinationService destinationService;
+
+    @Test
+    void updateDetails_mergesIncomingFieldsWithExistingDetails() {
+        Destination destination = newDestination(1L);
+
+        Map<String, Object> existingDetails = new HashMap<>();
+        existingDetails.put("climate", "tropical");
+        existingDetails.put("currency", "USD");
+        existingDetails.put("visaRequired", true);
+        destination.setDetails(existingDetails);
+
+        Map<String, Object> incomingDetails = new HashMap<>();
+        incomingDetails.put("currency", "EUR");
+        incomingDetails.put("timezone", "GMT+2");
+
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(destination));
+        when(destinationRepository.save(any(Destination.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Destination updated = destinationService.updateDetails(1L, incomingDetails);
+
+        assertThat(updated.getDetails()).containsEntry("climate", "tropical");
+        assertThat(updated.getDetails()).containsEntry("currency", "EUR");
+        assertThat(updated.getDetails()).containsEntry("visaRequired", true);
+        assertThat(updated.getDetails()).containsEntry("timezone", "GMT+2");
+
+        verify(destinationRepository).findById(1L);
+        verify(destinationRepository).save(destination);
+    }
+
+    @Test
+    void updateDetails_destinationNotFound_throws404() {
+        when(destinationRepository.findById(99L)).thenReturn(Optional.empty());
+
+        Map<String, Object> incomingDetails = new HashMap<>();
+        incomingDetails.put("currency", "EUR");
+
+        assertThatThrownBy(() -> destinationService.updateDetails(99L, incomingDetails))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(404));
+
+        verify(destinationRepository).findById(99L);
+        verify(destinationRepository, never()).save(any());
+    }
 
     @Test
     void updateStatus_notFound_throws404() {

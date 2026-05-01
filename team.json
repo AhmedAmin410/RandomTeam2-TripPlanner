@@ -35,5 +35,11 @@
     "name": "Mariam Tarek",
     "githubUsername": "mariammtarekk44",
     "service": "activity-service"
+  },
+  {
+    "studentId": "55-21247",
+    "name": "Amr Maged",
+    "githubUsername": "AA-Amr",
+    "service": "destination-service"
   }
 ]

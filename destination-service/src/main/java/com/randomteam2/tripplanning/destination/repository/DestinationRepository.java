@@ -1,6 +1,6 @@
-package com.randmteam2.tripplanning.destination.repository;
+package com.randomteam2.tripplanning.destination.repository;
 
-import com.randmteam2.tripplanning.destination.model.Destination;
+import com.randomteam2.tripplanning.destination.model.Destination;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
