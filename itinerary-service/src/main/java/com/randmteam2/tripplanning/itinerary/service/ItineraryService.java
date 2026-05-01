@@ -3,6 +3,9 @@ package com.randmteam2.tripplanning.itinerary.service;
 import com.randmteam2.tripplanning.itinerary.dto.*;
 import com.randmteam2.tripplanning.itinerary.model.Itinerary;
 import com.randmteam2.tripplanning.itinerary.model.ItineraryDay;
+import com.randmteam2.tripplanning.itinerary.mongo.ItineraryEventRepository;
+import com.randmteam2.tripplanning.itinerary.observer.EntityObserver;
+import com.randmteam2.tripplanning.itinerary.observer.MongoEventLogger;
 import com.randmteam2.tripplanning.itinerary.repository.ItineraryDayRepository;
 import com.randmteam2.tripplanning.itinerary.repository.ItineraryRepository;
 import org.springframework.stereotype.Service;
@@ -10,23 +13,48 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 @Service
 public class ItineraryService {
 
     private final ItineraryRepository itineraryRepository;
     private final ItineraryDayRepository itineraryDayRepository;
+    private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
 
     public ItineraryService(ItineraryRepository itineraryRepository,
-                            ItineraryDayRepository itineraryDayRepository) {
+                            ItineraryDayRepository itineraryDayRepository,
+                            ItineraryEventRepository itineraryEventRepository) {
         this.itineraryRepository = itineraryRepository;
         this.itineraryDayRepository = itineraryDayRepository;
+        register(new MongoEventLogger(itineraryEventRepository));
     }
 
+    public void register(EntityObserver observer) { observers.add(observer); }
+    public void unregister(EntityObserver observer) { observers.remove(observer); }
+
+    private void notifyObservers(String eventType, Object payload) {
+        for (EntityObserver observer : observers) {
+            observer.onEvent(eventType, payload);
+        }
+    }
+
+    private Map<String, Object> itineraryPayload(String action, Itinerary itinerary) {
+        Map<String, Object> map = new HashMap<>();
+        map.put("action", action);
+        map.put("itineraryId", itinerary.getId());
+        map.put("userId", itinerary.getUserId());
+        map.put("status", itinerary.getStatus() != null ? itinerary.getStatus().name() : null);
+        return map;
+    }
 
     public Itinerary create(Itinerary itinerary) {
-        return itineraryRepository.save(itinerary);
+        Itinerary saved = itineraryRepository.save(itinerary);
+        notifyObservers("ITINERARY_CREATED", itineraryPayload("ITINERARY_CREATED", saved));
+        return saved;
     }
 
     public Itinerary getById(Long id) {
@@ -48,8 +76,17 @@ public class ItineraryService {
         existing.setMetadata(updated.getMetadata());
         existing.setStartDate(updated.getStartDate());
         existing.setEndDate(updated.getEndDate());
-        return itineraryRepository.save(existing);
+        Itinerary saved = itineraryRepository.save(existing);
+        notifyObservers("ITINERARY_UPDATED", itineraryPayload("ITINERARY_UPDATED", saved));
+        return saved;
     }
+
+    public void delete(Long id) {
+        Itinerary itinerary = getById(id);
+        itineraryRepository.deleteById(id);
+        notifyObservers("ITINERARY_DELETED", itineraryPayload("ITINERARY_DELETED", itinerary));
+    }
+
     @Transactional
     public Itinerary completeItinerary(Long id) {
         Itinerary itinerary = itineraryRepository.findById(id)
@@ -66,12 +103,11 @@ public class ItineraryService {
             itinerary.setEstimatedBudget(total);
         }
 
-        return itineraryRepository.save(itinerary);
+        Itinerary saved = itineraryRepository.save(itinerary);
+        notifyObservers("ITINERARY_COMPLETED", itineraryPayload("ITINERARY_COMPLETED", saved));
+        return saved;
     }
-    public void delete(Long id) {
-        getById(id);
-        itineraryRepository.deleteById(id);
-    }
+
     @Transactional
     public Itinerary cancelItinerary(Long id) {
         Itinerary itinerary = itineraryRepository.findById(id)
@@ -84,8 +120,11 @@ public class ItineraryService {
 
         itinerary.setStatus(Itinerary.Status.CANCELLED);
         itineraryRepository.cancelPendingBookings(id);
-        return itineraryRepository.save(itinerary);
+        Itinerary saved = itineraryRepository.save(itinerary);
+        notifyObservers("ITINERARY_CANCELLED", itineraryPayload("ITINERARY_CANCELLED", saved));
+        return saved;
     }
+
     @Transactional(noRollbackFor = RuntimeException.class)
     public Itinerary assignDestination(Long itineraryId, Long destinationId) {
         Itinerary itinerary = itineraryRepository.findById(itineraryId)
@@ -107,8 +146,11 @@ public class ItineraryService {
 
         itinerary.setDestinationId(destinationId);
         itinerary.setStatus(Itinerary.Status.PLANNED);
-        return itineraryRepository.save(itinerary);
+        Itinerary saved = itineraryRepository.save(itinerary);
+        notifyObservers("DESTINATION_ASSIGNED", itineraryPayload("DESTINATION_ASSIGNED", saved));
+        return saved;
     }
+
     @Transactional
     public Itinerary addDays(Long itineraryId, List<ItineraryDayRequest> dayRequests) {
         Itinerary itinerary = itineraryRepository.findById(itineraryId)
@@ -146,8 +188,10 @@ public class ItineraryService {
         Itinerary result = itineraryRepository.findById(itineraryId)
                 .orElseThrow(() -> new RuntimeException("Itinerary not found with id: " + itineraryId));
         result.setItineraryDays(itineraryDayRepository.findByItineraryIdOrderByDayOrder(itineraryId));
+        notifyObservers("DAYS_ADDED", itineraryPayload("DAYS_ADDED", result));
         return result;
     }
+
     public ItineraryDetailsDTO getItineraryDetails(Long itineraryId) {
         Itinerary itinerary = itineraryRepository.findById(itineraryId)
                 .orElseThrow(() -> new RuntimeException("Itinerary not found with id: " + itineraryId));
@@ -171,6 +215,7 @@ public class ItineraryService {
                 .completedDays(completedDays)
                 .build();
     }
+
     public List<Itinerary> searchByStatusAndDateRange(String status, LocalDate startDate, LocalDate endDate) {
         return itineraryRepository.searchByStatusAndDateRange(status, startDate, endDate);
     }
@@ -200,17 +245,17 @@ public class ItineraryService {
                 .seasonMultiplier(seasonMultiplier)
                 .build();
     }
+
     public List<Itinerary> filterByMetadata(String key, String value) {
         if (key == null || key.isBlank() || value == null || value.isBlank()) {
             throw new IllegalArgumentException("key and value must not be blank");
         }
         return itineraryRepository.filterByMetadata(key, value);
     }
+
     public ItineraryAnalyticsDTO getAnalytics(LocalDate startDate, LocalDate endDate) {
         try {
             Object[] result = itineraryRepository.getAnalytics(startDate, endDate);
-
-            // Handle both Object[] and Object[][] cases
             Object[] row;
             if (result.length > 0 && result[0] instanceof Object[]) {
                 row = (Object[]) result[0];
@@ -244,9 +289,9 @@ public class ItineraryService {
                     .build();
         }
     }
+
     public List<ItineraryDay> getDays(Long itineraryId) {
-        getById(itineraryId); // throws 404 if not found
+        getById(itineraryId);
         return itineraryDayRepository.findByItineraryIdOrderByDayOrder(itineraryId);
     }
-
 }

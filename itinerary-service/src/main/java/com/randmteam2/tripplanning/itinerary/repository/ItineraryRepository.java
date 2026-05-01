@@ -96,4 +96,6 @@ public interface ItineraryRepository extends JpaRepository<Itinerary, Long> {
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate
     );
+
+    boolean existsByUserEmail(String email);
 }
