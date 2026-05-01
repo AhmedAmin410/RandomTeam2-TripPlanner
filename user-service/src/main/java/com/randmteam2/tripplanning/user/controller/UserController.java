@@ -9,6 +9,8 @@ import com.randmteam2.tripplanning.user.model.SavedDestination;
 import com.randmteam2.tripplanning.user.model.User;
 import com.randmteam2.tripplanning.user.service.SavedDestinationService;
 import com.randmteam2.tripplanning.user.service.UserService;
+import com.randmteam2.tripplanning.user.security.JwtService;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -23,11 +25,14 @@ public class UserController {
 
     private final UserService userService;
     private final SavedDestinationService savedDestinationService;
+    private final JwtService jwtService;
 
     public UserController(UserService userService,
-                          SavedDestinationService savedDestinationService) {
+                          SavedDestinationService savedDestinationService,
+                          JwtService jwtService) {
         this.userService = userService;
         this.savedDestinationService = savedDestinationService;
+        this.jwtService = jwtService;
     }
 
     @PostMapping
@@ -187,6 +192,34 @@ public User updatePreferences(
     @GetMapping("/{id}/profile")
     public UserProfileDTO getUserProfile(@PathVariable Long id) {
         return userService.getUserProfile(id);
+    }
+
+    @GetMapping("/{id}/activity")
+    public ResponseEntity<?> getActivityFeed(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            HttpServletRequest request) {
+
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("error", "Missing or malformed Authorization header"));
+        }
+        String token = authHeader.substring(7);
+        Long callerUid = jwtService.extractUserId(token);
+        String callerRole = jwtService.extractRole(token);
+
+        if (!id.equals(callerUid) && !"ADMIN".equals(callerRole)) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", "Access denied"));
+        }
+
+        try {
+            return ResponseEntity.ok(userService.getActivityFeed(id, page, size));
+        } catch (ResponseStatusException e) {
+            return ResponseEntity.status(e.getStatusCode()).body(Map.of("error", e.getReason()));
+        }
     }
 
     @GetMapping("/preferences/travel-style")
