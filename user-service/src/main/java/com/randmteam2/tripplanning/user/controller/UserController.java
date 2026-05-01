@@ -1,6 +1,7 @@
 package com.randmteam2.tripplanning.user.controller;
 
 import com.randmteam2.tripplanning.user.dto.TopTravelerDTO;
+import com.randmteam2.tripplanning.user.dto.TravelStyleUserDTO;
 import com.randmteam2.tripplanning.user.dto.UserProfileDTO;
 import com.randmteam2.tripplanning.user.dto.UserTripSummaryDTO;
 import com.randmteam2.tripplanning.user.model.Role;
@@ -189,7 +190,7 @@ public User updatePreferences(
     }
 
     @GetMapping("/preferences/travel-style")
-    public List<User> findUsersByTravelStyle(
+    public List<TravelStyleUserDTO> findUsersByTravelStyle(
             @RequestParam String style,
             @RequestParam int minTrips) {
 

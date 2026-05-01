@@ -2,6 +2,7 @@ package com.randmteam2.tripplanning.user.service;
 
 import com.randmteam2.tripplanning.user.dto.SavedDestinationDTO;
 import com.randmteam2.tripplanning.user.dto.TopTravelerDTO;
+import com.randmteam2.tripplanning.user.dto.TravelStyleUserDTO;
 import com.randmteam2.tripplanning.user.dto.UserProfileDTO;
 import com.randmteam2.tripplanning.user.dto.UserTripSummaryDTO;
 import com.randmteam2.tripplanning.user.model.Role;
@@ -146,15 +147,15 @@ public class UserService {
         Long cancelledTrips = ((Number) result[2]).longValue();
         Double totalSpent = ((Number) result[3]).doubleValue();
         Double avgBudget = ((Number) result[4]).doubleValue();
-        return new UserTripSummaryDTO(
-                user.getId(),
-                user.getName(),
-                totalTrips,
-                completedTrips,
-                cancelledTrips,
-                totalSpent,
-                avgBudget
-        );
+        return UserTripSummaryDTO.builder()
+                .userId(user.getId())
+                .name(user.getName())
+                .totalTrips(totalTrips)
+                .completedTrips(completedTrips)
+                .cancelledTrips(cancelledTrips)
+                .totalSpent(totalSpent)
+                .averageBudget(avgBudget)
+                .build();
     }
 
     @Cacheable(value = "user-service", key = "'S1-F5::' + #key + '::' + #value")
@@ -235,12 +236,12 @@ public class UserService {
         List<Object[]> results = userRepository.getTopTravelers(limit);
 
         return results.stream()
-                .map(r -> new TopTravelerDTO(
-                        ((Number) r[0]).longValue(),
-                        (String) r[1],
-                        ((Number) r[2]).doubleValue(),
-                        ((Number) r[3]).longValue()
-                ))
+                .map(r -> TopTravelerDTO.builder()
+                        .userId(((Number) r[0]).longValue())
+                        .name((String) r[1])
+                        .totalSpent(((Number) r[2]).doubleValue())
+                        .tripCount(((Number) r[3]).longValue())
+                        .build())
                 .toList();
     }
 
@@ -298,19 +299,19 @@ public class UserService {
                 ))
                 .toList();
 
-        return new UserProfileDTO(
-                user.getId(),
-                user.getName(),
-                user.getEmail(),
-                user.getPhone(),
-                user.getPreferences(),
-                destinationDTOs,
-                destinationDTOs.size()
-        );
+        return UserProfileDTO.builder()
+                .userId(user.getId())
+                .name(user.getName())
+                .email(user.getEmail())
+                .phone(user.getPhone())
+                .preferences(user.getPreferences())
+                .savedDestinations(destinationDTOs)
+                .totalSavedDestinations(destinationDTOs.size())
+                .build();
     }
 
     @Cacheable(value = "user-service", key = "'S1-F9::' + #style + '::' + #minTrips")
-    public List<User> findUsersByTravelStyle(String style, int minTrips) {
+    public List<TravelStyleUserDTO> findUsersByTravelStyle(String style, int minTrips) {
 
         if (style == null || style.trim().isEmpty()) {
             throw new ResponseStatusException(
@@ -319,7 +320,16 @@ public class UserService {
             );
         }
 
-        return userRepository.findUsersByTravelStyleAndMinTrips(style, minTrips);
+        return userRepository.findUsersByTravelStyleAndMinTrips(style, minTrips)
+                .stream()
+                .map(u -> TravelStyleUserDTO.builder()
+                        .userId(u.getId())
+                        .name(u.getName())
+                        .email(u.getEmail())
+                        .role(u.getRole().name())
+                        .preferences(u.getPreferences())
+                        .build())
+                .toList();
     }
 
     public User changeRole(Long id, Role role) {
