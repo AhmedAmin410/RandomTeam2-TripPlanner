@@ -158,18 +158,18 @@ public class ItineraryService {
                 .filter(d -> d.getStatus() == ItineraryDay.Status.COMPLETED)
                 .count();
 
-        return new ItineraryDetailsDTO(
-                itinerary.getId(),
-                itinerary.getUserId(),
-                itinerary.getDestinationId(),
-                itinerary.getTitle(),
-                itinerary.getStatus().name(),
-                itinerary.getEstimatedBudget(),
-                itinerary.getMetadata(),
-                days,
-                days.size(),
-                completedDays
-        );
+        return ItineraryDetailsDTO.builder()
+                .itineraryId(itinerary.getId())
+                .userId(itinerary.getUserId())
+                .destinationId(itinerary.getDestinationId())
+                .title(itinerary.getTitle())
+                .status(itinerary.getStatus().name())
+                .estimatedBudget(itinerary.getEstimatedBudget())
+                .metadata(itinerary.getMetadata())
+                .days(days)
+                .totalDays(days.size())
+                .completedDays(completedDays)
+                .build();
     }
     public List<Itinerary> searchByStatusAndDateRange(String status, LocalDate startDate, LocalDate endDate) {
         return itineraryRepository.searchByStatusAndDateRange(status, startDate, endDate);
@@ -192,7 +192,13 @@ public class ItineraryService {
 
         double total = (accommodation + transport + activities) * seasonMultiplier;
 
-        return new TripCostEstimateDTO(accommodation, transport, activities, total, seasonMultiplier);
+        return TripCostEstimateDTO.builder()
+                .estimatedAccommodation(accommodation)
+                .estimatedTransport(transport)
+                .estimatedActivities(activities)
+                .estimatedTotal(total)
+                .seasonMultiplier(seasonMultiplier)
+                .build();
     }
     public List<Itinerary> filterByMetadata(String key, String value) {
         if (key == null || key.isBlank() || value == null || value.isBlank()) {
@@ -219,11 +225,23 @@ public class ItineraryService {
             double avgBudget = row[4] != null ? ((Number) row[4]).doubleValue() : 0.0;
             double completionRate = total > 0 ? (completed * 100.0) / total : 0.0;
 
-            return new ItineraryAnalyticsDTO(
-                    total, completed, cancelled, totalBudget, avgBudget, completionRate
-            );
+            return ItineraryAnalyticsDTO.builder()
+                    .totalItineraries(total)
+                    .completedItineraries(completed)
+                    .cancelledItineraries(cancelled)
+                    .totalBudget(totalBudget)
+                    .averageBudget(avgBudget)
+                    .completionRate(completionRate)
+                    .build();
         } catch (Exception e) {
-            return new ItineraryAnalyticsDTO(0L, 0L, 0L, 0.0, 0.0, 0.0);
+            return ItineraryAnalyticsDTO.builder()
+                    .totalItineraries(0L)
+                    .completedItineraries(0L)
+                    .cancelledItineraries(0L)
+                    .totalBudget(0.0)
+                    .averageBudget(0.0)
+                    .completionRate(0.0)
+                    .build();
         }
     }
     public List<ItineraryDay> getDays(Long itineraryId) {
