@@ -9,6 +9,7 @@ import com.randomteam2.tripplanning.destination.model.DestinationReview;
 import com.randomteam2.tripplanning.destination.model.ReviewType;
 import com.randomteam2.tripplanning.destination.repository.DestinationRepository;
 import com.randomteam2.tripplanning.destination.repository.DestinationReviewRepository;
+import com.randomteam2.tripplanning.destination.dto.DestinationRevenueDTO;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -16,6 +17,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.server.ResponseStatusException;
+
 
 import java.time.LocalDate;
 import java.util.HashMap;
@@ -44,7 +46,84 @@ class DestinationServiceTest {
 
     @InjectMocks
     private DestinationService destinationService;
+// ... existing code ...
 
+    @Test
+    void revenueSummary_mapsAggregateValuesToDto() {
+        Destination destination = newDestination(1L);
+        destination.setName("Cairo");
+
+        LocalDate start = LocalDate.of(2026, 3, 1);
+        LocalDate end = LocalDate.of(2026, 3, 31);
+
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(destination));
+        when(destinationRepository.findDestinationRevenueSummary(1L, start, end))
+                .thenReturn(new Object[] { 5L, 2000.0, 400.0 });
+
+        DestinationRevenueDTO dto = destinationService.getDestinationRevenueSummary(1L, start, end);
+
+        assertThat(dto.getDestinationId()).isEqualTo(1L);
+        assertThat(dto.getName()).isEqualTo("Cairo");
+        assertThat(dto.getTotalBookings()).isEqualTo(5L);
+        assertThat(dto.getTotalRevenue()).isEqualTo(2000.0);
+        assertThat(dto.getAverageBookingAmount()).isEqualTo(400.0);
+
+        verify(destinationRepository).findById(1L);
+        verify(destinationRepository).findDestinationRevenueSummary(1L, start, end);
+    }
+
+    @Test
+    void revenueSummary_noBookings_returnsZeroes() {
+        Destination destination = newDestination(2L);
+        destination.setName("Alexandria");
+
+        LocalDate start = LocalDate.of(2026, 4, 1);
+        LocalDate end = LocalDate.of(2026, 4, 30);
+
+        when(destinationRepository.findById(2L)).thenReturn(Optional.of(destination));
+        when(destinationRepository.findDestinationRevenueSummary(2L, start, end))
+                .thenReturn(new Object[] { 0L, 0.0, 0.0 });
+
+        DestinationRevenueDTO dto = destinationService.getDestinationRevenueSummary(2L, start, end);
+
+        assertThat(dto.getDestinationId()).isEqualTo(2L);
+        assertThat(dto.getName()).isEqualTo("Alexandria");
+        assertThat(dto.getTotalBookings()).isEqualTo(0L);
+        assertThat(dto.getTotalRevenue()).isEqualTo(0.0);
+        assertThat(dto.getAverageBookingAmount()).isEqualTo(0.0);
+    }
+
+    @Test
+    void revenueSummary_destinationNotFound_throws404() {
+        LocalDate start = LocalDate.of(2026, 3, 1);
+        LocalDate end = LocalDate.of(2026, 3, 31);
+
+        when(destinationRepository.findById(99L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> destinationService.getDestinationRevenueSummary(99L, start, end))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(404));
+
+        verify(destinationRepository).findById(99L);
+        verify(destinationRepository, never()).findDestinationRevenueSummary(any(), any(), any());
+    }
+
+    @Test
+    void revenueSummary_endDateBeforeStartDate_throws400() {
+        LocalDate start = LocalDate.of(2026, 3, 31);
+        LocalDate end = LocalDate.of(2026, 3, 1);
+
+        assertThatThrownBy(() -> destinationService.getDestinationRevenueSummary(1L, start, end))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+
+        verify(destinationRepository, never()).findById(any());
+        verify(destinationRepository, never()).findDestinationRevenueSummary(any(), any(), any());
+    }
+
+
+
+    // ... existing code ...
     @Test
     void updateDetails_mergesIncomingFieldsWithExistingDetails() {
         Destination destination = newDestination(1L);

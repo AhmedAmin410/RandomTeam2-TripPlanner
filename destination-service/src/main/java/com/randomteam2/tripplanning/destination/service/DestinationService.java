@@ -2,6 +2,7 @@ package com.randomteam2.tripplanning.destination.service;
 
 import com.randomteam2.tripplanning.destination.dto.DestinationRateRequest;
 import com.randomteam2.tripplanning.destination.dto.DestinationReviewAlertDTO;
+import com.randomteam2.tripplanning.destination.dto.DestinationRevenueDTO;
 import com.randomteam2.tripplanning.destination.dto.TopDestinationDTO;
 import com.randomteam2.tripplanning.destination.dto.VerifyDestinationReviewRequest;
 import com.randomteam2.tripplanning.destination.model.Destination;
@@ -33,6 +34,37 @@ public class DestinationService {
             DestinationReviewRepository destinationReviewRepository) {
         this.destinationRepository = destinationRepository;
         this.destinationReviewRepository = destinationReviewRepository;
+    }
+    @Transactional(readOnly = true)
+    public DestinationRevenueDTO getDestinationRevenueSummary(
+            Long destinationId,
+            LocalDate startDate,
+            LocalDate endDate) {
+        if (startDate == null || endDate == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate and endDate are required");
+        }
+
+        if (endDate.isBefore(startDate)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "endDate must not be before startDate");
+        }
+
+        Destination destination = destinationRepository.findById(destinationId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Destination not found"));
+
+        Object[] row = destinationRepository.findDestinationRevenueSummary(destinationId, startDate, endDate);
+
+        if (row != null && row.length == 1 && row[0] instanceof Object[]) {
+            row = (Object[]) row[0];
+        }
+
+        DestinationRevenueDTO dto = new DestinationRevenueDTO();
+        dto.setDestinationId(destination.getId());
+        dto.setName(destination.getName());
+        dto.setTotalBookings(row != null && row[0] != null ? ((Number) row[0]).longValue() : 0L);
+        dto.setTotalRevenue(row != null && row[1] != null ? ((Number) row[1]).doubleValue() : 0.0);
+        dto.setAverageBookingAmount(row != null && row[2] != null ? ((Number) row[2]).doubleValue() : 0.0);
+
+        return dto;
     }
     @Transactional
     public Destination updateDetails(Long id, Map<String, Object> incomingDetails) {
