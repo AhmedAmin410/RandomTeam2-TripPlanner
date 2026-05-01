@@ -98,4 +98,23 @@ public interface ItineraryRepository extends JpaRepository<Itinerary, Long> {
     );
 
     boolean existsByUserEmail(String email);
+
+    @Query(value = """
+    SELECT
+        COUNT(*) as total,
+        COALESCE(SUM(estimated_budget), 0) as totalBudget,
+        COALESCE(AVG(estimated_budget), 0) as avgBudget,
+        SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) as completed,
+        SUM(CASE WHEN status = 'CANCELLED' THEN 1 ELSE 0 END) as cancelled,
+        SUM(CASE WHEN status = 'PLANNED' THEN 1 ELSE 0 END) as planned,
+        SUM(CASE WHEN status = 'DRAFT' THEN 1 ELSE 0 END) as draft,
+        SUM(CASE WHEN status = 'IN_PROGRESS' THEN 1 ELSE 0 END) as inProgress
+    FROM itineraries
+    WHERE start_date >= :startDate
+    AND start_date <= :endDate
+    """, nativeQuery = true)
+    Object[] getDashboardAnalytics(
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate
+    );
 }
