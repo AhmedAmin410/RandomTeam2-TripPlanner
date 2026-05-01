@@ -8,6 +8,7 @@ import org.springframework.data.rest.core.annotation.RepositoryRestResource;
 
 import java.util.List;
 import java.util.Optional;
+import java.time.LocalDate;
 
 @RepositoryRestResource(exported = false)
 public interface DestinationRepository extends JpaRepository<Destination, Long> {
@@ -62,4 +63,20 @@ public interface DestinationRepository extends JpaRepository<Destination, Long> 
             WHERE d.id = :id
             """)
     Optional<Destination> findByIdWithDestinationReviews(@Param("id") Long id);
+    @Query(value = """
+            SELECT
+                COUNT(b.id)::bigint AS total_bookings,
+                COALESCE(SUM(b.amount), 0) AS total_revenue,
+                COALESCE(AVG(b.amount), 0) AS average_booking_amount
+            FROM bookings b
+            INNER JOIN itineraries i ON b.itin_id = i.id
+            WHERE i.destination_id = :destinationId
+            AND b.status = 'CONFIRMED'
+            AND DATE(b.created_at) BETWEEN :startDate AND :endDate
+            """, nativeQuery = true)
+    Object[] findDestinationRevenueSummary(
+            @Param("destinationId") Long destinationId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate);
 }
+
