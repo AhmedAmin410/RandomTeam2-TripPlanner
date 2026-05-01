@@ -4,11 +4,11 @@ import com.randmteam2.tripplanning.user.dto.SavedDestinationDTO;
 import com.randmteam2.tripplanning.user.dto.TopTravelerDTO;
 import com.randmteam2.tripplanning.user.dto.UserProfileDTO;
 import com.randmteam2.tripplanning.user.dto.UserTripSummaryDTO;
-import com.randmteam2.tripplanning.user.model.AuthEvent;
 import com.randmteam2.tripplanning.user.model.Role;
 import com.randmteam2.tripplanning.user.model.SavedDestination;
 import com.randmteam2.tripplanning.user.model.User;
 import com.randmteam2.tripplanning.user.model.UserStatus;
+import com.randmteam2.tripplanning.user.observer.UserEventPublisher;
 import com.randmteam2.tripplanning.user.repository.AuthEventRepository;
 import com.randmteam2.tripplanning.user.repository.SavedDestinationRepository;
 import com.randmteam2.tripplanning.user.repository.UserRepository;
@@ -17,7 +17,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
-import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,17 +29,20 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final UserCacheInvalidationService cacheInvalidationService;
     private final AuthEventRepository authEventRepository;
+    private final UserEventPublisher eventPublisher;
 
     public UserService(UserRepository userRepository,
                        SavedDestinationRepository savedDestinationRepository,
                        PasswordEncoder passwordEncoder,
                        UserCacheInvalidationService cacheInvalidationService,
-                       AuthEventRepository authEventRepository) {
+                       AuthEventRepository authEventRepository,
+                       UserEventPublisher eventPublisher) {
         this.userRepository = userRepository;
         this.savedDestinationRepository = savedDestinationRepository;
         this.passwordEncoder = passwordEncoder;
         this.cacheInvalidationService = cacheInvalidationService;
         this.authEventRepository = authEventRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     public User createUser(User user) {
@@ -50,6 +52,7 @@ public class UserService {
             user.setStatus(UserStatus.ACTIVE);
         }
         User saved = userRepository.save(user);
+        eventPublisher.notifyObservers("USER_CREATED", Map.of("userId", saved.getId(), "email", saved.getEmail()));
         cacheInvalidationService.evictUserReadCaches();
         return saved;
     }
@@ -104,12 +107,15 @@ public class UserService {
         if (updatedUser.getStatus() != null)
             existingUser.setStatus(updatedUser.getStatus());
 
-        return userRepository.save(existingUser);
+        User saved = userRepository.save(existingUser);
+        eventPublisher.notifyObservers("USER_UPDATED", Map.of("userId", saved.getId()));
+        return saved;
     }
 
     public void deleteUser(Long id) {
         User user = getUserById(id);
         userRepository.delete(user);
+        eventPublisher.notifyObservers("USER_DELETED", Map.of("userId", id));
         cacheInvalidationService.evictUserReadCaches();
     }
 
@@ -123,6 +129,7 @@ public class UserService {
         current.putAll(updates);
         user.setPreferences(current);
         User saved = userRepository.save(user);
+        eventPublisher.notifyObservers("USER_UPDATED", Map.of("userId", saved.getId()));
         cacheInvalidationService.evictUserReadCaches();
         return saved;
     }
@@ -213,6 +220,7 @@ public class UserService {
 
         user.setStatus(UserStatus.DEACTIVATED);
         User saved = userRepository.save(user);
+        eventPublisher.notifyObservers("USER_DEACTIVATED", Map.of("userId", saved.getId()));
         cacheInvalidationService.evictUserReadCaches();
         return saved;
     }
@@ -263,6 +271,8 @@ public class UserService {
         target.setDefault(true);
 
         savedDestinationRepository.saveAll(userDestinations);
+        eventPublisher.notifyObservers("DEFAULT_DESTINATION_SET",
+                Map.of("userId", userId, "destinationId", destinationId));
 
         return userRepository.findById(userId).get();
     }
@@ -317,9 +327,8 @@ public class UserService {
         String previousRole = user.getRole().name();
         user.setRole(role);
         User saved = userRepository.save(user);
-        authEventRepository.save(new AuthEvent(
-                saved.getId(), "ROLE_CHANGED", LocalDateTime.now(),
-                Map.of("previousRole", previousRole, "newRole", role.name())));
+        eventPublisher.notifyObservers("ROLE_CHANGED",
+                Map.of("userId", saved.getId(), "previousRole", previousRole, "newRole", role.name()));
         cacheInvalidationService.evictUserReadCaches();
         return saved;
     }

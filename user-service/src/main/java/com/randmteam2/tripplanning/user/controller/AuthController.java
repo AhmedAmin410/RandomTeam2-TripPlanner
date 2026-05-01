@@ -1,9 +1,8 @@
 package com.randmteam2.tripplanning.user.controller;
 
 import com.randmteam2.tripplanning.user.dto.LoginRequest;
-import com.randmteam2.tripplanning.user.model.AuthEvent;
 import com.randmteam2.tripplanning.user.model.User;
-import com.randmteam2.tripplanning.user.repository.AuthEventRepository;
+import com.randmteam2.tripplanning.user.observer.UserEventPublisher;
 import com.randmteam2.tripplanning.user.repository.UserRepository;
 import com.randmteam2.tripplanning.user.security.JwtConfigurationManager;
 import com.randmteam2.tripplanning.user.security.JwtService;
@@ -13,7 +12,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.LocalDateTime;
 import java.util.Map;
 
 @RestController
@@ -24,18 +22,18 @@ public class AuthController {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
-    private final AuthEventRepository authEventRepository;
+    private final UserEventPublisher eventPublisher;
 
     public AuthController(UserService userService,
                           UserRepository userRepository,
                           PasswordEncoder passwordEncoder,
                           JwtService jwtService,
-                          AuthEventRepository authEventRepository) {
+                          UserEventPublisher eventPublisher) {
         this.userService = userService;
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
-        this.authEventRepository = authEventRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     @PostMapping("/register")
@@ -54,9 +52,8 @@ public class AuthController {
                     .body(Map.of("error", "Phone already registered"));
         }
         User created = userService.createUser(user);
-        authEventRepository.save(new AuthEvent(
-                created.getId(), "REGISTERED", LocalDateTime.now(),
-                Map.of("email", created.getEmail())));
+        eventPublisher.notifyObservers("REGISTERED",
+                Map.of("userId", created.getId(), "email", created.getEmail()));
         String token = jwtService.generateToken(created);
         long expiresIn = JwtConfigurationManager.getInstance().getExpirationMs();
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -70,8 +67,7 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(Map.of("error", "Invalid credentials"));
         }
-        authEventRepository.save(new AuthEvent(
-                user.getId(), "LOGGED_IN", LocalDateTime.now(), Map.of()));
+        eventPublisher.notifyObservers("LOGGED_IN", Map.of("userId", user.getId()));
         String token = jwtService.generateToken(user);
         long expiresIn = JwtConfigurationManager.getInstance().getExpirationMs();
         return ResponseEntity.ok(Map.of("token", token, "expiresIn", expiresIn));
