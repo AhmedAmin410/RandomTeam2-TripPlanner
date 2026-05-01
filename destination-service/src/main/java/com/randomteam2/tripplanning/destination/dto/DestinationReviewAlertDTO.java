@@ -1,6 +1,6 @@
-package com.randmteam2.tripplanning.destination.dto;
+package com.randomteam2.tripplanning.destination.dto;
 
-import com.randmteam2.tripplanning.destination.model.DestinationReview;
+import com.randomteam2.tripplanning.destination.model.DestinationReview;
 
 import java.util.List;
 

@@ -1,16 +1,18 @@
-package com.randmteam2.tripplanning.destination.controller;
+package com.randomteam2.tripplanning.destination.controller;
 
-import com.randmteam2.tripplanning.destination.dto.DestinationRateRequest;
-import com.randmteam2.tripplanning.destination.dto.DestinationReviewAlertDTO;
-import com.randmteam2.tripplanning.destination.dto.DestinationStatusRequest;
-import com.randmteam2.tripplanning.destination.dto.TopDestinationDTO;
-import com.randmteam2.tripplanning.destination.dto.VerifyDestinationReviewRequest;
-import com.randmteam2.tripplanning.destination.model.Destination;
-import com.randmteam2.tripplanning.destination.service.DestinationService;
+import com.randomteam2.tripplanning.destination.dto.DestinationRateRequest;
+import com.randomteam2.tripplanning.destination.dto.DestinationReviewAlertDTO;
+import com.randomteam2.tripplanning.destination.dto.DestinationStatusRequest;
+import com.randomteam2.tripplanning.destination.dto.TopDestinationDTO;
+import com.randomteam2.tripplanning.destination.dto.VerifyDestinationReviewRequest;
+import com.randomteam2.tripplanning.destination.model.Destination;
+import com.randomteam2.tripplanning.destination.service.DestinationService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
+
 
 @RestController
 @RequestMapping("/api/destinations")
@@ -21,7 +23,12 @@ public class DestinationController {
     public DestinationController(DestinationService destinationService) {
         this.destinationService = destinationService;
     }
-
+    @PutMapping("/{id}/details")
+    public ResponseEntity<Destination> updateDetails(
+            @PathVariable Long id,
+            @RequestBody Map<String, Object> details) {
+        return ResponseEntity.ok(destinationService.updateDetails(id, details));
+    }
     @PutMapping("/{id}/status")
     public ResponseEntity<Destination> updateStatus(
             @PathVariable Long id,

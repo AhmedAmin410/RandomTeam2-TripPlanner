@@ -1,4 +1,4 @@
-package com.randmteam2.tripplanning.destination.model;
+package com.randomteam2.tripplanning.destination.model;
 
 public enum ReviewType {
     VISITOR,

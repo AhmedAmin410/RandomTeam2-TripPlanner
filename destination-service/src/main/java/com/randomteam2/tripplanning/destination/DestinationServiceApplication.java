@@ -1,4 +1,4 @@
-package com.randmteam2.tripplanning.destination;
+package com.randomteam2.tripplanning.destination;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

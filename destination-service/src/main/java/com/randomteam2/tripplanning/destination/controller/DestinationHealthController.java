@@ -1,4 +1,4 @@
-package com.randmteam2.tripplanning.destination.controller;
+package com.randomteam2.tripplanning.destination.controller;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;

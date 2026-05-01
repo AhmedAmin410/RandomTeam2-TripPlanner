@@ -1,13 +1,13 @@
-package com.randmteam2.tripplanning.destination.service;
+package com.randomteam2.tripplanning.destination.service;
 
-import com.randmteam2.tripplanning.destination.dto.DestinationRateRequest;
-import com.randmteam2.tripplanning.destination.dto.DestinationReviewAlertDTO;
-import com.randmteam2.tripplanning.destination.dto.TopDestinationDTO;
-import com.randmteam2.tripplanning.destination.dto.VerifyDestinationReviewRequest;
-import com.randmteam2.tripplanning.destination.model.Destination;
-import com.randmteam2.tripplanning.destination.model.DestinationReview;
-import com.randmteam2.tripplanning.destination.repository.DestinationRepository;
-import com.randmteam2.tripplanning.destination.repository.DestinationReviewRepository;
+import com.randomteam2.tripplanning.destination.dto.DestinationRateRequest;
+import com.randomteam2.tripplanning.destination.dto.DestinationReviewAlertDTO;
+import com.randomteam2.tripplanning.destination.dto.TopDestinationDTO;
+import com.randomteam2.tripplanning.destination.dto.VerifyDestinationReviewRequest;
+import com.randomteam2.tripplanning.destination.model.Destination;
+import com.randomteam2.tripplanning.destination.model.DestinationReview;
+import com.randomteam2.tripplanning.destination.repository.DestinationRepository;
+import com.randomteam2.tripplanning.destination.repository.DestinationReviewRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+
 @Service
 public class DestinationService {
 
@@ -32,6 +33,28 @@ public class DestinationService {
             DestinationReviewRepository destinationReviewRepository) {
         this.destinationRepository = destinationRepository;
         this.destinationReviewRepository = destinationReviewRepository;
+    }
+    @Transactional
+    public Destination updateDetails(Long id, Map<String, Object> incomingDetails) {
+        Destination destination = destinationRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Destination not found"));
+
+        if (incomingDetails == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "details body is required");
+        }
+
+        Map<String, Object> mergedDetails = destination.getDetails();
+
+        if (mergedDetails == null) {
+            mergedDetails = new HashMap<>();
+        } else {
+            mergedDetails = new HashMap<>(mergedDetails);
+        }
+
+        mergedDetails.putAll(incomingDetails);
+
+        destination.setDetails(mergedDetails);
+        return destinationRepository.save(destination);
     }
 
     @Transactional

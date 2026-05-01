@@ -1,4 +1,4 @@
-package com.randmteam2.tripplanning.destination;
+package com.randomteam2.tripplanning.destination;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;

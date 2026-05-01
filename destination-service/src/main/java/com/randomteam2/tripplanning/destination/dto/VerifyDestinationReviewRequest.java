@@ -1,4 +1,4 @@
-package com.randmteam2.tripplanning.destination.dto;
+package com.randomteam2.tripplanning.destination.dto;
 
 public class VerifyDestinationReviewRequest {
 
