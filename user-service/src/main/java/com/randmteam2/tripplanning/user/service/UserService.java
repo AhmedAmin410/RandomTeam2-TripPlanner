@@ -18,6 +18,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -330,6 +332,30 @@ public class UserService {
                         .preferences(u.getPreferences())
                         .build())
                 .toList();
+    }
+
+    @Cacheable(value = "user-service", key = "'S1-F12::' + #userId + '::' + #page + '::' + #size")
+    public Map<String, Object> getActivityFeed(Long userId, int page, int size) {
+        getUserById(userId);
+        if (size > 100) size = 100;
+        Page<com.randmteam2.tripplanning.user.model.AuthEvent> result =
+                authEventRepository.findByUserIdOrderByTimestampDesc(
+                        userId, PageRequest.of(page, size));
+        List<Map<String, Object>> content = result.getContent().stream()
+                .map(e -> {
+                    Map<String, Object> item = new HashMap<>();
+                    item.put("action", e.getAction());
+                    item.put("timestamp", e.getTimestamp());
+                    item.put("details", e.getDetails() != null ? e.getDetails() : Map.of());
+                    return item;
+                })
+                .toList();
+        Map<String, Object> response = new HashMap<>();
+        response.put("content", content);
+        response.put("page", page);
+        response.put("size", size);
+        response.put("totalElements", result.getTotalElements());
+        return response;
     }
 
     public User changeRole(Long id, Role role) {
