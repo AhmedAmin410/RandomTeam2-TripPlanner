@@ -1,5 +1,6 @@
 package com.randmteam2.tripplanning.user.model;
 
+import com.randmteam2.tripplanning.user.mongo.MongoEvent;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
@@ -7,7 +8,7 @@ import java.time.LocalDateTime;
 import java.util.Map;
 
 @Document(collection = "auth_events")
-public class AuthEvent {
+public class AuthEvent implements MongoEvent {
 
     @Id
     private String id;
