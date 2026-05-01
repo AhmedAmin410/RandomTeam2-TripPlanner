@@ -1,0 +1,483 @@
+package com.randmteam2.tripplanning.destination.service;
+
+import com.randmteam2.tripplanning.destination.dto.DestinationRateRequest;
+import com.randmteam2.tripplanning.destination.dto.TopDestinationDTO;
+import com.randmteam2.tripplanning.destination.dto.DestinationReviewAlertDTO;
+import com.randmteam2.tripplanning.destination.dto.VerifyDestinationReviewRequest;
+import com.randmteam2.tripplanning.destination.model.Destination;
+import com.randmteam2.tripplanning.destination.model.DestinationReview;
+import com.randmteam2.tripplanning.destination.model.ReviewType;
+import com.randmteam2.tripplanning.destination.repository.DestinationRepository;
+import com.randmteam2.tripplanning.destination.repository.DestinationReviewRepository;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+class DestinationServiceTest {
+
+    @Mock
+    private DestinationRepository destinationRepository;
+
+    @Mock
+    private DestinationReviewRepository destinationReviewRepository;
+
+    @InjectMocks
+    private DestinationService destinationService;
+
+    @Test
+    void updateStatus_notFound_throws404() {
+        when(destinationRepository.findById(9L)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> destinationService.updateStatus(9L, "ACTIVE"))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(404));
+    }
+
+    @Test
+    void updateStatus_invalidStatus_throws400() {
+        assertThatThrownBy(() -> destinationService.updateStatus(1L, "RETIRED"))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+
+        verify(destinationRepository, never()).findById(any());
+    }
+
+    @Test
+    void updateStatus_blankStatus_throws400() {
+        assertThatThrownBy(() -> destinationService.updateStatus(1L, "   "))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+    }
+
+    @Test
+    void updateStatus_inactiveWithActiveItineraries_throws400() {
+        Destination dest = new Destination();
+        dest.setId(1L);
+        dest.setName("Paris");
+        dest.setStatus(Destination.Status.ACTIVE);
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(dest));
+        when(destinationRepository.countActiveItinerariesReferencingDestination(1L)).thenReturn(1L);
+
+        assertThatThrownBy(() -> destinationService.updateStatus(1L, "INACTIVE"))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+
+        verify(destinationRepository, never()).save(any());
+    }
+
+    @Test
+    void updateStatus_active_noItineraryCheck_saves() {
+        Destination dest = new Destination();
+        dest.setId(2L);
+        dest.setName("Lyon");
+        dest.setStatus(Destination.Status.INACTIVE);
+        when(destinationRepository.findById(2L)).thenReturn(Optional.of(dest));
+        when(destinationRepository.save(any(Destination.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Destination updated = destinationService.updateStatus(2L, "ACTIVE");
+
+        assertThat(updated.getStatus()).isEqualTo(Destination.Status.ACTIVE);
+        verify(destinationRepository, never()).countActiveItinerariesReferencingDestination(anyLong());
+    }
+
+    @Test
+    void updateStatus_inactiveWhenNoActiveItineraries_saves() {
+        Destination dest = new Destination();
+        dest.setId(3L);
+        dest.setName("Nice");
+        dest.setStatus(Destination.Status.ACTIVE);
+        when(destinationRepository.findById(3L)).thenReturn(Optional.of(dest));
+        when(destinationRepository.countActiveItinerariesReferencingDestination(3L)).thenReturn(0L);
+        when(destinationRepository.save(any(Destination.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Destination updated = destinationService.updateStatus(3L, "inactive");
+
+        assertThat(updated.getStatus()).isEqualTo(Destination.Status.INACTIVE);
+    }
+
+    @Test
+    void searchByDetails_blankKey_throws400() {
+        assertThatThrownBy(() -> destinationService.searchByDetailsKeyValue(" ", "tropical", null))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+
+        verify(destinationRepository, never()).searchByDetailsKeyValue(any(), any(), any());
+    }
+
+    @Test
+    void searchByDetails_invalidStatus_throws400() {
+        assertThatThrownBy(() -> destinationService.searchByDetailsKeyValue("climate", "tropical", "BAD"))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+
+        verify(destinationRepository, never()).searchByDetailsKeyValue(any(), any(), any());
+    }
+
+    @Test
+    void searchByDetails_noStatus_passesNullStatusFilter() {
+        when(destinationRepository.searchByDetailsKeyValue("climate", "tropical", null))
+                .thenReturn(List.of());
+
+        assertThat(destinationService.searchByDetailsKeyValue("climate", "tropical", null)).isEmpty();
+
+        verify(destinationRepository).searchByDetailsKeyValue("climate", "tropical", null);
+    }
+
+    @Test
+    void searchByDetails_withStatus_passesNormalizedStatus() {
+        when(destinationRepository.searchByDetailsKeyValue("climate", "tropical", "ACTIVE"))
+                .thenReturn(List.of());
+
+        destinationService.searchByDetailsKeyValue("climate", "tropical", "active");
+
+        verify(destinationRepository).searchByDetailsKeyValue(eq("climate"), eq("tropical"), eq("ACTIVE"));
+    }
+
+    @Test
+    void topRatedReport_limitBelowOne_throws400() {
+        assertThatThrownBy(() -> destinationService.getTopRatedDestinationsReport(0))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+
+        verify(destinationRepository, never()).findTopRatedDestinationsReport(anyInt());
+    }
+
+    @Test
+    void topRatedReport_mapsRowsToDto() {
+        Object[] row = new Object[] { 10L, "Luxor", 4.9, 5L };
+        when(destinationRepository.findTopRatedDestinationsReport(2)).thenReturn(List.<Object[]>of(row));
+
+        List<TopDestinationDTO> list = destinationService.getTopRatedDestinationsReport(2);
+
+        assertThat(list).hasSize(1);
+        assertThat(list.get(0).getDestinationId()).isEqualTo(10L);
+        assertThat(list.get(0).getName()).isEqualTo("Luxor");
+        assertThat(list.get(0).getRating()).isEqualTo(4.9);
+        assertThat(list.get(0).getTotalBookings()).isEqualTo(5L);
+        verify(destinationRepository).findTopRatedDestinationsReport(2);
+    }
+
+    @Test
+    void topRatedReport_nullRating_mapsToZero() {
+        Object[] row = new Object[] { 1L, "X", null, 0L };
+        when(destinationRepository.findTopRatedDestinationsReport(10)).thenReturn(List.<Object[]>of(row));
+
+        TopDestinationDTO dto = destinationService.getTopRatedDestinationsReport(10).get(0);
+
+        assertThat(dto.getRating()).isEqualTo(0.0);
+    }
+
+    @Test
+    void rateAfterVisit_destinationNotFound_throws404() {
+        when(destinationRepository.findById(99L)).thenReturn(Optional.empty());
+
+        DestinationRateRequest req = new DestinationRateRequest();
+        req.setItineraryId(1L);
+        req.setRating(5);
+
+        assertThatThrownBy(() -> destinationService.rateAfterVisit(99L, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(404));
+
+        verify(destinationRepository, never()).findItineraryDestinationIdAndStatus(any());
+    }
+
+    @Test
+    void rateAfterVisit_ratingOutOfRange_throws400() {
+        Destination d = newDestination(1L);
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(d));
+
+        DestinationRateRequest req = new DestinationRateRequest();
+        req.setItineraryId(1L);
+        req.setRating(6);
+
+        assertThatThrownBy(() -> destinationService.rateAfterVisit(1L, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+
+        verify(destinationRepository, never()).findItineraryDestinationIdAndStatus(any());
+    }
+
+    @Test
+    void rateAfterVisit_itineraryNotFound_throws404() {
+        Destination d = newDestination(1L);
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(d));
+        when(destinationRepository.findItineraryDestinationIdAndStatus(10L)).thenReturn(List.of());
+
+        DestinationRateRequest req = new DestinationRateRequest();
+        req.setItineraryId(10L);
+        req.setRating(5);
+
+        assertThatThrownBy(() -> destinationService.rateAfterVisit(1L, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(404));
+    }
+
+    @Test
+    void rateAfterVisit_wrongDestination_throws400() {
+        Destination d = newDestination(1L);
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(d));
+        when(destinationRepository.findItineraryDestinationIdAndStatus(10L))
+                .thenReturn(List.<Object[]>of(new Object[] { 2L, "COMPLETED" }));
+
+        DestinationRateRequest req = new DestinationRateRequest();
+        req.setItineraryId(10L);
+        req.setRating(5);
+
+        assertThatThrownBy(() -> destinationService.rateAfterVisit(1L, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+    }
+
+    @Test
+    void rateAfterVisit_notCompleted_throws400() {
+        Destination d = newDestination(1L);
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(d));
+        when(destinationRepository.findItineraryDestinationIdAndStatus(10L))
+                .thenReturn(List.<Object[]>of(new Object[] { 1L, "PLANNED" }));
+
+        DestinationRateRequest req = new DestinationRateRequest();
+        req.setItineraryId(10L);
+        req.setRating(5);
+
+        assertThatThrownBy(() -> destinationService.rateAfterVisit(1L, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+    }
+
+    @Test
+    void rateAfterVisit_firstRating_setsAverageAndCount() {
+        Destination d = newDestination(1L);
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(d));
+        when(destinationRepository.findItineraryDestinationIdAndStatus(10L))
+                .thenReturn(List.<Object[]>of(new Object[] { 1L, "COMPLETED" }));
+        when(destinationRepository.save(any(Destination.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        DestinationRateRequest req = new DestinationRateRequest();
+        req.setItineraryId(10L);
+        req.setRating(5);
+
+        Destination updated = destinationService.rateAfterVisit(1L, req);
+
+        assertThat(updated.getRating()).isEqualTo(5.0);
+        assertThat(updated.getTotalRatings()).isEqualTo(1);
+    }
+
+    @Test
+    void rateAfterVisit_secondRating_recalculatesRunningAverage() {
+        Destination d = newDestination(1L);
+        d.setRating(5.0);
+        d.setTotalRatings(1);
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(d));
+        when(destinationRepository.findItineraryDestinationIdAndStatus(11L))
+                .thenReturn(List.<Object[]>of(new Object[] { 1L, "COMPLETED" }));
+        when(destinationRepository.save(any(Destination.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        DestinationRateRequest req = new DestinationRateRequest();
+        req.setItineraryId(11L);
+        req.setRating(3);
+
+        Destination updated = destinationService.rateAfterVisit(1L, req);
+
+        assertThat(updated.getRating()).isEqualTo(4.0);
+        assertThat(updated.getTotalRatings()).isEqualTo(2);
+    }
+
+    @Test
+    void verifyReview_destinationNotFound_throws404() {
+        when(destinationRepository.findById(1L)).thenReturn(Optional.empty());
+
+        VerifyDestinationReviewRequest req = new VerifyDestinationReviewRequest();
+        req.setVerifiedBy(3L);
+
+        assertThatThrownBy(() -> destinationService.verifyDestinationReview(1L, 10L, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(404));
+
+        verify(destinationRepository, never()).countAdminUserById(anyLong());
+    }
+
+    @Test
+    void verifyReview_missingVerifiedBy_throws400() {
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(newDestination(1L)));
+
+        VerifyDestinationReviewRequest req = new VerifyDestinationReviewRequest();
+
+        assertThatThrownBy(() -> destinationService.verifyDestinationReview(1L, 10L, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+    }
+
+    @Test
+    void verifyReview_nonAdmin_throws403() {
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(newDestination(1L)));
+        when(destinationRepository.countAdminUserById(3L)).thenReturn(0L);
+
+        VerifyDestinationReviewRequest req = new VerifyDestinationReviewRequest();
+        req.setVerifiedBy(3L);
+
+        assertThatThrownBy(() -> destinationService.verifyDestinationReview(1L, 10L, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(403));
+    }
+
+    @Test
+    void verifyReview_reviewNotFound_throws404() {
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(newDestination(1L)));
+        when(destinationRepository.countAdminUserById(3L)).thenReturn(1L);
+        when(destinationReviewRepository.findById(99L)).thenReturn(Optional.empty());
+
+        VerifyDestinationReviewRequest req = new VerifyDestinationReviewRequest();
+        req.setVerifiedBy(3L);
+
+        assertThatThrownBy(() -> destinationService.verifyDestinationReview(1L, 99L, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(404));
+    }
+
+    @Test
+    void verifyReview_wrongDestination_throws400() {
+        Destination d1 = newDestination(1L);
+        Destination d2 = newDestination(2L);
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(d1));
+        when(destinationRepository.countAdminUserById(3L)).thenReturn(1L);
+
+        DestinationReview review = new DestinationReview();
+        review.setId(10L);
+        review.setDestination(d2);
+        review.setVisitDate(LocalDate.now().minusDays(1));
+        when(destinationReviewRepository.findById(10L)).thenReturn(Optional.of(review));
+
+        VerifyDestinationReviewRequest req = new VerifyDestinationReviewRequest();
+        req.setVerifiedBy(3L);
+
+        assertThatThrownBy(() -> destinationService.verifyDestinationReview(1L, 10L, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+    }
+
+    @Test
+    void verifyReview_futureVisit_throws400() {
+        Destination d1 = newDestination(1L);
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(d1));
+        when(destinationRepository.countAdminUserById(3L)).thenReturn(1L);
+
+        DestinationReview review = new DestinationReview();
+        review.setId(10L);
+        review.setDestination(d1);
+        review.setVisitDate(LocalDate.now().plusDays(1));
+        when(destinationReviewRepository.findById(10L)).thenReturn(Optional.of(review));
+
+        VerifyDestinationReviewRequest req = new VerifyDestinationReviewRequest();
+        req.setVerifiedBy(3L);
+
+        assertThatThrownBy(() -> destinationService.verifyDestinationReview(1L, 10L, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+    }
+
+    @Test
+    void lowRatedReviews_negativeMax_throws400() {
+        assertThatThrownBy(() -> destinationService.getDestinationsWithLowRatedReviews(-1))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+
+        verify(destinationReviewRepository, never()).findLowRatedReviewsWithDestination(anyInt());
+    }
+
+    @Test
+    void lowRatedReviews_noMatches_returnsEmpty() {
+        when(destinationReviewRepository.findLowRatedReviewsWithDestination(0)).thenReturn(List.of());
+
+        assertThat(destinationService.getDestinationsWithLowRatedReviews(0)).isEmpty();
+    }
+
+    @Test
+    void lowRatedReviews_groupsByDestinationWithCounts() {
+        Destination d1 = newDestination(1L);
+        Destination d3 = newDestination(3L);
+        DestinationReview r1 = lowRatedReview(1L, d1, 2);
+        DestinationReview r2 = lowRatedReview(2L, d1, 1);
+        DestinationReview r3 = lowRatedReview(3L, d3, 2);
+        when(destinationReviewRepository.findLowRatedReviewsWithDestination(2))
+                .thenReturn(List.of(r1, r2, r3));
+
+        List<DestinationReviewAlertDTO> list = destinationService.getDestinationsWithLowRatedReviews(2);
+
+        assertThat(list).hasSize(2);
+        assertThat(list.get(0).getDestinationId()).isEqualTo(1L);
+        assertThat(list.get(0).getLowRatedCount()).isEqualTo(2);
+        assertThat(list.get(0).getLowRatedReviews()).hasSize(2);
+        assertThat(list.get(1).getDestinationId()).isEqualTo(3L);
+        assertThat(list.get(1).getLowRatedCount()).isEqualTo(1);
+    }
+
+    @Test
+    void verifyReview_success_updatesReviewAndReturnsDestinationWithReviews() {
+        Destination d1 = newDestination(1L);
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(d1));
+        when(destinationRepository.countAdminUserById(3L)).thenReturn(1L);
+
+        DestinationReview review = new DestinationReview();
+        review.setId(10L);
+        review.setType(ReviewType.VISITOR);
+        review.setContent("Great");
+        review.setRating(5);
+        review.setDestination(d1);
+        review.setVisitDate(LocalDate.now().minusDays(2));
+        review.setVerified(false);
+        when(destinationReviewRepository.findById(10L)).thenReturn(Optional.of(review));
+        when(destinationReviewRepository.save(any(DestinationReview.class))).thenAnswer(i -> i.getArgument(0));
+
+        Destination withReviews = newDestination(1L);
+        withReviews.setDestinationReviews(List.of(review));
+        when(destinationRepository.findByIdWithDestinationReviews(1L)).thenReturn(Optional.of(withReviews));
+
+        VerifyDestinationReviewRequest req = new VerifyDestinationReviewRequest();
+        req.setVerifiedBy(3L);
+
+        Destination result = destinationService.verifyDestinationReview(1L, 10L, req);
+
+        ArgumentCaptor<DestinationReview> captor = ArgumentCaptor.forClass(DestinationReview.class);
+        verify(destinationReviewRepository).save(captor.capture());
+        assertThat(captor.getValue().getVerified()).isTrue();
+        assertThat(captor.getValue().getMetadata()).containsKeys("verifiedAt", "verifiedBy");
+        assertThat(captor.getValue().getMetadata().get("verifiedBy")).isEqualTo(3L);
+
+        assertThat(result.getDestinationReviews()).hasSize(1);
+        assertThat(result.getDestinationReviews().get(0).getVerified()).isTrue();
+    }
+
+    private static Destination newDestination(long id) {
+        Destination d = new Destination();
+        d.setId(id);
+        d.setName("Test");
+        d.setStatus(Destination.Status.ACTIVE);
+        return d;
+    }
+
+    private static DestinationReview lowRatedReview(Long id, Destination destination, int rating) {
+        DestinationReview r = new DestinationReview();
+        r.setId(id);
+        r.setDestination(destination);
+        r.setRating(rating);
+        return r;
+    }
+}
