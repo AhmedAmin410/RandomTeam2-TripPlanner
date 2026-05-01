@@ -1,4 +1,5 @@
 package com.randmteam2.tripplanning.itinerary.service;
+import com.randmteam2.tripplanning.itinerary.dto.ItineraryAnalyticsDashboardDTO;
 
 import com.randmteam2.tripplanning.itinerary.dto.*;
 import com.randmteam2.tripplanning.itinerary.model.Itinerary;
@@ -289,7 +290,61 @@ public class ItineraryService {
                     .build();
         }
     }
+    public ItineraryAnalyticsDashboardDTO getAnalyticsDashboard(LocalDate startDate, LocalDate endDate) {
 
+        // Log ANALYTICS_VIEWED on every call (even cache hits) — outside try block
+        Map<String, Object> eventPayload = new HashMap<>();
+        eventPayload.put("itineraryId", 0L);
+        eventPayload.put("startDate", startDate.toString());
+        eventPayload.put("endDate", endDate.toString());
+        notifyObservers("ANALYTICS_VIEWED", eventPayload);
+
+        try {
+            Object[] result = itineraryRepository.getDashboardAnalytics(startDate, endDate);
+
+            Object[] row;
+            if (result.length > 0 && result[0] instanceof Object[]) {
+                row = (Object[]) result[0];
+            } else {
+                row = result;
+            }
+
+            long total = row[0] != null ? ((Number) row[0]).longValue() : 0L;
+            double totalBudget = row[1] != null ? ((Number) row[1]).doubleValue() : 0.0;
+            double avgBudget = row[2] != null ? ((Number) row[2]).doubleValue() : 0.0;
+            long completed = row[3] != null ? ((Number) row[3]).longValue() : 0L;
+            long cancelled = row[4] != null ? ((Number) row[4]).longValue() : 0L;
+            long planned = row[5] != null ? ((Number) row[5]).longValue() : 0L;
+            long draft = row[6] != null ? ((Number) row[6]).longValue() : 0L;
+            long inProgress = row[7] != null ? ((Number) row[7]).longValue() : 0L;
+
+            double completionRate = total > 0 ? (double) completed / total : 0.0;
+
+            Map<String, Long> byStatus = new HashMap<>();
+            if (completed > 0) byStatus.put("COMPLETED", completed);
+            if (cancelled > 0) byStatus.put("CANCELLED", cancelled);
+            if (planned > 0) byStatus.put("PLANNED", planned);
+            if (draft > 0) byStatus.put("DRAFT", draft);
+            if (inProgress > 0) byStatus.put("IN_PROGRESS", inProgress);
+
+            return ItineraryAnalyticsDashboardDTO.builder()
+                    .totalItineraries(total)
+                    .totalBudget(totalBudget)
+                    .averageBudget(avgBudget)
+                    .completionRate(completionRate)
+                    .itinerariesByStatus(byStatus)
+                    .build();
+
+        } catch (Exception e) {
+            return ItineraryAnalyticsDashboardDTO.builder()
+                    .totalItineraries(0)
+                    .totalBudget(0.0)
+                    .averageBudget(0.0)
+                    .completionRate(0.0)
+                    .itinerariesByStatus(new HashMap<>())
+                    .build();
+        }
+    }
     public List<ItineraryDay> getDays(Long itineraryId) {
         getById(itineraryId);
         return itineraryDayRepository.findByItineraryIdOrderByDayOrder(itineraryId);
