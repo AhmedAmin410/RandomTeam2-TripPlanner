@@ -36,7 +36,12 @@ public class ItineraryService {
 
     public void register(EntityObserver observer) { observers.add(observer); }
     public void unregister(EntityObserver observer) { observers.remove(observer); }
-
+    /**
+     * MOD-IT1: Observer retrofit on M1 itinerary write endpoints.
+     * Called after every state-changing operation (create, update, delete,
+     * cancel, complete, assignDestination, addDays) to log events to MongoDB
+     * via the registered EntityObserver chain.
+     */
     private void notifyObservers(String eventType, Object payload) {
         for (EntityObserver observer : observers) {
             observer.onEvent(eventType, payload);
