@@ -9,6 +9,13 @@ import com.randomteam2.tripplanning.destination.model.Destination;
 import com.randomteam2.tripplanning.destination.model.DestinationReview;
 import com.randomteam2.tripplanning.destination.repository.DestinationRepository;
 import com.randomteam2.tripplanning.destination.repository.DestinationReviewRepository;
+import com.randomteam2.tripplanning.destination.model.Destination;
+import com.randomteam2.tripplanning.destination.model.DestinationReview;
+import com.randomteam2.tripplanning.destination.observer.EntityObserver;
+import com.randomteam2.tripplanning.destination.observer.MongoEventLogger;
+import com.randomteam2.tripplanning.destination.repository.DestinationRepository;
+import com.randomteam2.tripplanning.destination.repository.DestinationReviewRepository;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,12 +35,44 @@ public class DestinationService {
 
     private final DestinationRepository destinationRepository;
     private final DestinationReviewRepository destinationReviewRepository;
+    private final DestinationCacheInvalidationService cacheInvalidationService;
+    private final List<EntityObserver> observers = new ArrayList<>();
 
     public DestinationService(
             DestinationRepository destinationRepository,
-            DestinationReviewRepository destinationReviewRepository) {
+            DestinationReviewRepository destinationReviewRepository,
+            MongoEventLogger mongoEventLogger,
+            DestinationCacheInvalidationService cacheInvalidationService) {
         this.destinationRepository = destinationRepository;
         this.destinationReviewRepository = destinationReviewRepository;
+        this.cacheInvalidationService = cacheInvalidationService;
+        register(mongoEventLogger);
+    }
+
+    public void register(EntityObserver observer) {
+        if (observer != null && !observers.contains(observer)) {
+            observers.add(observer);
+        }
+    }
+
+    public void unregister(EntityObserver observer) {
+        observers.remove(observer);
+    }
+
+    private void notifyObservers(String eventType, Object payload) {
+        for (EntityObserver observer : observers) {
+            observer.onEvent(eventType, payload);
+        }
+    }
+
+    private Map<String, Object> destinationPayload(Destination destination) {
+        Map<String, Object> payload = new HashMap<>();
+        if (destination != null) {
+            payload.put("destinationId", destination.getId());
+            payload.put("destinationName", destination.getName());
+            payload.put("status", destination.getStatus() != null ? destination.getStatus().name() : null);
+        }
+        return payload;
     }
     @Transactional(readOnly = true)
     public DestinationRevenueDTO getDestinationRevenueSummary(
@@ -86,7 +125,15 @@ public class DestinationService {
         mergedDetails.putAll(incomingDetails);
 
         destination.setDetails(mergedDetails);
-        return destinationRepository.save(destination);
+        Destination savedDestination = destinationRepository.save(destination);
+        cacheInvalidationService.evictDestinationCaches(savedDestination.getId());
+
+        Map<String, Object> payload = destinationPayload(savedDestination);
+        payload.put("updatedDetailKeys", incomingDetails.keySet());
+
+        notifyObservers("DETAILS_UPDATED", payload);
+
+        return savedDestination;
     }
 
     @Transactional
@@ -114,8 +161,18 @@ public class DestinationService {
             }
         }
 
+        Destination.Status oldStatus = destination.getStatus();
         destination.setStatus(newStatus);
-        return destinationRepository.save(destination);
+        Destination savedDestination = destinationRepository.save(destination);
+        cacheInvalidationService.evictDestinationCaches(savedDestination.getId());
+
+        Map<String, Object> payload = destinationPayload(savedDestination);
+        payload.put("oldStatus", oldStatus != null ? oldStatus.name() : null);
+        payload.put("newStatus", newStatus.name());
+
+        notifyObservers("STATUS_CHANGED", payload);
+
+        return savedDestination;
     }
 
     @Transactional(readOnly = true)
@@ -199,7 +256,20 @@ public class DestinationService {
 
         destination.setRating(newAvg);
         destination.setTotalRatings(newCount);
-        return destinationRepository.save(destination);
+        Destination savedDestination = destinationRepository.save(destination);
+        cacheInvalidationService.evictDestinationCaches(savedDestination.getId());
+
+        Map<String, Object> payload = destinationPayload(savedDestination);
+        payload.put("itineraryId", request.getItineraryId());
+        payload.put("ratingValue", ratingValue);
+        payload.put("previousAverageRating", priorAvg);
+        payload.put("newAverageRating", newAvg);
+        payload.put("previousTotalRatings", priorCount);
+        payload.put("newTotalRatings", newCount);
+
+        notifyObservers("RATING_ADDED", payload);
+
+        return savedDestination;
     }
 
     @Transactional
@@ -248,9 +318,20 @@ public class DestinationService {
 
         destinationReviewRepository.save(review);
 
-        return destinationRepository.findByIdWithDestinationReviews(destinationId)
+        Destination destinationWithReviews = destinationRepository.findByIdWithDestinationReviews(destinationId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Destination not found"));
+        cacheInvalidationService.evictDestinationReviewCaches(destinationId, reviewId);
+
+        Map<String, Object> payload = destinationPayload(destinationWithReviews);
+        payload.put("reviewId", reviewId);
+        payload.put("verifiedBy", request.getVerifiedBy());
+        payload.put("verifiedAt", metadata.get("verifiedAt"));
+
+        notifyObservers("REVIEW_VERIFIED", payload);
+
+        return destinationWithReviews;
     }
+
 
     @Transactional(readOnly = true)
     public List<DestinationReviewAlertDTO> getDestinationsWithLowRatedReviews(int maxRating) {
@@ -285,5 +366,18 @@ public class DestinationService {
             result.add(dto);
         }
         return result;
+    }
+
+    @Transactional(readOnly = true)
+    public List<Destination> searchByCategoryAndRatingRange(String category, Double minRating, Double maxRating) {
+        if (minRating == null || maxRating == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "minRating and maxRating are required");
+        }
+
+        if (minRating > maxRating) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "minRating cannot be greater than maxRating");
+        }
+
+        return destinationRepository.searchByCategoryAndRatingRange(category, minRating, maxRating);
     }
 }

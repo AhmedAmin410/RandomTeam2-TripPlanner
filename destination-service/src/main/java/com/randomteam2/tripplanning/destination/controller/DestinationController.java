@@ -89,4 +89,12 @@ public class DestinationController {
             @RequestParam int maxRating) {
         return ResponseEntity.ok(destinationService.getDestinationsWithLowRatedReviews(maxRating));
     }
+
+    @GetMapping("/search")
+    public ResponseEntity<List<Destination>> searchByCategoryAndRatingRange(
+            @RequestParam(required = false) String category,
+            @RequestParam Double minRating,
+            @RequestParam Double maxRating) {
+        return ResponseEntity.ok(destinationService.searchByCategoryAndRatingRange(category, minRating, maxRating));
+    }
 }

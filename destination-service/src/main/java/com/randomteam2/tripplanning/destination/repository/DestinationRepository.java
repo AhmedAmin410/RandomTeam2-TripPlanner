@@ -78,5 +78,15 @@ public interface DestinationRepository extends JpaRepository<Destination, Long> 
             @Param("destinationId") Long destinationId,
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate);
-}
 
+    @Query(value = """
+            SELECT d.* FROM destinations d
+            WHERE (:category IS NULL OR (d.details IS NOT NULL AND d.details ->> 'category' = :category))
+            AND d.rating >= :minRating AND d.rating <= :maxRating
+            ORDER BY d.rating DESC
+            """, nativeQuery = true)
+    List<Destination> searchByCategoryAndRatingRange(
+            @Param("category") String category,
+            @Param("minRating") Double minRating,
+            @Param("maxRating") Double maxRating);
+}
