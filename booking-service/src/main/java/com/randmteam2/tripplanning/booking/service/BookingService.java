@@ -4,7 +4,6 @@ import com.randmteam2.tripplanning.booking.dto.*;
 import com.randmteam2.tripplanning.booking.model.*;
 import com.randmteam2.tripplanning.booking.repository.*;
 import org.springframework.http.HttpStatus;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -17,6 +16,7 @@ import com.randmteam2.tripplanning.booking.observer.BookingEventPublisher;
 import java.time.LocalDateTime;
 import java.util.*;
 import com.randmteam2.tripplanning.booking.strategy.*;
+import com.randmteam2.tripplanning.booking.dto.RefundCancellationRequest;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 
@@ -28,20 +28,17 @@ public class BookingService {
     private final BookingCouponRepository bookingCouponRepository;
     private final PaymentAuditEventRepository auditRepository;
     private final BookingEventPublisher eventPublisher;
-    private final BookingCacheInvalidationService cacheInvalidationService;
 
     public BookingService(BookingRepository bookingRepository,
                           CouponRepository couponRepository,
                           BookingCouponRepository bookingCouponRepository,
                           PaymentAuditEventRepository auditRepository,
-                          BookingEventPublisher eventPublisher,
-                          BookingCacheInvalidationService cacheInvalidationService) {
+                          BookingEventPublisher eventPublisher) {
         this.bookingRepository = bookingRepository;
         this.couponRepository = couponRepository;
         this.bookingCouponRepository = bookingCouponRepository;
         this.auditRepository = auditRepository;
         this.eventPublisher = eventPublisher;
-        this.cacheInvalidationService = cacheInvalidationService;
     }
 
     // ── CRUD ──────────────────────────────────────────────────────────────
@@ -49,7 +46,6 @@ public class BookingService {
         return bookingRepository.findAll();
     }
 
-    @Cacheable(value = "booking-service", key = "'booking::' + #id")
     public Booking getBookingById(Long id) {
         return bookingRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(
@@ -57,29 +53,22 @@ public class BookingService {
     }
 
     public Booking createBooking(Booking booking) {
-        Booking saved = bookingRepository.save(booking);
-        cacheInvalidationService.evictBookingReadCaches();
-        return saved;
+        return bookingRepository.save(booking);
     }
 
     public Booking updateBooking(Long id, Booking booking) {
         Booking existing = getBookingById(id);
         booking.setId(id);
         booking.setCreatedAt(existing.getCreatedAt());
-        Booking saved = bookingRepository.save(booking);
-        cacheInvalidationService.evictBookingReadCaches();
-        return saved;
+        return bookingRepository.save(booking);
     }
 
     public void deleteBooking(Long id) {
         getBookingById(id);
         bookingRepository.deleteById(id);
-        cacheInvalidationService.evictBookingReadCaches();
     }
 
     // ── S5-F1 ─────────────────────────────────────────────────────────────
-    @Cacheable(value = "booking-service",
-            key = "'S5-F1::' + (#status == null ? 'ALL' : #status) + '::' + #startDate + '::' + #endDate")
     public List<Booking> searchBookings(String status, LocalDateTime startDate, LocalDateTime endDate) {
         if (startDate == null) startDate = LocalDateTime.of(2000, 1, 1, 0, 0);
         if (endDate == null) endDate = LocalDateTime.of(2100, 1, 1, 0, 0);
@@ -102,13 +91,11 @@ public class BookingService {
         booking.setBookingDetails(details);
         Booking saved = bookingRepository.save(booking);
         writeAuditEvent(saved, "REFUNDED");
-        cacheInvalidationService.evictBookingReadCaches();
         return saved;
     }
 
     // ── S5-F3 ─────────────────────────────────────────────────────────────
     // ── S5-F3 ─────────────────────────────────────────────────────────────
-    @Cacheable(value = "booking-service", key = "'S5-F3::' + #userId")
     public UserBookingSummaryDTO getUserBookingSummary(Long userId) {
         List<Object[]> userCheck = bookingRepository.checkUserExists(userId);
         if (userCheck == null || userCheck.isEmpty()) {
@@ -126,12 +113,7 @@ public class BookingService {
             totalBookings += count;
             totalAmount += amount;
         }
-        return UserBookingSummaryDTO.builder()
-                .userId(userId)
-                .totalBookings(totalBookings)
-                .totalAmount(totalAmount)
-                .typeBreakdown(typeBreakdown)
-                .build();
+        return new UserBookingSummaryDTO(userId, totalBookings, totalAmount, typeBreakdown);
     }
 
     // ── S5-F4 ─────────────────────────────────────────────────────────────
@@ -179,7 +161,6 @@ public class BookingService {
             booking.setStatus(BookingStatus.FAILED);
             Booking saved = bookingRepository.save(booking);
             writeAuditEvent(saved, "FAILED");
-            cacheInvalidationService.evictBookingReadCaches();
             return saved;
         }
 
@@ -191,7 +172,6 @@ public class BookingService {
         saved.setStatus(BookingStatus.CONFIRMED);
         saved = bookingRepository.save(saved);
         writeAuditEvent(saved, "COMPLETED");
-        cacheInvalidationService.evictBookingReadCaches();
 
         return saved;
     }
@@ -262,13 +242,11 @@ public class BookingService {
         eventDetails.put("discountType", coupon.getDiscountType().name());
         eventDetails.put("discountApplied", discount);
         eventPublisher.publish(new BookingEvent("COUPON_APPLIED", saved, eventDetails));
-        cacheInvalidationService.evictBookingReadCaches();
 
         return saved;
     }
 
     // ── S5-F6 ─────────────────────────────────────────────────────────────
-    @Cacheable(value = "booking-service", key = "'S5-F6::' + #startDate + '::' + #endDate")
     public RevenueReportDTO getRevenueReport(LocalDateTime startDate, LocalDateTime endDate) {
         if (startDate == null) startDate = LocalDateTime.of(2000, 1, 1, 0, 0);
         if (endDate == null) endDate = LocalDateTime.of(2100, 1, 1, 0, 0);
@@ -294,13 +272,7 @@ public class BookingService {
             }
         }
         double avg = totalBookings > 0 ? totalRevenue / totalBookings : 0;
-        return RevenueReportDTO.builder()
-                .totalRevenue(totalRevenue)
-                .totalBookings(totalBookings)
-                .averageBookingAmount(avg)
-                .cancelledAmount(cancelledAmount)
-                .cancelledCount(cancelledCount)
-                .build();
+        return new RevenueReportDTO(totalRevenue, totalBookings, avg, cancelledAmount, cancelledCount);
     }
 
     // ── S5-F7 ─────────────────────────────────────────────────────────────
@@ -325,13 +297,11 @@ public class BookingService {
         eventDetails.put("retryAttempt", attempt);
         eventDetails.put("confirmationNumber", details.get("confirmationNumber"));
         eventPublisher.publish(new BookingEvent("RETRY_ATTEMPTED", saved, eventDetails));
-        cacheInvalidationService.evictBookingReadCaches();
 
         return saved;
     }
 
     // ── S5-F8 ─────────────────────────────────────────────────────────────
-    @Cacheable(value = "booking-service", key = "'S5-F8::' + #bookingId")
     public BookingDetailsDTO getBookingDetails(Long bookingId) {
         Booking booking = getBookingById(bookingId);
         List<BookingCoupon> coupons = bookingCouponRepository.findByBookingId(bookingId);
@@ -346,22 +316,21 @@ public class BookingService {
                 .mapToDouble(c -> c.discountApplied())
                 .sum();
         double finalAmount = booking.getAmount() - totalDiscount;
-        return BookingDetailsDTO.builder()
-                .bookingId(booking.getId())
-                .itineraryId(booking.getItineraryId())
-                .userId(booking.getUserId())
-                .originalAmount(booking.getAmount())
-                .type(booking.getType().name())
-                .status(booking.getStatus().name())
-                .bookingDetails(booking.getBookingDetails())
-                .appliedCoupons(appliedCoupons)
-                .totalDiscount(totalDiscount)
-                .finalAmount(finalAmount)
-                .build();
+        return new BookingDetailsDTO(
+                booking.getId(),
+                booking.getItineraryId(),
+                booking.getUserId(),
+                booking.getAmount(),
+                booking.getType().name(),
+                booking.getStatus().name(),
+                booking.getBookingDetails(),
+                appliedCoupons,
+                totalDiscount,
+                finalAmount
+        );
     }
 
     // ── S5-F9 ─────────────────────────────────────────────────────────────
-    @Cacheable(value = "booking-service", key = "'S5-F9::' + #limit")
     public List<CouponUsageDTO> getTopUsedCoupons(int limit) {
         List<Object[]> results = bookingRepository.getTopUsedCoupons(limit);
         List<CouponUsageDTO> dtos = new ArrayList<>();
@@ -375,16 +344,8 @@ public class BookingService {
             boolean active = (Boolean) row[6];
             LocalDateTime expiryDate = ((java.sql.Timestamp) row[7]).toLocalDateTime();
             boolean expired = expiryDate.isBefore(LocalDateTime.now());
-            dtos.add(CouponUsageDTO.builder()
-                    .couponId(couponId)
-                    .code(code)
-                    .discountType(discountType)
-                    .discountValue(discountValue)
-                    .timesUsed(timesUsed)
-                    .totalDiscountGiven(totalDiscountGiven)
-                    .active(active)
-                    .expired(expired)
-                    .build());
+            dtos.add(new CouponUsageDTO(couponId, code, discountType, discountValue,
+                    timesUsed, totalDiscountGiven, active, expired));
         }
         return dtos;
     }
@@ -423,7 +384,6 @@ public class BookingService {
                     "reason", result.getReasonCode(),
                     "itineraryStatus", itiStatus
             ));
-            cacheInvalidationService.evictRefundRelatedCaches();
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "trip already started or completed");
         }
@@ -449,7 +409,6 @@ public class BookingService {
                 "originalAmount", booking.getAmount(),
                 "reason",        request.getReason() != null ? request.getReason() : ""
         ));
-        cacheInvalidationService.evictRefundRelatedCaches();
 
         return saved;
     }
