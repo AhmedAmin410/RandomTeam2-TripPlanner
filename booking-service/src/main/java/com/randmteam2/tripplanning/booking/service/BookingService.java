@@ -7,18 +7,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-// Add this import at the top of the file
-import com.randmteam2.tripplanning.booking.mongo.PaymentAuditEvent;
-import com.randmteam2.tripplanning.booking.mongo.PaymentAuditEventRepository;
-import com.randmteam2.tripplanning.booking.observer.BookingEvent;
-import com.randmteam2.tripplanning.booking.observer.BookingEventPublisher;
 
 import java.time.LocalDateTime;
 import java.util.*;
-import com.randmteam2.tripplanning.booking.strategy.*;
-import com.randmteam2.tripplanning.booking.dto.RefundCancellationRequest;
-import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 
 @Service
 public class BookingService {
@@ -26,19 +17,13 @@ public class BookingService {
     private final BookingRepository bookingRepository;
     private final CouponRepository couponRepository;
     private final BookingCouponRepository bookingCouponRepository;
-    private final PaymentAuditEventRepository auditRepository;
-    private final BookingEventPublisher eventPublisher;
 
     public BookingService(BookingRepository bookingRepository,
                           CouponRepository couponRepository,
-                          BookingCouponRepository bookingCouponRepository,
-                          PaymentAuditEventRepository auditRepository,
-                          BookingEventPublisher eventPublisher) {
+                          BookingCouponRepository bookingCouponRepository) {
         this.bookingRepository = bookingRepository;
         this.couponRepository = couponRepository;
         this.bookingCouponRepository = bookingCouponRepository;
-        this.auditRepository = auditRepository;
-        this.eventPublisher = eventPublisher;
     }
 
     // ── CRUD ──────────────────────────────────────────────────────────────
@@ -60,6 +45,7 @@ public class BookingService {
         Booking existing = getBookingById(id);
         booking.setId(id);
         booking.setCreatedAt(existing.getCreatedAt());
+        booking.setBookingCoupons(existing.getBookingCoupons());
         return bookingRepository.save(booking);
     }
 
@@ -89,12 +75,9 @@ public class BookingService {
         details.put("cancellationReason", reason);
         details.put("cancelledAt", LocalDateTime.now().toString());
         booking.setBookingDetails(details);
-        Booking saved = bookingRepository.save(booking);
-        writeAuditEvent(saved, "REFUNDED");
-        return saved;
+        return bookingRepository.save(booking);
     }
 
-    // ── S5-F3 ─────────────────────────────────────────────────────────────
     // ── S5-F3 ─────────────────────────────────────────────────────────────
     public UserBookingSummaryDTO getUserBookingSummary(Long userId) {
         List<Object[]> userCheck = bookingRepository.checkUserExists(userId);
@@ -117,13 +100,8 @@ public class BookingService {
     }
 
     // ── S5-F4 ─────────────────────────────────────────────────────────────
-
-    // ── S5-F4 ─────────────────────────────────────────────────────────────
     @Transactional
-    public Booking createBookingForItinerary(Long itineraryId,
-                                             Map<String, Object> body,
-                                             boolean simulateFailure) {
-        // validation (unchanged from M1)
+    public Booking createBookingForItinerary(Long itineraryId, Map<String, Object> body) {
         List<Object[]> itinerary = bookingRepository.findItineraryById(itineraryId);
         if (itinerary == null || itinerary.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Itinerary not found");
@@ -133,64 +111,20 @@ public class BookingService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Itinerary must be PLANNED or IN_PROGRESS");
         }
-
-        // build booking (unchanged from M1)
         Booking booking = new Booking();
         booking.setItineraryId(itineraryId);
         booking.setUserId(((Number) body.getOrDefault("userId", 1)).longValue());
         booking.setAmount(((Number) body.get("amount")).doubleValue());
         booking.setType(BookingType.valueOf((String) body.get("type")));
-
-        // NEW: compute seasonalSurcharge
-        Long destinationId = bookingRepository.findDestinationIdByItineraryId(itineraryId);
-        double surcharge = 0.0;
-        if (destinationId != null) {
-            long activeCount = bookingRepository.countActiveItinerariesForDestination(destinationId);
-            double multiplier = activeCount <= 5 ? 1.0 : activeCount <= 15 ? 1.3 : 1.6;
-            surcharge = (multiplier == 1.0) ? 0.0
-                    : booking.getAmount() * (multiplier - 1) / multiplier;
-        }
-
-        Map<String, Object> details = new HashMap<>();
-        if (body.containsKey("providerName")) details.put("providerName", body.get("providerName"));
-        details.put("seasonalSurcharge", surcharge);
-        booking.setBookingDetails(details);
-
-        // NEW: simulateFailure support
-        if (simulateFailure) {
-            booking.setStatus(BookingStatus.FAILED);
-            Booking saved = bookingRepository.save(booking);
-            writeAuditEvent(saved, "FAILED");
-            return saved;
-        }
-
-        // normal flow: PENDING then CONFIRMED
         booking.setStatus(BookingStatus.PENDING);
-        Booking saved = bookingRepository.save(booking);
-        writeAuditEvent(saved, "CREATED");
-
-        saved.setStatus(BookingStatus.CONFIRMED);
-        saved = bookingRepository.save(saved);
-        writeAuditEvent(saved, "COMPLETED");
-
-        return saved;
-    }
-
-    // helper: write a PaymentAuditEvent to MongoDB
-    private void writeAuditEvent(Booking booking, String action) {
-        try {
-            PaymentAuditEvent ev = new PaymentAuditEvent();
-            ev.setBookingId(booking.getId());
-            ev.setAction(action);
-            ev.setTimestamp(LocalDateTime.now());
-            ev.setMethod(booking.getType().name());
-            ev.setAmount(booking.getAmount());
-            ev.setDetails(Map.of("status", booking.getStatus().name()));
-            auditRepository.save(ev);
-        } catch (Exception e) {
-            System.err.println("[WARN] MongoDB audit write failed: " + e.getMessage());
+        Map<String, Object> details = new HashMap<>();
+        if (body.containsKey("providerName")) {
+            details.put("providerName", body.get("providerName"));
         }
+        booking.setBookingDetails(details);
+        return bookingRepository.save(booking);
     }
+
     // ── S5-F5 ─────────────────────────────────────────────────────────────
     @Transactional
     public Booking applyCoupon(Long bookingId, Long couponId) {
@@ -233,27 +167,18 @@ public class BookingService {
 
         coupon.setCurrentUses(coupon.getCurrentUses() + 1);
         couponRepository.save(coupon);
-        Booking saved = bookingRepository.save(booking);
 
-        Map<String, Object> eventDetails = new HashMap<>();
-        eventDetails.put("status", saved.getStatus().name());
-        eventDetails.put("couponId", coupon.getId());
-        eventDetails.put("couponCode", coupon.getCode());
-        eventDetails.put("discountType", coupon.getDiscountType().name());
-        eventDetails.put("discountApplied", discount);
-        eventPublisher.publish(new BookingEvent("COUPON_APPLIED", saved, eventDetails));
-
-        return saved;
+        return bookingRepository.save(booking);
     }
 
     // ── S5-F6 ─────────────────────────────────────────────────────────────
     public RevenueReportDTO getRevenueReport(LocalDateTime startDate, LocalDateTime endDate) {
-        if (startDate == null) startDate = LocalDateTime.of(2000, 1, 1, 0, 0);
-        if (endDate == null) endDate = LocalDateTime.of(2100, 1, 1, 0, 0);
-        if (startDate.isAfter(endDate)) {
+        if (startDate != null && endDate != null && startDate.isAfter(endDate)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "startDate must be before endDate");
         }
+        if (startDate == null) startDate = LocalDateTime.of(2000, 1, 1, 0, 0);
+        if (endDate == null) endDate = LocalDateTime.of(2100, 1, 1, 0, 0);
         List<Object[]> results = bookingRepository.getRevenueReport(startDate, endDate);
         double totalRevenue = 0;
         int totalBookings = 0;
@@ -290,15 +215,7 @@ public class BookingService {
         details.put("retryAttempt", attempt);
         details.put("confirmationNumber", "RETRY-" + id + "-" + attempt);
         booking.setBookingDetails(details);
-        Booking saved = bookingRepository.save(booking);
-
-        Map<String, Object> eventDetails = new HashMap<>();
-        eventDetails.put("status", saved.getStatus().name());
-        eventDetails.put("retryAttempt", attempt);
-        eventDetails.put("confirmationNumber", details.get("confirmationNumber"));
-        eventPublisher.publish(new BookingEvent("RETRY_ATTEMPTED", saved, eventDetails));
-
-        return saved;
+        return bookingRepository.save(booking);
     }
 
     // ── S5-F8 ─────────────────────────────────────────────────────────────
@@ -348,84 +265,5 @@ public class BookingService {
                     timesUsed, totalDiscountGiven, active, expired));
         }
         return dtos;
-    }
-
-    // ── S5-F12 ────────────────────────────────────────────────────────────
-    @Transactional
-    public Booking processRefundCancellation(Long bookingId, RefundCancellationRequest request) {
-        // 1. fetch booking
-        Booking booking = getBookingById(bookingId);
-
-        // 2. must be CONFIRMED
-        if (booking.getStatus() != BookingStatus.CONFIRMED) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Only CONFIRMED bookings can be refunded");
-        }
-
-        // 3. fetch itinerary startDate and status
-        List<Object[]> rows = bookingRepository.findItineraryStartDateAndStatus(booking.getItineraryId());
-        if (rows == null || rows.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Linked itinerary not found");
-        }
-        java.sql.Date startDateSql = (java.sql.Date) rows.get(0)[0];
-        String itiStatus = (String) rows.get(0)[1];
-        LocalDate startDate = startDateSql.toLocalDate();
-        boolean itineraryStarted = "IN_PROGRESS".equals(itiStatus) || "COMPLETED".equals(itiStatus);
-
-        // 4. select strategy — no if/else chains here, selector does it
-        RefundStrategySelector selector = new RefundStrategySelector();
-        RefundStrategy strategy = selector.select(startDate, itineraryStarted);
-        RefundResult result = strategy.calculateRefund(booking);
-
-        // 5. NoRefund → log REFUND_DENIED then throw 400
-        if (strategy instanceof NoRefundStrategy) {
-            writeAuditEventWithDetails(booking, "REFUND_DENIED", Map.of(
-                    "strategyName", "NoRefundStrategy",
-                    "reason", result.getReasonCode(),
-                    "itineraryStatus", itiStatus
-            ));
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "trip already started or completed");
-        }
-
-        // 6. update booking
-        booking.setStatus(BookingStatus.CANCELLED);
-        Map<String, Object> details = booking.getBookingDetails();
-        if (details == null) details = new HashMap<>();
-        details.put("refundAmount",       result.getRefundAmount());
-        details.put("tier",               result.getTier());
-        details.put("strategyName",       strategy.getClass().getSimpleName());
-        details.put("refundReason",       request.getReason());
-        details.put("daysBeforeDeparture", ChronoUnit.DAYS.between(LocalDate.now(), startDate));
-        details.put("refundedAt",         LocalDateTime.now().toString());
-        booking.setBookingDetails(details);
-        Booking saved = bookingRepository.save(booking);
-
-        // 7. log REFUNDED
-        writeAuditEventWithDetails(saved, "REFUNDED", Map.of(
-                "strategyName",  strategy.getClass().getSimpleName(),
-                "tier",          result.getTier(),
-                "refundAmount",  result.getRefundAmount(),
-                "originalAmount", booking.getAmount(),
-                "reason",        request.getReason() != null ? request.getReason() : ""
-        ));
-
-        return saved;
-    }
-
-    // enhanced audit helper with custom details
-    private void writeAuditEventWithDetails(Booking booking, String action, Map<String, Object> details) {
-        try {
-            PaymentAuditEvent ev = new PaymentAuditEvent();
-            ev.setBookingId(booking.getId());
-            ev.setAction(action);
-            ev.setTimestamp(LocalDateTime.now());
-            ev.setMethod(booking.getType().name());
-            ev.setAmount(booking.getAmount());
-            ev.setDetails(details);
-            auditRepository.save(ev);
-        } catch (Exception e) {
-            System.err.println("[WARN] MongoDB write failed: " + e.getMessage());
-        }
     }
 }
