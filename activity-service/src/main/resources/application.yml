@@ -1,0 +1,36 @@
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/tripplanningdb}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:postgres}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  data:
+    mongodb:
+      uri: ${SPRING_DATA_MONGODB_URI:mongodb://root:rootpass@localhost:27017/tripplanningmongo?authSource=admin}
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      password: ${SPRING_DATA_REDIS_PASSWORD:redispass}
+  cache:
+    type: redis
+    redis:
+      time-to-live: 600000
+  cassandra:
+    contact-points: ${SPRING_CASSANDRA_CONTACT_POINTS:localhost}
+    port: ${SPRING_CASSANDRA_PORT:9042}
+    local-datacenter: ${SPRING_CASSANDRA_LOCAL_DATACENTER:datacenter1}
+    keyspace-name: ${SPRING_CASSANDRA_KEYSPACE_NAME:tripplanningks}
+    schema-action: CREATE_IF_NOT_EXISTS
+
+server:
+  port: 8084
+
+jwt:
+  secret: ${JWT_SECRET:dGhpcyBpcyBhIHNlY3VyZSByYW5kb20ga2V5IGZvciBqd3Q=}
+  expiration: ${JWT_EXPIRATION_MS:86400000}
