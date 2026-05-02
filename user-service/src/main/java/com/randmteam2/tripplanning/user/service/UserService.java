@@ -1,5 +1,7 @@
 package com.randmteam2.tripplanning.user.service;
 
+import com.randmteam2.tripplanning.user.adapter.MongoDocumentAdapter;
+import com.randmteam2.tripplanning.user.adapter.ObjectArrayDtoAdapter;
 import com.randmteam2.tripplanning.user.dto.SavedDestinationDTO;
 import com.randmteam2.tripplanning.user.dto.TopTravelerDTO;
 import com.randmteam2.tripplanning.user.dto.TravelStyleUserDTO;
@@ -33,19 +35,25 @@ public class UserService {
     private final UserCacheInvalidationService cacheInvalidationService;
     private final AuthEventRepository authEventRepository;
     private final UserEventPublisher eventPublisher;
+    private final MongoDocumentAdapter mongoDocumentAdapter;
+    private final ObjectArrayDtoAdapter objectArrayDtoAdapter;
 
     public UserService(UserRepository userRepository,
                        SavedDestinationRepository savedDestinationRepository,
                        PasswordEncoder passwordEncoder,
                        UserCacheInvalidationService cacheInvalidationService,
                        AuthEventRepository authEventRepository,
-                       UserEventPublisher eventPublisher) {
+                       UserEventPublisher eventPublisher,
+                       MongoDocumentAdapter mongoDocumentAdapter,
+                       ObjectArrayDtoAdapter objectArrayDtoAdapter) {
         this.userRepository = userRepository;
         this.savedDestinationRepository = savedDestinationRepository;
         this.passwordEncoder = passwordEncoder;
         this.cacheInvalidationService = cacheInvalidationService;
         this.authEventRepository = authEventRepository;
         this.eventPublisher = eventPublisher;
+        this.mongoDocumentAdapter = mongoDocumentAdapter;
+        this.objectArrayDtoAdapter = objectArrayDtoAdapter;
     }
 
     public User createUser(User user) {
@@ -64,7 +72,7 @@ public class UserService {
         return userRepository.findAll();
     }
 
-    @Cacheable(value = "user-service", key = "'user::' + #id")
+    @Cacheable(value = "cache-15min", key = "'user-service::user::' + #id")
     public User getUserById(Long id) {
         return userRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
@@ -137,30 +145,17 @@ public class UserService {
         return saved;
     }
 
-    @Cacheable(value = "user-service", key = "'S1-F3::' + #userId")
+    @Cacheable(value = "cache-10min", key = "'user-service::S1-F3::' + #userId")
     public UserTripSummaryDTO getUserTripSummary(Long userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "User not found"));
         List<Object[]> results = userRepository.getUserTripSummary(userId);
-        Object[] result = results.isEmpty() ? new Object[]{0, 0, 0, 0, 0} : results.get(0);
-        Long totalTrips = ((Number) result[0]).longValue();
-        Long completedTrips = ((Number) result[1]).longValue();
-        Long cancelledTrips = ((Number) result[2]).longValue();
-        Double totalSpent = ((Number) result[3]).doubleValue();
-        Double avgBudget = ((Number) result[4]).doubleValue();
-        return UserTripSummaryDTO.builder()
-                .userId(user.getId())
-                .name(user.getName())
-                .totalTrips(totalTrips)
-                .completedTrips(completedTrips)
-                .cancelledTrips(cancelledTrips)
-                .totalSpent(totalSpent)
-                .averageBudget(avgBudget)
-                .build();
+        Object[] row = results.isEmpty() ? new Object[]{0, 0, 0, 0, 0} : results.get(0);
+        return objectArrayDtoAdapter.adapt(row, user.getId(), user.getName());
     }
 
-    @Cacheable(value = "user-service", key = "'S1-F5::' + #key + '::' + #value")
+    @Cacheable(value = "cache-5min", key = "'user-service::S1-F5::' + #key + '::' + #value")
     public List<User> searchByPreference(String key, String value) {
         if (key == null || key.trim().isEmpty() ||
                 value == null || value.trim().isEmpty()) {
@@ -170,8 +165,8 @@ public class UserService {
         return userRepository.findByPreference(key, value);
     }
 
-    @Cacheable(value = "user-service",
-            key = "'S1-F1::' + (#name == null ? '' : #name) + '::' + (#role == null ? '' : #role.name()) + '::' + (#email == null ? '' : #email)")
+    @Cacheable(value = "cache-5min",
+            key = "'user-service::S1-F1::' + (#name == null ? '' : #name) + '::' + (#role == null ? '' : #role.name()) + '::' + (#email == null ? '' : #email)")
     public List<User> searchUsers(String name, Role role, String email) {
 
         if (name != null && name.trim().isEmpty()) name = null;
@@ -197,7 +192,7 @@ public class UserService {
         return savedDestinationRepository.findByUser_Id(userId);
     }
 
-    @Cacheable(value = "user-service", key = "'saved-destination::' + #id")
+    @Cacheable(value = "cache-15min", key = "'user-service::saved-destination::' + #id")
     public SavedDestination getSavedDestinationById(Long userId, Long id) {
         getUserById(userId);
         return savedDestinationRepository.findById(id)
@@ -228,7 +223,7 @@ public class UserService {
         return saved;
     }
 
-    @Cacheable(value = "user-service", key = "'S1-F6::' + #startDate + '::' + #endDate + '::' + #limit")
+    @Cacheable(value = "cache-10min", key = "'user-service::S1-F6::' + #startDate + '::' + #endDate + '::' + #limit")
     public List<TopTravelerDTO> getTopTravelers(String startDate, String endDate, Integer limit) {
 
         if (startDate.compareTo(endDate) > 0) {
@@ -280,7 +275,7 @@ public class UserService {
         return userRepository.findById(userId).get();
     }
 
-    @Cacheable(value = "user-service", key = "'S1-F8::' + #id")
+    @Cacheable(value = "cache-15min", key = "'user-service::S1-F8::' + #id")
     public UserProfileDTO getUserProfile(Long id) {
 
         User user = userRepository.findById(id)
@@ -312,7 +307,7 @@ public class UserService {
                 .build();
     }
 
-    @Cacheable(value = "user-service", key = "'S1-F9::' + #style + '::' + #minTrips")
+    @Cacheable(value = "cache-10min", key = "'user-service::S1-F9::' + #style + '::' + #minTrips")
     public List<TravelStyleUserDTO> findUsersByTravelStyle(String style, int minTrips) {
 
         if (style == null || style.trim().isEmpty()) {
@@ -334,7 +329,7 @@ public class UserService {
                 .toList();
     }
 
-    @Cacheable(value = "user-service", key = "'S1-F12::' + #userId + '::' + #page + '::' + #size")
+    @Cacheable(value = "cache-5min", key = "'user-service::S1-F12::' + #userId + '::' + #page + '::' + #size")
     public Map<String, Object> getActivityFeed(Long userId, int page, int size) {
         getUserById(userId);
         if (size > 100) size = 100;
@@ -342,13 +337,7 @@ public class UserService {
                 authEventRepository.findByUserIdOrderByTimestampDesc(
                         userId, PageRequest.of(page, size));
         List<Map<String, Object>> content = result.getContent().stream()
-                .map(e -> {
-                    Map<String, Object> item = new HashMap<>();
-                    item.put("action", e.getAction());
-                    item.put("timestamp", e.getTimestamp());
-                    item.put("details", e.getDetails() != null ? e.getDetails() : Map.of());
-                    return item;
-                })
+                .map(mongoDocumentAdapter::adapt)
                 .toList();
         Map<String, Object> response = new HashMap<>();
         response.put("content", content);
