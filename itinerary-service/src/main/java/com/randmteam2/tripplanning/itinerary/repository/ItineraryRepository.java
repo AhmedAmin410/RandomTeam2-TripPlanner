@@ -96,4 +96,43 @@ public interface ItineraryRepository extends JpaRepository<Itinerary, Long> {
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate
     );
+
+    @Query(value = """
+    SELECT COUNT(*) > 0 FROM users WHERE email = :email
+    """, nativeQuery = true)
+    boolean existsByUserEmail(@Param("email") String email);
+
+    @Query(value = """
+    SELECT
+        COUNT(*) as total,
+        COALESCE(SUM(estimated_budget), 0) as totalBudget,
+        COALESCE(AVG(estimated_budget), 0) as avgBudget,
+        SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) as completed,
+        SUM(CASE WHEN status = 'CANCELLED' THEN 1 ELSE 0 END) as cancelled,
+        SUM(CASE WHEN status = 'PLANNED' THEN 1 ELSE 0 END) as planned,
+        SUM(CASE WHEN status = 'DRAFT' THEN 1 ELSE 0 END) as draft,
+        SUM(CASE WHEN status = 'IN_PROGRESS' THEN 1 ELSE 0 END) as inProgress
+    FROM itineraries
+    WHERE start_date >= :startDate
+    AND start_date <= :endDate
+    """, nativeQuery = true)
+    Object[] getDashboardAnalytics(
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate
+    );
+
+    @Query(value = """
+    SELECT u.id as userId, u.name as userName
+    FROM users u
+    WHERE u.id = :userId
+    """, nativeQuery = true)
+    Object[] getUserById(@Param("userId") Long userId);
+
+    @Query(value = """
+    SELECT d.id as destinationId, d.name as destinationName,
+           d.country as country, d.category as category
+    FROM destinations d
+    WHERE d.id = :destinationId
+    """, nativeQuery = true)
+    Object[] getDestinationById(@Param("destinationId") Long destinationId);
 }

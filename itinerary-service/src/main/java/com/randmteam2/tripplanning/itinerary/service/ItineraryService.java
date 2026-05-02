@@ -1,8 +1,12 @@
 package com.randmteam2.tripplanning.itinerary.service;
+import com.randmteam2.tripplanning.itinerary.dto.ItineraryAnalyticsDashboardDTO;
 
 import com.randmteam2.tripplanning.itinerary.dto.*;
 import com.randmteam2.tripplanning.itinerary.model.Itinerary;
 import com.randmteam2.tripplanning.itinerary.model.ItineraryDay;
+import com.randmteam2.tripplanning.itinerary.mongo.ItineraryEventRepository;
+import com.randmteam2.tripplanning.itinerary.observer.EntityObserver;
+import com.randmteam2.tripplanning.itinerary.observer.MongoEventLogger;
 import com.randmteam2.tripplanning.itinerary.repository.ItineraryDayRepository;
 import com.randmteam2.tripplanning.itinerary.repository.ItineraryRepository;
 import org.springframework.stereotype.Service;
@@ -10,23 +14,53 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 @Service
 public class ItineraryService {
 
     private final ItineraryRepository itineraryRepository;
     private final ItineraryDayRepository itineraryDayRepository;
+    private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
 
     public ItineraryService(ItineraryRepository itineraryRepository,
-                            ItineraryDayRepository itineraryDayRepository) {
+                            ItineraryDayRepository itineraryDayRepository,
+                            ItineraryEventRepository itineraryEventRepository) {
         this.itineraryRepository = itineraryRepository;
         this.itineraryDayRepository = itineraryDayRepository;
+        register(new MongoEventLogger(itineraryEventRepository));
     }
 
+    public void register(EntityObserver observer) { observers.add(observer); }
+    public void unregister(EntityObserver observer) { observers.remove(observer); }
+    /**
+     * MOD-IT1: Observer retrofit on M1 itinerary write endpoints.
+     * Called after every state-changing operation (create, update, delete,
+     * cancel, complete, assignDestination, addDays) to log events to MongoDB
+     * via the registered EntityObserver chain.
+     */
+    private void notifyObservers(String eventType, Object payload) {
+        for (EntityObserver observer : observers) {
+            observer.onEvent(eventType, payload);
+        }
+    }
+
+    private Map<String, Object> itineraryPayload(String action, Itinerary itinerary) {
+        Map<String, Object> map = new HashMap<>();
+        map.put("action", action);
+        map.put("itineraryId", itinerary.getId());
+        map.put("userId", itinerary.getUserId());
+        map.put("status", itinerary.getStatus() != null ? itinerary.getStatus().name() : null);
+        return map;
+    }
 
     public Itinerary create(Itinerary itinerary) {
-        return itineraryRepository.save(itinerary);
+        Itinerary saved = itineraryRepository.save(itinerary);
+        notifyObservers("ITINERARY_CREATED", itineraryPayload("ITINERARY_CREATED", saved));
+        return saved;
     }
 
     public Itinerary getById(Long id) {
@@ -48,8 +82,17 @@ public class ItineraryService {
         existing.setMetadata(updated.getMetadata());
         existing.setStartDate(updated.getStartDate());
         existing.setEndDate(updated.getEndDate());
-        return itineraryRepository.save(existing);
+        Itinerary saved = itineraryRepository.save(existing);
+        notifyObservers("ITINERARY_UPDATED", itineraryPayload("ITINERARY_UPDATED", saved));
+        return saved;
     }
+
+    public void delete(Long id) {
+        Itinerary itinerary = getById(id);
+        itineraryRepository.deleteById(id);
+        notifyObservers("ITINERARY_DELETED", itineraryPayload("ITINERARY_DELETED", itinerary));
+    }
+
     @Transactional
     public Itinerary completeItinerary(Long id) {
         Itinerary itinerary = itineraryRepository.findById(id)
@@ -66,12 +109,11 @@ public class ItineraryService {
             itinerary.setEstimatedBudget(total);
         }
 
-        return itineraryRepository.save(itinerary);
+        Itinerary saved = itineraryRepository.save(itinerary);
+        notifyObservers("ITINERARY_COMPLETED", itineraryPayload("ITINERARY_COMPLETED", saved));
+        return saved;
     }
-    public void delete(Long id) {
-        getById(id);
-        itineraryRepository.deleteById(id);
-    }
+
     @Transactional
     public Itinerary cancelItinerary(Long id) {
         Itinerary itinerary = itineraryRepository.findById(id)
@@ -84,8 +126,11 @@ public class ItineraryService {
 
         itinerary.setStatus(Itinerary.Status.CANCELLED);
         itineraryRepository.cancelPendingBookings(id);
-        return itineraryRepository.save(itinerary);
+        Itinerary saved = itineraryRepository.save(itinerary);
+        notifyObservers("ITINERARY_CANCELLED", itineraryPayload("ITINERARY_CANCELLED", saved));
+        return saved;
     }
+
     @Transactional(noRollbackFor = RuntimeException.class)
     public Itinerary assignDestination(Long itineraryId, Long destinationId) {
         Itinerary itinerary = itineraryRepository.findById(itineraryId)
@@ -107,8 +152,11 @@ public class ItineraryService {
 
         itinerary.setDestinationId(destinationId);
         itinerary.setStatus(Itinerary.Status.PLANNED);
-        return itineraryRepository.save(itinerary);
+        Itinerary saved = itineraryRepository.save(itinerary);
+        notifyObservers("DESTINATION_ASSIGNED", itineraryPayload("DESTINATION_ASSIGNED", saved));
+        return saved;
     }
+
     @Transactional
     public Itinerary addDays(Long itineraryId, List<ItineraryDayRequest> dayRequests) {
         Itinerary itinerary = itineraryRepository.findById(itineraryId)
@@ -146,8 +194,10 @@ public class ItineraryService {
         Itinerary result = itineraryRepository.findById(itineraryId)
                 .orElseThrow(() -> new RuntimeException("Itinerary not found with id: " + itineraryId));
         result.setItineraryDays(itineraryDayRepository.findByItineraryIdOrderByDayOrder(itineraryId));
+        notifyObservers("DAYS_ADDED", itineraryPayload("DAYS_ADDED", result));
         return result;
     }
+
     public ItineraryDetailsDTO getItineraryDetails(Long itineraryId) {
         Itinerary itinerary = itineraryRepository.findById(itineraryId)
                 .orElseThrow(() -> new RuntimeException("Itinerary not found with id: " + itineraryId));
@@ -158,19 +208,20 @@ public class ItineraryService {
                 .filter(d -> d.getStatus() == ItineraryDay.Status.COMPLETED)
                 .count();
 
-        return new ItineraryDetailsDTO(
-                itinerary.getId(),
-                itinerary.getUserId(),
-                itinerary.getDestinationId(),
-                itinerary.getTitle(),
-                itinerary.getStatus().name(),
-                itinerary.getEstimatedBudget(),
-                itinerary.getMetadata(),
-                days,
-                days.size(),
-                completedDays
-        );
+        return ItineraryDetailsDTO.builder()
+                .itineraryId(itinerary.getId())
+                .userId(itinerary.getUserId())
+                .destinationId(itinerary.getDestinationId())
+                .title(itinerary.getTitle())
+                .status(itinerary.getStatus().name())
+                .estimatedBudget(itinerary.getEstimatedBudget())
+                .metadata(itinerary.getMetadata())
+                .days(days)
+                .totalDays(days.size())
+                .completedDays(completedDays)
+                .build();
     }
+
     public List<Itinerary> searchByStatusAndDateRange(String status, LocalDate startDate, LocalDate endDate) {
         return itineraryRepository.searchByStatusAndDateRange(status, startDate, endDate);
     }
@@ -192,19 +243,25 @@ public class ItineraryService {
 
         double total = (accommodation + transport + activities) * seasonMultiplier;
 
-        return new TripCostEstimateDTO(accommodation, transport, activities, total, seasonMultiplier);
+        return TripCostEstimateDTO.builder()
+                .estimatedAccommodation(accommodation)
+                .estimatedTransport(transport)
+                .estimatedActivities(activities)
+                .estimatedTotal(total)
+                .seasonMultiplier(seasonMultiplier)
+                .build();
     }
+
     public List<Itinerary> filterByMetadata(String key, String value) {
         if (key == null || key.isBlank() || value == null || value.isBlank()) {
             throw new IllegalArgumentException("key and value must not be blank");
         }
         return itineraryRepository.filterByMetadata(key, value);
     }
+
     public ItineraryAnalyticsDTO getAnalytics(LocalDate startDate, LocalDate endDate) {
         try {
             Object[] result = itineraryRepository.getAnalytics(startDate, endDate);
-
-            // Handle both Object[] and Object[][] cases
             Object[] row;
             if (result.length > 0 && result[0] instanceof Object[]) {
                 row = (Object[]) result[0];
@@ -219,15 +276,82 @@ public class ItineraryService {
             double avgBudget = row[4] != null ? ((Number) row[4]).doubleValue() : 0.0;
             double completionRate = total > 0 ? (completed * 100.0) / total : 0.0;
 
-            return new ItineraryAnalyticsDTO(
-                    total, completed, cancelled, totalBudget, avgBudget, completionRate
-            );
+            return ItineraryAnalyticsDTO.builder()
+                    .totalItineraries(total)
+                    .completedItineraries(completed)
+                    .cancelledItineraries(cancelled)
+                    .totalBudget(totalBudget)
+                    .averageBudget(avgBudget)
+                    .completionRate(completionRate)
+                    .build();
         } catch (Exception e) {
-            return new ItineraryAnalyticsDTO(0L, 0L, 0L, 0.0, 0.0, 0.0);
+            return ItineraryAnalyticsDTO.builder()
+                    .totalItineraries(0L)
+                    .completedItineraries(0L)
+                    .cancelledItineraries(0L)
+                    .totalBudget(0.0)
+                    .averageBudget(0.0)
+                    .completionRate(0.0)
+                    .build();
+        }
+    }
+    public ItineraryAnalyticsDashboardDTO getAnalyticsDashboard(LocalDate startDate, LocalDate endDate) {
+
+        // Log ANALYTICS_VIEWED on every call (even cache hits) — outside try block
+        Map<String, Object> eventPayload = new HashMap<>();
+        eventPayload.put("itineraryId", 0L);
+        eventPayload.put("startDate", startDate.toString());
+        eventPayload.put("endDate", endDate.toString());
+        notifyObservers("ANALYTICS_VIEWED", eventPayload);
+
+        try {
+            Object[] result = itineraryRepository.getDashboardAnalytics(startDate, endDate);
+
+            Object[] row;
+            if (result.length > 0 && result[0] instanceof Object[]) {
+                row = (Object[]) result[0];
+            } else {
+                row = result;
+            }
+
+            long total = row[0] != null ? ((Number) row[0]).longValue() : 0L;
+            double totalBudget = row[1] != null ? ((Number) row[1]).doubleValue() : 0.0;
+            double avgBudget = row[2] != null ? ((Number) row[2]).doubleValue() : 0.0;
+            long completed = row[3] != null ? ((Number) row[3]).longValue() : 0L;
+            long cancelled = row[4] != null ? ((Number) row[4]).longValue() : 0L;
+            long planned = row[5] != null ? ((Number) row[5]).longValue() : 0L;
+            long draft = row[6] != null ? ((Number) row[6]).longValue() : 0L;
+            long inProgress = row[7] != null ? ((Number) row[7]).longValue() : 0L;
+
+            double completionRate = total > 0 ? (double) completed / total : 0.0;
+
+            Map<String, Long> byStatus = new HashMap<>();
+            if (completed > 0) byStatus.put("COMPLETED", completed);
+            if (cancelled > 0) byStatus.put("CANCELLED", cancelled);
+            if (planned > 0) byStatus.put("PLANNED", planned);
+            if (draft > 0) byStatus.put("DRAFT", draft);
+            if (inProgress > 0) byStatus.put("IN_PROGRESS", inProgress);
+
+            return ItineraryAnalyticsDashboardDTO.builder()
+                    .totalItineraries(total)
+                    .totalBudget(totalBudget)
+                    .averageBudget(avgBudget)
+                    .completionRate(completionRate)
+                    .itinerariesByStatus(byStatus)
+                    .build();
+
+        } catch (Exception e) {
+            return ItineraryAnalyticsDashboardDTO.builder()
+                    .totalItineraries(0)
+                    .totalBudget(0.0)
+                    .averageBudget(0.0)
+                    .completionRate(0.0)
+                    .itinerariesByStatus(new HashMap<>())
+                    .build();
         }
     }
     public List<ItineraryDay> getDays(Long itineraryId) {
-        getById(itineraryId); // throws 404 if not found
+        getById(itineraryId);
         return itineraryDayRepository.findByItineraryIdOrderByDayOrder(itineraryId);
     }
 

@@ -1,15 +1,19 @@
 package com.randmteam2.tripplanning.activity.service;
 
+import com.randmteam2.tripplanning.activity.dto.ActivityEventDTO;
 import com.randmteam2.tripplanning.activity.dto.ActivitySummaryDTO;
 import com.randmteam2.tripplanning.activity.dto.BudgetActivityDTO;
 import com.randmteam2.tripplanning.activity.dto.NearbyActivityDTO;
 import com.randmteam2.tripplanning.activity.model.Activity;
+import com.randmteam2.tripplanning.activity.model.ActivityLifecycleEvent;
+import com.randmteam2.tripplanning.activity.repository.ActivityLifecycleEventRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 import com.randmteam2.tripplanning.activity.repository.ActivityRepository;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Comparator;
@@ -20,12 +24,15 @@ import java.util.stream.Collectors;
 public class ActivityService {
 
     private final ActivityRepository activityRepository;
+    private final ActivityLifecycleEventRepository lifecycleEventRepository;
 
 
     private String itineraryServiceUrl;
 
-    public ActivityService(ActivityRepository activityRepository) {
+    public ActivityService(ActivityRepository activityRepository,
+                           ActivityLifecycleEventRepository lifecycleEventRepository) {
         this.activityRepository = activityRepository;
+        this.lifecycleEventRepository = lifecycleEventRepository;
     }
     private void validateItineraryExists(Long itineraryId) {
         Integer count = activityRepository.checkItineraryExists(itineraryId);
@@ -124,14 +131,14 @@ public class ActivityService {
                     double lonDiff = activity.getLongitude() - userLon;
                     double distance = Math.sqrt(Math.pow(latDiff, 2) + Math.pow(lonDiff, 2)) * 111;
 
-                    return new NearbyActivityDTO(
-                            activity.getId(),
-                            activity.getName(),
-                            activity.getCategory().name(), // Added .name() to fix Enum-to-String error
-                            activity.getLatitude(),
-                            activity.getLongitude(),
-                            distance
-                    );
+                    return NearbyActivityDTO.builder()
+                            .activityId(activity.getId())
+                            .name(activity.getName())
+                            .category(activity.getCategory().name())
+                            .lat(activity.getLatitude())
+                            .lon(activity.getLongitude())
+                            .distanceKm(distance)
+                            .build();
                 }).filter(dto -> dto.distanceKm() <= radiusKm)
                 .sorted(Comparator.comparing(NearbyActivityDTO::distanceKm))
                 .collect(Collectors.toList());
@@ -166,15 +173,14 @@ public class ActivityService {
         LocalDateTime firstScheduledTime = row[3] != null ? ((java.sql.Timestamp) row[3]).toLocalDateTime() : null;
         LocalDateTime lastScheduledTime = row[4] != null ? ((java.sql.Timestamp) row[4]).toLocalDateTime() : null;
 
-        // 5. Return with all 6 arguments
-        return new ActivitySummaryDTO(
-                itineraryId,
-                totalActivities,
-                averageCost,
-                maxCost,
-                firstScheduledTime,
-                lastScheduledTime
-        );
+        return ActivitySummaryDTO.builder()
+                .itineraryId(itineraryId)
+                .totalActivities(totalActivities)
+                .averageCost(averageCost)
+                .maxCost(maxCost)
+                .firstScheduledTime(firstScheduledTime)
+                .lastScheduledTime(lastScheduledTime)
+                .build();
     }
 
     // --- S4-F9: Low-Cost Activities (Updated to new DTO spec) ---
@@ -191,17 +197,42 @@ public class ActivityService {
                 }
             }
 
-            // Updated constructor: activityId, name, category, cost, latitude, longitude, scheduledTime
-            return new BudgetActivityDTO(
-                    activity.getId(),
-                    activity.getName(),
-                    activity.getCategory().name(),
-                    costValue,
-                    activity.getLatitude(),
-                    activity.getLongitude(),
-                    activity.getScheduledTime()
-            );
+            return BudgetActivityDTO.builder()
+                    .activityId(activity.getId())
+                    .name(activity.getName())
+                    .category(activity.getCategory().name())
+                    .cost(costValue)
+                    .latitude(activity.getLatitude())
+                    .longitude(activity.getLongitude())
+                    .scheduledTime(activity.getScheduledTime())
+                    .build();
         }).collect(Collectors.toList());
+    }
+
+    // --- S4-F12: Activity Event Timeline ---
+    public List<ActivityEventDTO> getActivityTimeline(Long activityId, Instant startTime, Instant endTime) {
+        // Validate activity exists in PG (404 if not)
+        activityRepository.findById(activityId)
+                .orElseThrow(() -> new RuntimeException("Activity not found with id: " + activityId));
+
+        List<ActivityLifecycleEvent> events;
+
+        if (startTime != null && endTime != null) {
+            events = lifecycleEventRepository.findByActivityIdAndTimestampBetween(activityId, startTime, endTime);
+        } else {
+            events = lifecycleEventRepository.findByActivityId(activityId);
+        }
+
+        // Sort newest first (Cassandra clustering already does this, but ensure it)
+        return events.stream()
+                .sorted(Comparator.comparing(ActivityLifecycleEvent::getTimestamp).reversed())
+                .map(event -> ActivityEventDTO.builder()
+                        .eventId(event.getEventId())
+                        .activityId(event.getActivityId())
+                        .status(event.getStatus())
+                        .timestamp(event.getTimestamp())
+                        .build())
+                .collect(Collectors.toList());
     }
 
 }

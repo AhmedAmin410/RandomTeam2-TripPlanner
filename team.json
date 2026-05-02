@@ -6,9 +6,15 @@
     "service": "booking-service"
   },
   {
-    "studentId": "XX-XXXX",
-    "name": "Sara Yasser Abdelmageed Meckawy",
-    "githubUsername": "member2-github",
+    "studentId": "68-38312",
+    "name": "Sara Yasser Abdelmageed Meckawy Hemdan",
+    "githubUsername": "SaraMeckawy11",
+    "service": "booking-service"
+  },
+  {
+    "studentId": "68-38306",
+    "name": "Salma Yasser Abdelmageed Meckawy Hemdan",
+    "githubUsername": "Salma20020418",
     "service": "booking-service"
   },
   {
@@ -19,7 +25,7 @@
   },
 
   {
-    "studentId": "40-20092",
+    "studentId": "58-19103",
     "name": "Hassan Gouda",
     "githubUsername": "Gaminggouda",
     "service": "itinerary-and-activity-service"

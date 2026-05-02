@@ -2,6 +2,7 @@ package com.randmteam2.tripplanning.activity.controller;
 
 
 
+import com.randmteam2.tripplanning.activity.dto.ActivityEventDTO;
 import com.randmteam2.tripplanning.activity.dto.ActivitySummaryDTO;
 import com.randmteam2.tripplanning.activity.dto.BudgetActivityDTO;
 import com.randmteam2.tripplanning.activity.dto.NearbyActivityDTO;
@@ -10,6 +11,7 @@ import com.randmteam2.tripplanning.activity.model.Activity;
 import com.randmteam2.tripplanning.activity.service.ActivityService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -121,6 +123,15 @@ public class ActivityController {
             @RequestParam Double maxCost,
             @RequestParam Integer sinceMinutes) {
         return activityService.getBudgetFriendlyActivities(maxCost, sinceMinutes);
+    }
+
+    // S4-F12: Activity Event Timeline
+    @GetMapping("/{id}/timeline")
+    public ResponseEntity<List<ActivityEventDTO>> getActivityTimeline(
+            @PathVariable Long id,
+            @RequestParam(value = "startTime", required = false) Instant startTime,
+            @RequestParam(value = "endTime", required = false) Instant endTime) {
+        return ResponseEntity.ok(activityService.getActivityTimeline(id, startTime, endTime));
     }
 
 }
