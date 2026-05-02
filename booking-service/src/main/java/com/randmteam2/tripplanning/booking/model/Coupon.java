@@ -65,7 +65,7 @@ public class Coupon {
     public void setExpiryDate(LocalDateTime expiryDate) { this.expiryDate = expiryDate; }
 
     @JsonSetter("expiryDate")
-    public void setExpiryDateFromString(String expiryDate) {
+    public void setExpiryDate(String expiryDate) {
         if (expiryDate == null) return;
         this.expiryDate = LocalDateTime.parse(expiryDate.replace(" ", "T"));
     }
