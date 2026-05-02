@@ -1,5 +1,6 @@
 package com.randmteam2.tripplanning.booking.model;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import org.hibernate.annotations.JdbcTypeCode;
@@ -34,6 +35,7 @@ public class Coupon {
     @Column(name = "current_uses", nullable = false)
     private Integer currentUses = 0;
 
+    @JsonFormat(pattern = "yyyy-MM-dd[['T'][' ']HH:mm:ss]")
     @Column(name = "expiry_date", nullable = false)
     private LocalDateTime expiryDate;
 
