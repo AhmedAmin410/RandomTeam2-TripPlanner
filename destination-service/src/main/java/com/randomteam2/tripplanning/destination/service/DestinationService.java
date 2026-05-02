@@ -625,4 +625,54 @@ public class DestinationService {
         payload.put("source", "explicit");
         notifyObservers("INDEXED", payload);
     }
+    /**
+     * S2-F12: Get Destination Analytics Dashboard.
+     * Logs DASHBOARD_VIEWED on every invocation (even cache hits) – logging is outside cache.
+     */
+    public DestinationDashboardDTO getDestinationDashboard(Long destinationId) {
+        Destination destination = destinationRepository.findById(destinationId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Destination not found"));
+
+        // Always log DASHBOARD_VIEWED (outside cache check)
+        Map<String, Object> viewPayload = destinationPayload(destination);
+        viewPayload.put("dashboardParams", Map.of("destinationId", destinationId));
+        notifyObservers("DASHBOARD_VIEWED", viewPayload);
+
+        String cacheKey = "destination-service::S2-F12::" + destinationId;
+        try {
+            Object cached = redisTemplate.opsForValue().get(cacheKey);
+            if (cached instanceof DestinationDashboardDTO dto) {
+                return dto;
+            }
+        } catch (Exception e) {
+            logger.warn("Redis read failed for S2-F12", e);
+        }
+
+        Object[] stats = destinationRepository.findDestinationDashboardStats(destinationId);
+        if (stats != null && stats.length == 1 && stats[0] instanceof Object[]) {
+            stats = (Object[]) stats[0];
+        }
+
+        long totalItineraries = stats != null && stats[0] != null ? ((Number) stats[0]).longValue() : 0L;
+        long completedItineraries = stats != null && stats[1] != null ? ((Number) stats[1]).longValue() : 0L;
+        long totalVisitors = stats != null && stats[2] != null ? ((Number) stats[2]).longValue() : 0L;
+
+        DestinationDashboardDTO dto = DestinationDashboardDTO.builder()
+                .destinationId(destination.getId())
+                .name(destination.getName())
+                .totalItineraries(totalItineraries)
+                .completedItineraries(completedItineraries)
+                .totalVisitors(totalVisitors)
+                .totalRatings(destination.getTotalRatings() != null ? destination.getTotalRatings() : 0)
+                .averageRating(destination.getRating() != null ? destination.getRating() : 0.0)
+                .build();
+
+        try {
+            redisTemplate.opsForValue().set(cacheKey, dto, 10, TimeUnit.MINUTES);
+        } catch (Exception e) {
+            logger.warn("Redis write failed for S2-F12", e);
+        }
+        return dto;
+    }
+}
 
