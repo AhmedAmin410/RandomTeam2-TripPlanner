@@ -1,5 +1,6 @@
 spring:
   datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres:5432/tripplanningdb}
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/tripplanningdb}
     username: ${SPRING_DATASOURCE_USERNAME:postgres}
     password: ${SPRING_DATASOURCE_PASSWORD:postgres}
@@ -12,6 +13,26 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
   data:
     mongodb:
+      uri: ${SPRING_DATA_MONGODB_URI:mongodb://root:rootpass@mongo:27017/tripplanningmongo?authSource=admin}
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:redis}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      password: ${SPRING_DATA_REDIS_PASSWORD:redispass}
+    neo4j:
+      uri: bolt://neo4j:7687
+      username: neo4j
+      password: neo4jpass
+  cache:
+    type: redis
+    redis:
+      time-to-live: 300000
+
+server:
+  port: 8080
+
+jwt:
+  secret: ${JWT_SECRET:REPLACE_WITH_YOUR_44_CHAR_KEY}
+  expiration: ${JWT_EXPIRATION_MS:86400000}
       uri: ${SPRING_DATA_MONGODB_URI:mongodb://root:rootpass@localhost:27017/tripplanningmongo?authSource=admin}
     redis:
       host: ${SPRING_DATA_REDIS_HOST:localhost}

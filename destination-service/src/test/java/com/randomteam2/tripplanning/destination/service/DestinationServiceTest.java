@@ -2,14 +2,17 @@ package com.randomteam2.tripplanning.destination.service;
 
 import com.randomteam2.tripplanning.destination.dto.DestinationRateRequest;
 import com.randomteam2.tripplanning.destination.dto.DestinationReviewAlertDTO;
+import com.randomteam2.tripplanning.destination.dto.DestinationRevenueDTO;
 import com.randomteam2.tripplanning.destination.dto.TopDestinationDTO;
 import com.randomteam2.tripplanning.destination.dto.VerifyDestinationReviewRequest;
 import com.randomteam2.tripplanning.destination.model.Destination;
 import com.randomteam2.tripplanning.destination.model.DestinationReview;
 import com.randomteam2.tripplanning.destination.model.ReviewType;
+import com.randomteam2.tripplanning.destination.observer.EntityObserver;
+import com.randomteam2.tripplanning.destination.observer.MongoEventLogger;
 import com.randomteam2.tripplanning.destination.repository.DestinationRepository;
 import com.randomteam2.tripplanning.destination.repository.DestinationReviewRepository;
-import com.randomteam2.tripplanning.destination.dto.DestinationRevenueDTO;
+import com.randomteam2.tripplanning.destination.service.DestinationCacheInvalidationService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -44,9 +47,17 @@ class DestinationServiceTest {
     @Mock
     private DestinationReviewRepository destinationReviewRepository;
 
+    @Mock
+    private MongoEventLogger mongoEventLogger;
+
+    @Mock
+    private DestinationCacheInvalidationService cacheInvalidationService;
+
+    @Mock
+    private EntityObserver mockObserver;
+
     @InjectMocks
     private DestinationService destinationService;
-// ... existing code ...
 
     @Test
     void revenueSummary_mapsAggregateValuesToDto() {
@@ -121,6 +132,29 @@ class DestinationServiceTest {
         verify(destinationRepository, never()).findDestinationRevenueSummary(any(), any(), any());
     }
 
+    @Test
+    void revenueSummary_nullRow_returnsZeroes() {
+        Destination destination = newDestination(1L);
+        destination.setName("Cairo");
+
+        LocalDate start = LocalDate.of(2026, 3, 1);
+        LocalDate end = LocalDate.of(2026, 3, 31);
+
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(destination));
+        when(destinationRepository.findDestinationRevenueSummary(1L, start, end)).thenReturn(null);
+
+        DestinationRevenueDTO dto = destinationService.getDestinationRevenueSummary(1L, start, end);
+
+        assertThat(dto.getDestinationId()).isEqualTo(1L);
+        assertThat(dto.getName()).isEqualTo("Cairo");
+        assertThat(dto.getTotalBookings()).isEqualTo(0L);
+        assertThat(dto.getTotalRevenue()).isEqualTo(0.0);
+        assertThat(dto.getAverageBookingAmount()).isEqualTo(0.0);
+
+        verify(destinationRepository).findById(1L);
+        verify(destinationRepository).findDestinationRevenueSummary(1L, start, end);
+    }
+
 
 
     // ... existing code ...
@@ -150,6 +184,8 @@ class DestinationServiceTest {
 
         verify(destinationRepository).findById(1L);
         verify(destinationRepository).save(destination);
+        verify(cacheInvalidationService).evictDestinationCaches(1L);
+        verify(mongoEventLogger).onEvent(eq("DETAILS_UPDATED"), any());
     }
 
     @Test
@@ -164,6 +200,18 @@ class DestinationServiceTest {
                 .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(404));
 
         verify(destinationRepository).findById(99L);
+        verify(destinationRepository, never()).save(any());
+    }
+
+    @Test
+    void updateDetails_nullIncomingDetails_throws400() {
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(newDestination(1L)));
+
+        assertThatThrownBy(() -> destinationService.updateDetails(1L, null))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+
+        verify(destinationRepository).findById(1L);
         verify(destinationRepository, never()).save(any());
     }
 
@@ -221,6 +269,9 @@ class DestinationServiceTest {
 
         assertThat(updated.getStatus()).isEqualTo(Destination.Status.ACTIVE);
         verify(destinationRepository, never()).countActiveItinerariesReferencingDestination(anyLong());
+        verify(destinationRepository).save(dest);
+        verify(cacheInvalidationService).evictDestinationCaches(2L);
+        verify(mongoEventLogger).onEvent(eq("STATUS_CHANGED"), any());
     }
 
     @Test
@@ -236,11 +287,23 @@ class DestinationServiceTest {
         Destination updated = destinationService.updateStatus(3L, "inactive");
 
         assertThat(updated.getStatus()).isEqualTo(Destination.Status.INACTIVE);
+        verify(destinationRepository).save(dest);
+        verify(cacheInvalidationService).evictDestinationCaches(3L);
+        verify(mongoEventLogger).onEvent(eq("STATUS_CHANGED"), any());
     }
 
     @Test
     void searchByDetails_blankKey_throws400() {
         assertThatThrownBy(() -> destinationService.searchByDetailsKeyValue(" ", "tropical", null))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+
+        verify(destinationRepository, never()).searchByDetailsKeyValue(any(), any(), any());
+    }
+
+    @Test
+    void searchByDetails_blankValue_throws400() {
+        assertThatThrownBy(() -> destinationService.searchByDetailsKeyValue("climate", " ", null))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
 
@@ -404,6 +467,9 @@ class DestinationServiceTest {
 
         assertThat(updated.getRating()).isEqualTo(5.0);
         assertThat(updated.getTotalRatings()).isEqualTo(1);
+        verify(destinationRepository).save(any(Destination.class));
+        verify(cacheInvalidationService).evictDestinationCaches(1L);
+        verify(mongoEventLogger).onEvent(eq("RATING_ADDED"), any());
     }
 
     @Test
@@ -424,16 +490,19 @@ class DestinationServiceTest {
 
         assertThat(updated.getRating()).isEqualTo(4.0);
         assertThat(updated.getTotalRatings()).isEqualTo(2);
+        verify(destinationRepository).save(any(Destination.class));
+        verify(cacheInvalidationService).evictDestinationCaches(1L);
+        verify(mongoEventLogger).onEvent(eq("RATING_ADDED"), any());
     }
 
     @Test
     void verifyReview_destinationNotFound_throws404() {
-        when(destinationRepository.findById(1L)).thenReturn(Optional.empty());
+        when(destinationRepository.findById(99L)).thenReturn(Optional.empty());
 
         VerifyDestinationReviewRequest req = new VerifyDestinationReviewRequest();
         req.setVerifiedBy(3L);
 
-        assertThatThrownBy(() -> destinationService.verifyDestinationReview(1L, 10L, req))
+        assertThatThrownBy(() -> destinationService.verifyDestinationReview(99L, 10L, req))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(404));
 
@@ -589,6 +658,187 @@ class DestinationServiceTest {
 
         assertThat(result.getDestinationReviews()).hasSize(1);
         assertThat(result.getDestinationReviews().get(0).getVerified()).isTrue();
+        verify(cacheInvalidationService).evictDestinationReviewCaches(1L, 10L);
+        verify(mongoEventLogger).onEvent(eq("REVIEW_VERIFIED"), any());
+    }
+
+    @Test
+    void register_addsObserver_andNotifies() {
+        destinationService.register(mockObserver);
+
+        Destination destination = newDestination(1L);
+        Map<String, Object> existingDetails = new HashMap<>();
+        existingDetails.put("climate", "tropical");
+        destination.setDetails(existingDetails);
+        Map<String, Object> incomingDetails = new HashMap<>();
+        incomingDetails.put("currency", "EUR");
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(destination));
+        when(destinationRepository.save(any(Destination.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        destinationService.updateDetails(1L, incomingDetails);
+
+        verify(mockObserver).onEvent(eq("DETAILS_UPDATED"), any());
+        verify(mongoEventLogger).onEvent(eq("DETAILS_UPDATED"), any());
+    }
+
+    @Test
+    void register_nullObserver_ignored() {
+        destinationService.register(null);
+
+        Destination destination = newDestination(1L);
+        Map<String, Object> existingDetails = new HashMap<>();
+        existingDetails.put("climate", "tropical");
+        destination.setDetails(existingDetails);
+        Map<String, Object> incomingDetails = new HashMap<>();
+        incomingDetails.put("currency", "EUR");
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(destination));
+        when(destinationRepository.save(any(Destination.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        destinationService.updateDetails(1L, incomingDetails);
+
+        verify(mockObserver, never()).onEvent(any(), any());
+        verify(mongoEventLogger).onEvent(eq("DETAILS_UPDATED"), any());
+    }
+
+    @Test
+    void register_duplicateObserver_notAddedTwice() {
+        destinationService.register(mockObserver);
+        destinationService.register(mockObserver); // second time
+
+        Destination destination = newDestination(1L);
+        Map<String, Object> existingDetails = new HashMap<>();
+        existingDetails.put("climate", "tropical");
+        destination.setDetails(existingDetails);
+        Map<String, Object> incomingDetails = new HashMap<>();
+        incomingDetails.put("currency", "EUR");
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(destination));
+        when(destinationRepository.save(any(Destination.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        destinationService.updateDetails(1L, incomingDetails);
+
+        verify(mockObserver).onEvent(eq("DETAILS_UPDATED"), any());
+        verify(mongoEventLogger).onEvent(eq("DETAILS_UPDATED"), any());
+    }
+
+    @Test
+    void unregister_removesObserver_noLongerNotifies() {
+        destinationService.register(mockObserver);
+        destinationService.unregister(mockObserver);
+
+        Destination destination = newDestination(1L);
+        Map<String, Object> existingDetails = new HashMap<>();
+        existingDetails.put("climate", "tropical");
+        destination.setDetails(existingDetails);
+        Map<String, Object> incomingDetails = new HashMap<>();
+        incomingDetails.put("currency", "EUR");
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(destination));
+        when(destinationRepository.save(any(Destination.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        destinationService.updateDetails(1L, incomingDetails);
+
+        verify(mockObserver, never()).onEvent(any(), any());
+        verify(mongoEventLogger).onEvent(eq("DETAILS_UPDATED"), any());
+    }
+
+    @Test
+    void unregister_notRegistered_doesNothing() {
+        destinationService.unregister(mockObserver);
+
+        Destination destination = newDestination(1L);
+        Map<String, Object> existingDetails = new HashMap<>();
+        existingDetails.put("climate", "tropical");
+        destination.setDetails(existingDetails);
+        Map<String, Object> incomingDetails = new HashMap<>();
+        incomingDetails.put("currency", "EUR");
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(destination));
+        when(destinationRepository.save(any(Destination.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        destinationService.updateDetails(1L, incomingDetails);
+
+        verify(mockObserver, never()).onEvent(any(), any());
+        verify(mongoEventLogger).onEvent(eq("DETAILS_UPDATED"), any());
+    }
+
+    @Test
+    void searchByCategoryAndRatingRange_withCategory_returnsFilteredAndOrderedDestinations() {
+        Destination d1 = newDestination(1L);
+        d1.setRating(4.5);
+        Map<String, Object> details1 = new HashMap<>();
+        details1.put("category", "BEACH");
+        d1.setDetails(details1);
+        d1.setStatus(Destination.Status.ACTIVE);
+
+        Destination d2 = newDestination(2L);
+        d2.setRating(3.8);
+        Map<String, Object> details2 = new HashMap<>();
+        details2.put("category", "CITY");
+        d2.setDetails(details2);
+        d2.setStatus(Destination.Status.INACTIVE);
+
+        Destination d3 = newDestination(3L);
+        d3.setRating(4.9);
+        Map<String, Object> details3 = new HashMap<>();
+        details3.put("category", "BEACH");
+        d3.setDetails(details3);
+        d3.setStatus(Destination.Status.ACTIVE);
+
+        when(destinationRepository.searchByCategoryAndRatingRange("BEACH", 4.0, 5.0))
+                .thenReturn(List.of(d3, d1)); // ordered by rating desc
+
+        List<Destination> result = destinationService.searchByCategoryAndRatingRange("BEACH", 4.0, 5.0);
+
+        assertThat(result).hasSize(2);
+        assertThat(result.get(0).getRating()).isEqualTo(4.9);
+        assertThat(result.get(1).getRating()).isEqualTo(4.5);
+
+        verify(destinationRepository).searchByCategoryAndRatingRange("BEACH", 4.0, 5.0);
+    }
+
+    @Test
+    void searchByCategoryAndRatingRange_withoutCategory_returnsFilteredDestinations() {
+        Destination d2 = newDestination(2L);
+        d2.setRating(3.8);
+        Map<String, Object> details2 = new HashMap<>();
+        details2.put("category", "CITY");
+        d2.setDetails(details2);
+        d2.setStatus(Destination.Status.INACTIVE);
+
+        when(destinationRepository.searchByCategoryAndRatingRange(null, 3.0, 4.0))
+                .thenReturn(List.of(d2));
+
+        List<Destination> result = destinationService.searchByCategoryAndRatingRange(null, 3.0, 4.0);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getRating()).isEqualTo(3.8);
+
+        verify(destinationRepository).searchByCategoryAndRatingRange(null, 3.0, 4.0);
+    }
+
+    @Test
+    void searchByCategoryAndRatingRange_invalidRange_throwsBadRequest() {
+        assertThatThrownBy(() -> destinationService.searchByCategoryAndRatingRange(null, 5.0, 3.0))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("minRating cannot be greater than maxRating");
+
+        verify(destinationRepository, never()).searchByCategoryAndRatingRange(any(), any(), any());
+    }
+
+    @Test
+    void searchByCategoryAndRatingRange_missingMinRating_throwsBadRequest() {
+        assertThatThrownBy(() -> destinationService.searchByCategoryAndRatingRange(null, null, 5.0))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("minRating and maxRating are required");
+
+        verify(destinationRepository, never()).searchByCategoryAndRatingRange(any(), any(), any());
+    }
+
+    @Test
+    void searchByCategoryAndRatingRange_missingMaxRating_throwsBadRequest() {
+        assertThatThrownBy(() -> destinationService.searchByCategoryAndRatingRange(null, 3.0, null))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("minRating and maxRating are required");
+
+        verify(destinationRepository, never()).searchByCategoryAndRatingRange(any(), any(), any());
     }
 
     private static Destination newDestination(long id) {
