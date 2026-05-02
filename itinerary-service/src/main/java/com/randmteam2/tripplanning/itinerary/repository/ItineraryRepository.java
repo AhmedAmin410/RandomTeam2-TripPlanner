@@ -97,7 +97,10 @@ public interface ItineraryRepository extends JpaRepository<Itinerary, Long> {
             @Param("endDate") LocalDate endDate
     );
 
-    boolean existsByUserEmail(String email);
+    @Query(value = """
+    SELECT COUNT(*) > 0 FROM users WHERE email = :email
+    """, nativeQuery = true)
+    boolean existsByUserEmail(@Param("email") String email);
 
     @Query(value = """
     SELECT
