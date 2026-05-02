@@ -7,7 +7,7 @@ import com.randomteam2.tripplanning.destination.dto.TopDestinationDTO;
 import com.randomteam2.tripplanning.destination.dto.VerifyDestinationReviewRequest;
 import com.randomteam2.tripplanning.destination.model.Destination;
 import com.randomteam2.tripplanning.destination.model.DestinationReview;
-import com.randomteam2.tripplanning.destination.model.ReviewType;
+import com.randomteam2.tripplanning.destination.model.DestinationReviewType;
 import com.randomteam2.tripplanning.destination.observer.EntityObserver;
 import com.randomteam2.tripplanning.destination.observer.MongoEventLogger;
 import com.randomteam2.tripplanning.destination.repository.DestinationRepository;
@@ -632,7 +632,7 @@ class DestinationServiceTest {
 
         DestinationReview review = new DestinationReview();
         review.setId(10L);
-        review.setType(ReviewType.VISITOR);
+        review.setType(DestinationReviewType.VISITOR);
         review.setContent("Great");
         review.setRating(5);
         review.setDestination(d1);
