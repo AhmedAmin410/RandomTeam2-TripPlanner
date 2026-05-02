@@ -69,7 +69,7 @@ public interface DestinationRepository extends JpaRepository<Destination, Long> 
                 COALESCE(SUM(b.amount), 0) AS total_revenue,
                 COALESCE(AVG(b.amount), 0) AS average_booking_amount
             FROM bookings b
-            INNER JOIN itineraries i ON b.itin_id = i.id
+            INNER JOIN itineraries i ON b.itinerary_id = i.id
             WHERE i.destination_id = :destinationId
             AND b.status = 'CONFIRMED'
             AND DATE(b.created_at) BETWEEN :startDate AND :endDate
@@ -80,8 +80,18 @@ public interface DestinationRepository extends JpaRepository<Destination, Long> 
             @Param("endDate") LocalDate endDate);
 
     @Query(value = """
+            SELECT
+                COUNT(i.id)::bigint AS total_itineraries,
+                COUNT(CASE WHEN i.status = 'COMPLETED' THEN 1 END)::bigint AS completed_itineraries,
+                COUNT(DISTINCT i.user_id)::bigint AS total_visitors
+            FROM itineraries i
+            WHERE i.destination_id = :destinationId
+            """, nativeQuery = true)
+    Object[] findDestinationDashboardStats(@Param("destinationId") Long destinationId);
+
+    @Query(value = """
             SELECT d.* FROM destinations d
-            WHERE (:category IS NULL OR (d.details IS NOT NULL AND d.details ->> 'category' = :category))
+            WHERE (:category IS NULL OR d.category = :category)
             AND d.rating >= :minRating AND d.rating <= :maxRating
             ORDER BY d.rating DESC
             """, nativeQuery = true)

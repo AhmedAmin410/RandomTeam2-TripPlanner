@@ -7,35 +7,38 @@ public class TopDestinationDTO {
     private Double rating;
     private Long totalBookings;
 
-    public Long getDestinationId() {
-        return destinationId;
+    public TopDestinationDTO() {}
+
+    private TopDestinationDTO(Builder builder) {
+        this.destinationId = builder.destinationId;
+        this.name = builder.name;
+        this.rating = builder.rating;
+        this.totalBookings = builder.totalBookings;
     }
 
-    public void setDestinationId(Long destinationId) {
-        this.destinationId = destinationId;
+    public static Builder builder() {
+        return new Builder();
     }
 
-    public String getName() {
-        return name;
+    public static class Builder {
+        private Long destinationId;
+        private String name;
+        private Double rating;
+        private Long totalBookings;
+
+        public Builder destinationId(Long destinationId) { this.destinationId = destinationId; return this; }
+        public Builder name(String name) { this.name = name; return this; }
+        public Builder rating(Double rating) { this.rating = rating; return this; }
+        public Builder totalBookings(Long totalBookings) { this.totalBookings = totalBookings; return this; }
+        public TopDestinationDTO build() { return new TopDestinationDTO(this); }
     }
 
-    public void setName(String name) {
-        this.name = name;
-    }
-
-    public Double getRating() {
-        return rating;
-    }
-
-    public void setRating(Double rating) {
-        this.rating = rating;
-    }
-
-    public Long getTotalBookings() {
-        return totalBookings;
-    }
-
-    public void setTotalBookings(Long totalBookings) {
-        this.totalBookings = totalBookings;
-    }
+    public Long getDestinationId() { return destinationId; }
+    public void setDestinationId(Long destinationId) { this.destinationId = destinationId; }
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
+    public Double getRating() { return rating; }
+    public void setRating(Double rating) { this.rating = rating; }
+    public Long getTotalBookings() { return totalBookings; }
+    public void setTotalBookings(Long totalBookings) { this.totalBookings = totalBookings; }
 }
