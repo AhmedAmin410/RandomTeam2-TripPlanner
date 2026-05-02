@@ -1,6 +1,7 @@
 package com.randmteam2.tripplanning.booking.model;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonSetter;
 import jakarta.persistence.*;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -62,6 +63,13 @@ public class Coupon {
     public void setCurrentUses(Integer currentUses) { this.currentUses = currentUses; }
     public LocalDateTime getExpiryDate() { return expiryDate; }
     public void setExpiryDate(LocalDateTime expiryDate) { this.expiryDate = expiryDate; }
+
+    @JsonSetter("expiryDate")
+    public void setExpiryDateFromString(String expiryDate) {
+        if (expiryDate == null) return;
+        this.expiryDate = LocalDateTime.parse(expiryDate.replace(" ", "T"));
+    }
+
     public Boolean getActive() { return active; }
     public void setActive(Boolean active) { this.active = active; }
     public Map<String, Object> getMetadata() { return metadata; }
