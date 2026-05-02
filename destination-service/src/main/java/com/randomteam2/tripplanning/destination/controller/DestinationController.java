@@ -141,6 +141,14 @@ public class DestinationController {
         return ResponseEntity.ok(destinationService.getDestinationsWithLowRatedReviews(maxRating));
     }
 
-    // ─── M2 Features ─────────────────────────────────────────────────────────
+    @GetMapping("/search/full-text")
+    public ResponseEntity<List<DestinationSearchResultDTO>> fullTextSearch(
+            @RequestParam(required = false) String query,
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) Double minRating,
+            @RequestParam(required = false) Double maxRating) {
+        return ResponseEntity.ok(destinationService.fullTextSearch(query, category, status, minRating, maxRating));
+    }
 
 }
