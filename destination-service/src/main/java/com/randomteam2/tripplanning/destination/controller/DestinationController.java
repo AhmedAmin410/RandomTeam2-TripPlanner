@@ -150,5 +150,10 @@ public class DestinationController {
             @RequestParam(required = false) Double maxRating) {
         return ResponseEntity.ok(destinationService.fullTextSearch(query, category, status, minRating, maxRating));
     }
+    @PostMapping("/{id}/index")
+    public ResponseEntity<Void> indexDestination(@PathVariable Long id) {
+        destinationService.indexDestination(id);
+        return ResponseEntity.ok().build();
+    }
 
 }
