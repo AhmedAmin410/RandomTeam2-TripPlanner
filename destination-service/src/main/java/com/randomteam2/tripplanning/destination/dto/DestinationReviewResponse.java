@@ -1,68 +1,44 @@
-package com.randomteam2.tripplanning.destination.model;
+package com.randomteam2.tripplanning.destination.dto;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import jakarta.persistence.*;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
-import org.hibernate.annotations.JdbcTypeCode;
-import org.hibernate.type.SqlTypes;
+import com.randomteam2.tripplanning.destination.model.DestinationReview;
+import com.randomteam2.tripplanning.destination.model.DestinationReviewType;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Map;
 
-@Entity
-@Table(name = "destination_reviews")
-public class DestinationReview {
+/**
+ * API view of a review without embedding the full {@link com.randomteam2.tripplanning.destination.model.Destination}.
+ */
+public class DestinationReviewResponse {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    @NotNull
+    private Long destinationId;
     private DestinationReviewType type;
-
-    @NotBlank
-    @Column(nullable = false, columnDefinition = "TEXT")
     private String content;
-
-    @NotNull
-    @Min(1)
-    @Max(5)
-    @Column(nullable = false)
     private Integer rating;
-
     private LocalDate visitDate;
-
-    @Column(nullable = false)
-    private Boolean verified = false;
-
-    /** Stored as PostgreSQL JSONB via Hibernate JSON mapping. */
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(columnDefinition = "jsonb")
+    private Boolean verified;
     private Map<String, Object> metadata;
-
-    @Column(nullable = false)
     private LocalDateTime createdAt;
 
-    @ManyToOne(optional = false)
-    @JoinColumn(name = "dest_id", nullable = false)
-    @JsonIgnore
-    @NotNull
-    private Destination destination;
-
-    @PrePersist
-    void onCreate() {
-        if (createdAt == null) {
-            createdAt = LocalDateTime.now();
+    public static DestinationReviewResponse fromEntity(DestinationReview entity) {
+        if (entity == null) {
+            return null;
         }
-        if (verified == null) {
-            verified = false;
+        DestinationReviewResponse dto = new DestinationReviewResponse();
+        dto.setId(entity.getId());
+        if (entity.getDestination() != null) {
+            dto.setDestinationId(entity.getDestination().getId());
         }
+        dto.setType(entity.getType());
+        dto.setContent(entity.getContent());
+        dto.setRating(entity.getRating());
+        dto.setVisitDate(entity.getVisitDate());
+        dto.setVerified(entity.getVerified());
+        dto.setMetadata(entity.getMetadata());
+        dto.setCreatedAt(entity.getCreatedAt());
+        return dto;
     }
 
     public Long getId() {
@@ -71,6 +47,14 @@ public class DestinationReview {
 
     public void setId(Long id) {
         this.id = id;
+    }
+
+    public Long getDestinationId() {
+        return destinationId;
+    }
+
+    public void setDestinationId(Long destinationId) {
+        this.destinationId = destinationId;
     }
 
     public DestinationReviewType getType() {
@@ -127,13 +111,5 @@ public class DestinationReview {
 
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
-    }
-
-    public Destination getDestination() {
-        return destination;
-    }
-
-    public void setDestination(Destination destination) {
-        this.destination = destination;
     }
 }
