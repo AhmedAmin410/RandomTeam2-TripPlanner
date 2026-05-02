@@ -14,11 +14,11 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
 
     // S5-F1
     @Query(value = """
-        SELECT * FROM bookings
-        WHERE (:status IS NULL OR CAST(status AS text) = :status)
-        AND (created_at IS NULL OR created_at BETWEEN :startDate AND :endDate)
-        ORDER BY created_at DESC NULLS LAST
-        """, nativeQuery = true)
+    SELECT * FROM bookings
+    WHERE (:status IS NULL OR CAST(status AS text) = :status)
+    AND (created_at IS NULL OR (created_at >= :startDate AND created_at <= :endDate))
+    ORDER BY created_at DESC NULLS LAST
+    """, nativeQuery = true)
     List<Booking> searchBookings(
             @Param("status") String status,
             @Param("startDate") LocalDateTime startDate,
@@ -43,12 +43,12 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
 
     // S5-F6
     @Query(value = """
-        SELECT status, COUNT(*) as count, COALESCE(SUM(amount), 0) as total
-        FROM bookings
-        WHERE (created_at IS NULL OR created_at BETWEEN :startDate AND :endDate)
-        AND status IN ('CONFIRMED', 'CANCELLED')
-        GROUP BY status
-        """, nativeQuery = true)
+    SELECT status, COUNT(*) as count, COALESCE(SUM(amount), 0) as total
+    FROM bookings
+    WHERE (created_at IS NULL OR (created_at >= :startDate AND created_at <= :endDate))
+    AND CAST(status AS text) IN ('CONFIRMED', 'CANCELLED')
+    GROUP BY status
+    """, nativeQuery = true)
     List<Object[]> getRevenueReport(
             @Param("startDate") LocalDateTime startDate,
             @Param("endDate") LocalDateTime endDate);
