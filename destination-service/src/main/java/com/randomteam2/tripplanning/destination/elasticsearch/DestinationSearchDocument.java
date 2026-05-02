@@ -1,0 +1,58 @@
+package com.randomteam2.tripplanning.destination.elasticsearch;
+
+import org.springframework.data.annotation.Id;
+import org.springframework.data.elasticsearch.annotations.Document;
+import org.springframework.data.elasticsearch.annotations.Field;
+import org.springframework.data.elasticsearch.annotations.FieldType;
+
+@Document(indexName = "destinations")
+public class DestinationSearchDocument {
+
+    @Id
+    private String id;
+
+    @Field(type = FieldType.Text, analyzer = "standard")
+    private String name;
+
+    @Field(type = FieldType.Keyword)
+    private String country;
+
+    @Field(type = FieldType.Keyword)
+    private String category;
+
+    @Field(type = FieldType.Text, analyzer = "standard")
+    private String description;
+
+    @Field(type = FieldType.Text, analyzer = "standard")
+    private String highlights;
+
+    @Field(type = FieldType.Double)
+    private Double rating;
+
+    @Field(type = FieldType.Integer)
+    private Integer totalRatings;
+
+    @Field(type = FieldType.Keyword)
+    private String status;
+
+    public DestinationSearchDocument() {}
+
+    public String getId() { return id; }
+    public void setId(String id) { this.id = id; }
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
+    public String getCountry() { return country; }
+    public void setCountry(String country) { this.country = country; }
+    public String getCategory() { return category; }
+    public void setCategory(String category) { this.category = category; }
+    public String getDescription() { return description; }
+    public void setDescription(String description) { this.description = description; }
+    public String getHighlights() { return highlights; }
+    public void setHighlights(String highlights) { this.highlights = highlights; }
+    public Double getRating() { return rating; }
+    public void setRating(Double rating) { this.rating = rating; }
+    public Integer getTotalRatings() { return totalRatings; }
+    public void setTotalRatings(Integer totalRatings) { this.totalRatings = totalRatings; }
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
+}
