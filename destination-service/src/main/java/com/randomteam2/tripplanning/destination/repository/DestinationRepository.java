@@ -2,6 +2,7 @@ package com.randomteam2.tripplanning.destination.repository;
 
 import com.randomteam2.tripplanning.destination.model.Destination;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.data.rest.core.annotation.RepositoryRestResource;
@@ -11,7 +12,7 @@ import java.util.Optional;
 import java.time.LocalDate;
 
 @RepositoryRestResource(exported = false)
-public interface DestinationRepository extends JpaRepository<Destination, Long> {
+public interface DestinationRepository extends JpaRepository<Destination, Long>, JpaSpecificationExecutor<Destination> {
 
     @Query(value = """
             SELECT COUNT(*) FROM itineraries
@@ -89,14 +90,4 @@ public interface DestinationRepository extends JpaRepository<Destination, Long> 
             """, nativeQuery = true)
     Object[] findDestinationDashboardStats(@Param("destinationId") Long destinationId);
 
-    @Query(value = """
-            SELECT d.* FROM destinations d
-            WHERE (:category IS NULL OR d.category = :category)
-            AND d.rating >= :minRating AND d.rating <= :maxRating
-            ORDER BY d.rating DESC
-            """, nativeQuery = true)
-    List<Destination> searchByCategoryAndRatingRange(
-            @Param("category") String category,
-            @Param("minRating") Double minRating,
-            @Param("maxRating") Double maxRating);
 }
