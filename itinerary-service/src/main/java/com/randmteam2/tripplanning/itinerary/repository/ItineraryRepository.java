@@ -117,4 +117,19 @@ public interface ItineraryRepository extends JpaRepository<Itinerary, Long> {
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate
     );
+
+    @Query(value = """
+    SELECT u.id as userId, u.name as userName
+    FROM users u
+    WHERE u.id = :userId
+    """, nativeQuery = true)
+    Object[] getUserById(@Param("userId") Long userId);
+
+    @Query(value = """
+    SELECT d.id as destinationId, d.name as destinationName,
+           d.country as country, d.category as category
+    FROM destinations d
+    WHERE d.id = :destinationId
+    """, nativeQuery = true)
+    Object[] getDestinationById(@Param("destinationId") Long destinationId);
 }
