@@ -5,12 +5,14 @@ import com.randmteam2.tripplanning.itinerary.model.Itinerary;
 import com.randmteam2.tripplanning.itinerary.model.ItineraryDay;
 import com.randmteam2.tripplanning.itinerary.service.ItineraryDayService;
 import com.randmteam2.tripplanning.itinerary.service.ItineraryService;
+import com.randmteam2.tripplanning.itinerary.service.RecordVisitService;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import com.randmteam2.tripplanning.itinerary.dto.ItineraryAnalyticsDashboardDTO;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/itineraries")
@@ -18,11 +20,13 @@ public class ItineraryController {
 
     private final ItineraryService itineraryService;
     private final ItineraryDayService itineraryDayService;
+    private final RecordVisitService recordVisitService;
 
     public ItineraryController(ItineraryService itineraryService,
-                               ItineraryDayService itineraryDayService) {
+                               ItineraryDayService itineraryDayService, RecordVisitService recordVisitService) {
         this.itineraryService = itineraryService;
         this.itineraryDayService = itineraryDayService;
+        this.recordVisitService = recordVisitService;
     }
 
     @GetMapping("/health")
@@ -151,5 +155,15 @@ public class ItineraryController {
         }
         return ResponseEntity.ok(itineraryService.getAnalyticsDashboard(startDate, endDate));
     }
-
+    @PostMapping("/{itineraryId}/record-visit")
+    public ResponseEntity<?> recordVisit(@PathVariable Long itineraryId) {
+        try {
+            String result = recordVisitService.recordVisit(itineraryId);
+            return ResponseEntity.ok(Map.of("message", result));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
+        }
+    }
 }
