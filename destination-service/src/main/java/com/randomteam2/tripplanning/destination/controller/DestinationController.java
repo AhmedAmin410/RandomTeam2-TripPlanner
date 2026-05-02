@@ -155,5 +155,9 @@ public class DestinationController {
         destinationService.indexDestination(id);
         return ResponseEntity.ok().build();
     }
+    @GetMapping("/{id}/dashboard")
+    public ResponseEntity<DestinationDashboardDTO> getDestinationDashboard(@PathVariable Long id) {
+        return ResponseEntity.ok(destinationService.getDestinationDashboard(id));
+    }
 
 }
