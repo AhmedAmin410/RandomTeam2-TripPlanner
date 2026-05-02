@@ -21,6 +21,8 @@ spring:
     type: redis
     redis:
       time-to-live: 300000
+  elasticsearch:
+    uris: ${SPRING_ELASTICSEARCH_URIS:http://localhost:9200}
 
 server:
   port: 8080
