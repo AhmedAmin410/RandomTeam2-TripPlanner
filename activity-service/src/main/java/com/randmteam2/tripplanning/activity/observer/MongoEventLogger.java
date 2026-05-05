@@ -1,4 +1,4 @@
-﻿package com.randmteam2.tripplanning.activity.observer;
+package com.randmteam2.tripplanning.activity.observer;
 import com.randmteam2.tripplanning.activity.event.ActivityEvent;
 import com.randmteam2.tripplanning.activity.event.EventFactory;
 import com.randmteam2.tripplanning.activity.event.EventType;

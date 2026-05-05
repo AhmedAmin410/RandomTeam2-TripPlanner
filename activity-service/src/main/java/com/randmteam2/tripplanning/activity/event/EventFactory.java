@@ -1,4 +1,4 @@
-﻿package com.randmteam2.tripplanning.activity.event;
+package com.randmteam2.tripplanning.activity.event;
 import java.util.Map;
 public class EventFactory {
     private EventFactory() {}

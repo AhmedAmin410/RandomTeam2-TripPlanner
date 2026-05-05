@@ -107,19 +107,6 @@ public interface ActivityRepository extends JpaRepository<Activity, Long> {
 
 
 
-    // S4-F10: Analytics dashboard â€” aggregation per category
-    @Query(value = """
-            SELECT category,
-                   COUNT(*) AS cnt,
-                   COALESCE(AVG(CAST(metadata ->> 'cost' AS NUMERIC)), 0) AS avgCost,
-                   COALESCE(AVG(CAST(metadata ->> 'duration' AS NUMERIC)), 0) AS avgDuration
-            FROM activities
-            WHERE scheduled_time >= :startDate AND scheduled_time <= :endDate
-            GROUP BY category
-            """, nativeQuery = true)
-    List<Object[]> getAnalyticsByCategory(@Param("startDate") String startDate,
-                                          @Param("endDate") String endDate);
-
 
 
 

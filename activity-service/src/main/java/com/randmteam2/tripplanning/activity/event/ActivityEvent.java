@@ -1,4 +1,4 @@
-﻿package com.randmteam2.tripplanning.activity.event;
+package com.randmteam2.tripplanning.activity.event;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 import java.time.LocalDateTime;
