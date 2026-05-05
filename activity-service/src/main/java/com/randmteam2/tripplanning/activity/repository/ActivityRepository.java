@@ -74,6 +74,39 @@ public interface ActivityRepository extends JpaRepository<Activity, Long> {
     @Query(value = "SELECT COUNT(*) FROM itineraries WHERE id = :itineraryId", nativeQuery = true)
     Integer checkItineraryExists(@Param("itineraryId") Long itineraryId);
 
+
+    @Query(value = """
+            SELECT category,
+                   COUNT(*) AS cnt,
+                   COALESCE(AVG(CAST(metadata ->> 'cost' AS NUMERIC)), 0) AS avgCost,
+                   COALESCE(AVG(CAST(metadata ->> 'duration' AS NUMERIC)), 0) AS avgDuration
+            FROM activities
+            WHERE scheduled_time >= :startDate AND scheduled_time <= :endDate
+            GROUP BY category
+            """, nativeQuery = true)
+    List<Object[]> getAnalyticsByCategory(@Param("startDate") String startDate,
+                                          @Param("endDate") String endDate);
+
+
+    @Query(value = "SELECT COUNT(*) FROM activities WHERE scheduled_time < :cutoff", nativeQuery = true)
+    Long countOlderThan(@Param("cutoff") String cutoff);
+
+
+
+
+    @Query(value = """
+            SELECT * FROM activities
+            WHERE scheduled_time >= :startDate
+              AND scheduled_time <= :endDate
+              AND (:category IS NULL OR category = :category)
+            ORDER BY scheduled_time ASC
+            """, nativeQuery = true)
+    List<Activity> findInDateRange(@Param("startDate") String startDate,
+                                   @Param("endDate") String endDate,
+                                   @Param("category") String category);
+
+
+
     // S4-F10: Analytics dashboard â€” aggregation per category
     @Query(value = """
             SELECT category,
