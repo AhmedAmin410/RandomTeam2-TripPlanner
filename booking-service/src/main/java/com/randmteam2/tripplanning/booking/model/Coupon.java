@@ -61,10 +61,7 @@ public class Coupon {
     public Integer getCurrentUses() { return currentUses; }
     public void setCurrentUses(Integer currentUses) { this.currentUses = currentUses; }
     public LocalDateTime getExpiryDate() { return expiryDate; }
-    public void setExpiryDate(String expiryDate) {
-        if (expiryDate == null) return;
-        this.expiryDate = LocalDateTime.parse(expiryDate.replace(" ", "T"));
-    }
+    public void setExpiryDate(LocalDateTime expiryDate) { this.expiryDate = expiryDate; }
     public Boolean getActive() { return active; }
     public void setActive(Boolean active) { this.active = active; }
     public Map<String, Object> getMetadata() { return metadata; }

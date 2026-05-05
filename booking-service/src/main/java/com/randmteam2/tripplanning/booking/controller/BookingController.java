@@ -1,32 +1,31 @@
 package com.randmteam2.tripplanning.booking.controller;
 
 import com.randmteam2.tripplanning.booking.dto.BookingDetailsDTO;
-import com.randmteam2.tripplanning.booking.dto.CouponUsageDTO;
+import com.randmteam2.tripplanning.booking.dto.PaymentHistoryEntryDTO;
 import com.randmteam2.tripplanning.booking.dto.RevenueReportDTO;
 import com.randmteam2.tripplanning.booking.dto.UserBookingSummaryDTO;
 import com.randmteam2.tripplanning.booking.model.Booking;
 import com.randmteam2.tripplanning.booking.service.BookingService;
+import com.randmteam2.tripplanning.booking.service.PaymentHistoryService;
+import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
+import com.randmteam2.tripplanning.booking.dto.RefundCancellationRequest;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/bookings")
 public class BookingController {
 
     private final BookingService bookingService;
+    private final PaymentHistoryService paymentHistoryService;
 
-    public BookingController(BookingService bookingService) {
+    public BookingController(BookingService bookingService,
+                             PaymentHistoryService paymentHistoryService) {
         this.bookingService = bookingService;
-    }
-
-    @GetMapping("/health")
-    public ResponseEntity<String> health() {
-        return ResponseEntity.ok("OK");
+        this.paymentHistoryService = paymentHistoryService;
     }
 
     // ── CRUD ──────────────────────────────────────────────────────────────
@@ -58,6 +57,7 @@ public class BookingController {
         return ResponseEntity.noContent().build();
     }
 
+
     // ── S5-F1 ─────────────────────────────────────────────────────────────
     @GetMapping("/search")
     public ResponseEntity<List<Booking>> searchBookings(
@@ -77,7 +77,7 @@ public class BookingController {
     @PutMapping("/{id}/cancel")
     public ResponseEntity<Booking> cancelBooking(
             @PathVariable Long id,
-            @RequestBody Map<String, String> body) {
+            @RequestBody java.util.Map<String, String> body) {
         return ResponseEntity.ok(bookingService.cancelBooking(id, body.get("reason")));
     }
 
@@ -89,12 +89,14 @@ public class BookingController {
     }
 
     // ── S5-F4 ─────────────────────────────────────────────────────────────
+    // ── S5-F4 ─────────────────────────────────────────────────────────────
     @PostMapping("/itinerary/{itineraryId}")
     public ResponseEntity<Booking> createBookingForItinerary(
             @PathVariable Long itineraryId,
-            @RequestBody Map<String, Object> body) {
+            @RequestBody java.util.Map<String, Object> body,
+            @RequestParam(defaultValue = "false") boolean simulateFailure) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(bookingService.createBookingForItinerary(itineraryId, body));
+                .body(bookingService.createBookingForItinerary(itineraryId, body, simulateFailure));
     }
 
     // ── S5-F5 ─────────────────────────────────────────────────────────────
@@ -118,7 +120,6 @@ public class BookingController {
                 LocalDateTime.of(2100, 1, 1, 0, 0);
         return ResponseEntity.ok(bookingService.getRevenueReport(start, end));
     }
-
     // ── S5-F7 ─────────────────────────────────────────────────────────────
     @PutMapping("/{id}/retry")
     public ResponseEntity<Booking> retryBooking(@PathVariable Long id) {
@@ -134,8 +135,25 @@ public class BookingController {
 
     // ── S5-F9 ─────────────────────────────────────────────────────────────
     @GetMapping("/coupons/top-used")
-    public ResponseEntity<List<CouponUsageDTO>> getTopUsedCoupons(
+    public ResponseEntity<List<?>> getTopUsedCoupons(
             @RequestParam int limit) {
         return ResponseEntity.ok(bookingService.getTopUsedCoupons(limit));
+    }
+
+    // ── S5-F12 ────────────────────────────────────────────────────────────
+    @PostMapping("/{id}/refund-cancellation-tier")
+    public ResponseEntity<Booking> processRefundCancellation(
+            @PathVariable Long id,
+            @RequestBody RefundCancellationRequest request) {
+        return ResponseEntity.ok(bookingService.processRefundCancellation(id, request));
+    }
+
+    // ── S5-F11 ────────────────────────────────────────────────────────────
+    @GetMapping("/{id}/payment-history")
+    public ResponseEntity<Page<PaymentHistoryEntryDTO>> getPaymentHistory(
+            @PathVariable Long id,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size) {
+        return ResponseEntity.ok(paymentHistoryService.getPaymentHistory(id, page, size));
     }
 }

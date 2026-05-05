@@ -28,12 +28,7 @@ public class CouponService {
     }
 
     public Coupon createCoupon(Coupon coupon) {
-        try {
-            return couponRepository.save(coupon);
-        } catch (org.springframework.dao.DataIntegrityViolationException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Coupon code already exists: " + coupon.getCode());
-        }
+        return couponRepository.save(coupon);
     }
 
     public Coupon updateCoupon(Long id, Coupon coupon) {
