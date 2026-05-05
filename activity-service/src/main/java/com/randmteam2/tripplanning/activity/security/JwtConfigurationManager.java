@@ -1,0 +1,26 @@
+﻿package com.randmteam2.tripplanning.activity.security;
+
+public class JwtConfigurationManager {
+    private static volatile JwtConfigurationManager instance;
+    private final String secret;
+    private final long expirationMs;
+
+    private JwtConfigurationManager() {
+        String envSecret = System.getenv("JWT_SECRET");
+        this.secret = (envSecret != null && !envSecret.isBlank()) ? envSecret : "7Tz8mG9kQp2vXwLcHdNjBfYsAeRuOiPb3V5W0yZ1sT4=";
+        String envExpiry = System.getenv("JWT_EXPIRATION_MS");
+        this.expirationMs = (envExpiry != null && !envExpiry.isBlank()) ? Long.parseLong(envExpiry) : 86400000L;
+    }
+
+    public static JwtConfigurationManager getInstance() {
+        if (instance == null) {
+            synchronized (JwtConfigurationManager.class) {
+                if (instance == null) instance = new JwtConfigurationManager();
+            }
+        }
+        return instance;
+    }
+
+    public String getSecret() { return secret; }
+    public long getExpirationMs() { return expirationMs; }
+}
