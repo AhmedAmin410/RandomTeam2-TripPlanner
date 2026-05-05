@@ -5,8 +5,6 @@ import com.randomteam2.tripplanning.destination.adapter.ObjectArrayDtoAdapter;
 import com.randomteam2.tripplanning.destination.dto.*;
 import com.randomteam2.tripplanning.destination.elasticsearch.DestinationSearchDocument;
 import com.randomteam2.tripplanning.destination.elasticsearch.DestinationSearchRepository;
-import com.randomteam2.tripplanning.destination.exception.InvalidRatingRangeException;
-import com.randomteam2.tripplanning.destination.exception.InvalidSearchParameterException;
 import com.randomteam2.tripplanning.destination.model.Destination;
 import com.randomteam2.tripplanning.destination.model.DestinationReview;
 import com.randomteam2.tripplanning.destination.observer.EntityObserver;
@@ -14,11 +12,9 @@ import com.randomteam2.tripplanning.destination.observer.MongoEventLogger;
 import com.randomteam2.tripplanning.destination.repository.DestinationEventRepository;
 import com.randomteam2.tripplanning.destination.repository.DestinationRepository;
 import com.randomteam2.tripplanning.destination.repository.DestinationReviewRepository;
-import com.randomteam2.tripplanning.destination.repository.DestinationSpecifications;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.data.elasticsearch.core.SearchHit;
 import org.springframework.data.elasticsearch.core.SearchHits;
@@ -32,14 +28,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
@@ -177,6 +166,69 @@ public class DestinationService {
         destinationRepository.deleteById(id);
         cacheInvalidationService.evictDestinationCaches(id);
         notifyObservers("DESTINATION_DELETED", destinationPayload(existing));
+    }
+
+    // ─── Review CRUD ─────────────────────────────────────────────────────────
+
+    @Transactional
+    public DestinationReview createReview(Long destinationId, DestinationReview review) {
+        Destination destination = destinationRepository.findById(destinationId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Destination not found"));
+        review.setDestination(destination);
+        DestinationReview saved = destinationReviewRepository.save(review);
+        cacheInvalidationService.evictDestinationCaches(destinationId);
+        notifyObservers("REVIEW_CREATED", destinationPayload(destination));
+        return saved;
+    }
+
+    @Transactional(readOnly = true)
+    public List<DestinationReview> getAllReviews() {
+        return destinationReviewRepository.findAll();
+    }
+
+    @Transactional(readOnly = true)
+    public DestinationReview getReviewById(Long reviewId) {
+        String cacheKey = "destination-service::destination-review::" + reviewId;
+        try {
+            Object cached = redisTemplate.opsForValue().get(cacheKey);
+            if (cached instanceof DestinationReview r) {
+                return r;
+            }
+        } catch (Exception e) {
+            logger.warn("Redis read failed for key {}", cacheKey, e);
+        }
+        DestinationReview review = destinationReviewRepository.findById(reviewId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Review not found"));
+        try {
+            redisTemplate.opsForValue().set(cacheKey, review, 15, TimeUnit.MINUTES);
+        } catch (Exception e) {
+            logger.warn("Redis write failed for key {}", cacheKey, e);
+        }
+        return review;
+    }
+
+    @Transactional
+    public DestinationReview updateReview(Long reviewId, DestinationReview updated) {
+        DestinationReview existing = destinationReviewRepository.findById(reviewId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Review not found"));
+        if (updated.getContent() != null) existing.setContent(updated.getContent());
+        if (updated.getRating() != null) existing.setRating(updated.getRating());
+        if (updated.getVisitDate() != null) existing.setVisitDate(updated.getVisitDate());
+        if (updated.getType() != null) existing.setType(updated.getType());
+        if (updated.getMetadata() != null) existing.setMetadata(updated.getMetadata());
+        DestinationReview saved = destinationReviewRepository.save(existing);
+        cacheInvalidationService.evictDestinationReviewCaches(
+                existing.getDestination() != null ? existing.getDestination().getId() : null, reviewId);
+        return saved;
+    }
+
+    @Transactional
+    public void deleteReview(Long reviewId) {
+        DestinationReview review = destinationReviewRepository.findById(reviewId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Review not found"));
+        Long destId = review.getDestination() != null ? review.getDestination().getId() : null;
+        destinationReviewRepository.deleteById(reviewId);
+        cacheInvalidationService.evictDestinationReviewCaches(destId, reviewId);
     }
 
     // ─── M1 Features ─────────────────────────────────────────────────────────
@@ -462,19 +514,15 @@ public class DestinationService {
         return result;
     }
 
-    /**
-     * S2-F1: Search destinations by optional category and/or rating bounds. Results are sorted by rating descending
-     * (null ratings last), then by id. When no filters are provided, returns all destinations with the same ordering.
-     */
     @Transactional(readOnly = true)
-    public List<Destination> searchDestinations(String category, Double minRating, Double maxRating) {
-        if (minRating != null && maxRating != null && minRating > maxRating) {
-            throw new InvalidRatingRangeException("minRating cannot be greater than maxRating");
+    public List<Destination> searchByCategoryAndRatingRange(String category, Double minRating, Double maxRating) {
+        if (minRating == null || maxRating == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "minRating and maxRating are required");
         }
-        Destination.Category categoryFilter = resolveCategoryFilter(category);
-        String cacheKey = "destination-service::S2-F1::"
-                + (categoryFilter != null ? categoryFilter.name() : "")
-                + "::" + minRating + "::" + maxRating;
+        if (minRating > maxRating) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "minRating cannot be greater than maxRating");
+        }
+        String cacheKey = "destination-service::S2-F1::" + category + "::" + minRating + "::" + maxRating;
         try {
             Object cached = redisTemplate.opsForValue().get(cacheKey);
             if (cached != null) {
@@ -485,32 +533,13 @@ public class DestinationService {
         } catch (Exception e) {
             logger.warn("Redis read failed", e);
         }
-        Specification<Destination> spec = DestinationSpecifications.withOptionalFilters(categoryFilter, minRating, maxRating);
-        List<Destination> result = new ArrayList<>(destinationRepository.findAll(spec));
-        sortByRatingDesc(result);
+        List<Destination> result = destinationRepository.searchByCategoryAndRatingRange(category, minRating, maxRating);
         try {
             redisTemplate.opsForValue().set(cacheKey, result, 5, TimeUnit.MINUTES);
         } catch (Exception e) {
             logger.warn("Redis write failed", e);
         }
         return result;
-    }
-
-    private static Destination.Category resolveCategoryFilter(String category) {
-        if (category == null || category.isBlank()) {
-            return null;
-        }
-        try {
-            return Destination.Category.valueOf(category.trim().toUpperCase());
-        } catch (IllegalArgumentException e) {
-            throw new InvalidSearchParameterException("Invalid category");
-        }
-    }
-
-    private static void sortByRatingDesc(List<Destination> destinations) {
-        destinations.sort(Comparator
-                .comparing(Destination::getRating, Comparator.nullsLast(Comparator.reverseOrder()))
-                .thenComparing(Destination::getId, Comparator.nullsLast(Comparator.naturalOrder())));
     }
 
     // ─── M2 Features ─────────────────────────────────────────────────────────

@@ -18,7 +18,7 @@ import com.randomteam2.tripplanning.destination.mongo.EventType;
 import com.randomteam2.tripplanning.destination.mongo.MongoEvent;
 import com.randomteam2.tripplanning.destination.model.Destination;
 import com.randomteam2.tripplanning.destination.model.DestinationReview;
-import com.randomteam2.tripplanning.destination.model.DestinationReviewType;
+import com.randomteam2.tripplanning.destination.model.ReviewType;
 import com.randomteam2.tripplanning.destination.observer.EntityObserver;
 import com.randomteam2.tripplanning.destination.observer.MongoEventLogger;
 import com.randomteam2.tripplanning.destination.repository.DestinationEventRepository;
@@ -42,7 +42,6 @@ import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
 import org.springframework.web.server.ResponseStatusException;
-
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
