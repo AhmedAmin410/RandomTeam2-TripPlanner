@@ -1,4 +1,4 @@
-﻿package com.randmteam2.tripplanning.activity.config;
+package com.randmteam2.tripplanning.activity.config;
 
 import org.springframework.cache.CacheManager;
 import org.springframework.context.annotation.Bean;

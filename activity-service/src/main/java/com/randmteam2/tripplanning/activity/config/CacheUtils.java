@@ -1,4 +1,4 @@
-﻿package com.randmteam2.tripplanning.activity.config;
+package com.randmteam2.tripplanning.activity.config;
 
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;

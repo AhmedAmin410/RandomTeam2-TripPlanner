@@ -1,4 +1,4 @@
-﻿package com.randmteam2.tripplanning.activity.security;
+package com.randmteam2.tripplanning.activity.security;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;

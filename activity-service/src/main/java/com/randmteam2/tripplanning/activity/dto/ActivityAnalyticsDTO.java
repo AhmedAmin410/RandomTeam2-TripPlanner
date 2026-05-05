@@ -1,4 +1,4 @@
-﻿package com.randmteam2.tripplanning.activity.dto;
+package com.randmteam2.tripplanning.activity.dto;
 
 import java.util.Map;
 

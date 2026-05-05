@@ -1,4 +1,4 @@
-﻿package com.randmteam2.tripplanning.activity.security;
+package com.randmteam2.tripplanning.activity.security;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;

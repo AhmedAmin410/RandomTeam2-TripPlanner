@@ -1,4 +1,4 @@
-﻿package com.randmteam2.tripplanning.activity.security;
+package com.randmteam2.tripplanning.activity.security;
 
 public class JwtConfigurationManager {
     private static volatile JwtConfigurationManager instance;
