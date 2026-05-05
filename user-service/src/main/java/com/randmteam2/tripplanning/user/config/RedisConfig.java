@@ -15,6 +15,7 @@ import org.springframework.data.redis.serializer.RedisSerializationContext;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
 import java.time.Duration;
+import java.util.Map;
 
 @Configuration
 public class RedisConfig {
@@ -42,15 +43,22 @@ public class RedisConfig {
         GenericJackson2JsonRedisSerializer jsonSerializer =
                 new GenericJackson2JsonRedisSerializer(mapper);
 
-        RedisCacheConfiguration config = RedisCacheConfiguration.defaultCacheConfig()
-                .entryTtl(Duration.ofMillis(300000))
+        RedisCacheConfiguration base = RedisCacheConfiguration.defaultCacheConfig()
+                .disableKeyPrefix()
                 .serializeKeysWith(RedisSerializationContext.SerializationPair
                         .fromSerializer(new StringRedisSerializer()))
                 .serializeValuesWith(RedisSerializationContext.SerializationPair
                         .fromSerializer(jsonSerializer));
 
+        RedisCacheConfiguration cache5min  = base.entryTtl(Duration.ofMinutes(5));
+        RedisCacheConfiguration cache10min = base.entryTtl(Duration.ofMinutes(10));
+        RedisCacheConfiguration cache15min = base.entryTtl(Duration.ofMinutes(15));
+
         return RedisCacheManager.builder(factory)
-                .cacheDefaults(config)
+                .withCacheConfiguration("cache-5min",  cache5min)
+                .withCacheConfiguration("cache-10min", cache10min)
+                .withCacheConfiguration("cache-15min", cache15min)
+                .cacheDefaults(cache5min)
                 .build();
     }
 }

@@ -1,23 +1,26 @@
 package com.randmteam2.tripplanning.activity.service;
 
-import com.randmteam2.tripplanning.activity.dto.ActivityEventDTO;
-import com.randmteam2.tripplanning.activity.dto.ActivitySummaryDTO;
-import com.randmteam2.tripplanning.activity.dto.BudgetActivityDTO;
-import com.randmteam2.tripplanning.activity.dto.NearbyActivityDTO;
+import com.randmteam2.tripplanning.activity.dto.*;
 import com.randmteam2.tripplanning.activity.model.Activity;
 import com.randmteam2.tripplanning.activity.model.ActivityLifecycleEvent;
 import com.randmteam2.tripplanning.activity.repository.ActivityLifecycleEventRepository;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
 import com.randmteam2.tripplanning.activity.repository.ActivityRepository;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -34,6 +37,7 @@ public class ActivityService {
         this.activityRepository = activityRepository;
         this.lifecycleEventRepository = lifecycleEventRepository;
     }
+
     private void validateItineraryExists(Long itineraryId) {
         Integer count = activityRepository.checkItineraryExists(itineraryId);
         if (count == null || count == 0) {
@@ -100,20 +104,6 @@ public class ActivityService {
         return latest;
     }
 
-    @Transactional
-    public List<Activity> createBatch(Long itineraryId, List<Activity> activities) {
-        validateItineraryExists(itineraryId);
-        for (Activity activity : activities) {
-            if (activity.getLatitude() == null || activity.getLatitude() < -90 || activity.getLatitude() > 90) {
-                throw new IllegalArgumentException("Latitude must be between -90 and 90");
-            }
-            if (activity.getLongitude() == null || activity.getLongitude() < -180 || activity.getLongitude() > 180) {
-                throw new IllegalArgumentException("Longitude must be between -180 and 180");
-            }
-            activity.setItineraryId(itineraryId);
-        }
-        return activityRepository.saveAll(activities);
-    }
 
     @Transactional
     public int purgeOlderThan(int olderThanDays) {
@@ -234,5 +224,7 @@ public class ActivityService {
                         .build())
                 .collect(Collectors.toList());
     }
+
+
 
 }

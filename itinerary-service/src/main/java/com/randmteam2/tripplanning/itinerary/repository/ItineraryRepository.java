@@ -135,4 +135,12 @@ public interface ItineraryRepository extends JpaRepository<Itinerary, Long> {
     WHERE d.id = :destinationId
     """, nativeQuery = true)
     Object[] getDestinationById(@Param("destinationId") Long destinationId);
+
+
+    // S3-F12: Fetch destination details by id for enrichment
+    @Query(value = "SELECT id, name, country, category FROM destinations WHERE id = :destId", nativeQuery = true)
+    Object[] findDestinationDetails(@Param("destId") Long destId);
+
+
+
 }

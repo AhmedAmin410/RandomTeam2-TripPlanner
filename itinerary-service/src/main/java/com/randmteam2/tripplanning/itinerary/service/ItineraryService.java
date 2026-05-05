@@ -9,6 +9,9 @@ import com.randmteam2.tripplanning.itinerary.observer.EntityObserver;
 import com.randmteam2.tripplanning.itinerary.observer.MongoEventLogger;
 import com.randmteam2.tripplanning.itinerary.repository.ItineraryDayRepository;
 import com.randmteam2.tripplanning.itinerary.repository.ItineraryRepository;
+import org.neo4j.driver.Session;
+import org.neo4j.driver.Values;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -297,7 +300,7 @@ public class ItineraryService {
     }
     public ItineraryAnalyticsDashboardDTO getAnalyticsDashboard(LocalDate startDate, LocalDate endDate) {
 
-        // Log ANALYTICS_VIEWED on every call (even cache hits) — outside try block
+        // Log ANALYTICS_VIEWED on every call (even cache hits) Ã¢â‚¬â€ outside try block
         Map<String, Object> eventPayload = new HashMap<>();
         eventPayload.put("itineraryId", 0L);
         eventPayload.put("startDate", startDate.toString());
@@ -354,5 +357,8 @@ public class ItineraryService {
         getById(itineraryId);
         return itineraryDayRepository.findByItineraryIdOrderByDayOrder(itineraryId);
     }
+
+
+
 
 }

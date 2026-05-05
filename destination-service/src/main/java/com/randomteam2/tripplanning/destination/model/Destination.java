@@ -1,6 +1,5 @@
 package com.randomteam2.tripplanning.destination.model;
 
-import com.fasterxml.jackson.annotation.JsonManagedReference;
 import jakarta.persistence.*;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
@@ -46,7 +45,6 @@ public class Destination {
     private LocalDateTime createdAt;
 
     @OneToMany(mappedBy = "destination", cascade = CascadeType.ALL, orphanRemoval = false)
-    @JsonManagedReference
     private List<DestinationReview> destinationReviews;
 
     @PrePersist

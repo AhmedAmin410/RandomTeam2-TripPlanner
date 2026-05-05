@@ -18,7 +18,7 @@ import com.randomteam2.tripplanning.destination.mongo.EventType;
 import com.randomteam2.tripplanning.destination.mongo.MongoEvent;
 import com.randomteam2.tripplanning.destination.model.Destination;
 import com.randomteam2.tripplanning.destination.model.DestinationReview;
-import com.randomteam2.tripplanning.destination.model.ReviewType;
+import com.randomteam2.tripplanning.destination.model.DestinationReviewType;
 import com.randomteam2.tripplanning.destination.observer.EntityObserver;
 import com.randomteam2.tripplanning.destination.observer.MongoEventLogger;
 import com.randomteam2.tripplanning.destination.repository.DestinationEventRepository;

@@ -166,4 +166,6 @@ public class ItineraryController {
             return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
         }
     }
+
+
 }

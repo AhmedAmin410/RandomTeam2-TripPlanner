@@ -1,7 +1,11 @@
 package com.randomteam2.tripplanning.destination.model;
 
-import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -19,20 +23,25 @@ public class DestinationReview {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private ReviewType type;
+    @NotNull
+    private DestinationReviewType type;
 
-    @Column(nullable = false)
+    @NotBlank
+    @Column(nullable = false, columnDefinition = "TEXT")
     private String content;
 
+    @NotNull
+    @Min(1)
+    @Max(5)
     @Column(nullable = false)
     private Integer rating;
 
-    @Column(nullable = false)
     private LocalDate visitDate;
 
     @Column(nullable = false)
     private Boolean verified = false;
 
+    /** Stored as PostgreSQL JSONB via Hibernate JSON mapping. */
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
     private Map<String, Object> metadata;
@@ -42,7 +51,8 @@ public class DestinationReview {
 
     @ManyToOne(optional = false)
     @JoinColumn(name = "dest_id", nullable = false)
-    @JsonBackReference
+    @JsonIgnore
+    @NotNull
     private Destination destination;
 
     @PrePersist
@@ -63,11 +73,11 @@ public class DestinationReview {
         this.id = id;
     }
 
-    public ReviewType getType() {
+    public DestinationReviewType getType() {
         return type;
     }
 
-    public void setType(ReviewType type) {
+    public void setType(DestinationReviewType type) {
         this.type = type;
     }
 
