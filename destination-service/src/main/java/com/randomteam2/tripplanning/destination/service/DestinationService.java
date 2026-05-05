@@ -596,6 +596,7 @@ public class DestinationService {
         payload.put("source", "explicit");
         notifyObservers("INDEXED", payload);
     }
+
     /**
      * S2-F12: Get Destination Analytics Dashboard.
      * Logs DASHBOARD_VIEWED on every invocation (even cache hits) – logging is outside cache.
@@ -646,4 +647,3 @@ public class DestinationService {
         return dto;
     }
 }
-

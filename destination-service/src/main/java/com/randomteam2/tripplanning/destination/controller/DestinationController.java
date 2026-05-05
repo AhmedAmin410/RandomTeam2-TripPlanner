@@ -124,15 +124,34 @@ public class DestinationController {
         return ResponseEntity.ok(destinationService.verifyDestinationReview(destinationId, reviewId, body));
     }
 
+    @GetMapping("/reviews/low-rated")
+    public ResponseEntity<List<DestinationReviewAlertDTO>> lowRatedReviews(@RequestParam int maxRating) {
+        return ResponseEntity.ok(destinationService.getDestinationsWithLowRatedReviews(maxRating));
+    }
+
+    // ─── M2 Features ─────────────────────────────────────────────────────────
+
+    /** S2-F10: Full-text search via Elasticsearch */
+    @GetMapping("/search/full-text")
+    public ResponseEntity<List<DestinationSearchResultDTO>> fullTextSearch(
+            @RequestParam(required = false) String query,
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) Double minRating,
+            @RequestParam(required = false) Double maxRating) {
+        return ResponseEntity.ok(destinationService.fullTextSearch(query, category, status, minRating, maxRating));
+    }
+
+    /** S2-F11: Index a destination into Elasticsearch */
     @PostMapping("/{id}/index")
     public ResponseEntity<Void> indexDestination(@PathVariable Long id) {
         destinationService.indexDestination(id);
         return ResponseEntity.ok().build();
     }
 
+    /** S2-F12: Get Destination Analytics Dashboard */
     @GetMapping("/{id}/dashboard")
     public ResponseEntity<DestinationDashboardDTO> getDestinationDashboard(@PathVariable Long id) {
         return ResponseEntity.ok(destinationService.getDestinationDashboard(id));
     }
-
 }
