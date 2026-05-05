@@ -355,4 +355,37 @@ public class ItineraryService {
         return itineraryDayRepository.findByItineraryIdOrderByDayOrder(itineraryId);
     }
 
+
+    // â”€â”€â”€ S3-F12: Recommendations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    @Cacheable(value = "itinerary-service::S3-F12", key = "#userId + ':' + #limit")
+    public List<DestinationRecommendationDTO> getRecommendations(Long userId, int limit) {
+        List<DestinationRecommendationDTO> recommendations = new ArrayList<>();
+        try (Session session = neo4jDriver.session()) {
+            String cypher = """
+                    MATCH (me:User {userId: $userId})-[:VISITED]->(d:Destination)<-[:VISITED]-(other:User)
+                    MATCH (other)-[:VISITED]->(rec:Destination)
+                    WHERE NOT (me)-[:VISITED]->(rec)
+                    RETURN rec.destinationId AS destinationId, rec.name AS name,
+                           rec.country AS country, rec.category AS category,
+                           COUNT(other) AS score
+                    ORDER BY score DESC
+                    LIMIT $limit
+                    """;
+            var result = session.run(cypher, Values.parameters("userId", userId, "limit", limit));
+            while (result.hasNext()) {
+                Record record = result.next();
+                Long destId = record.get("destinationId").asLong();
+                String name = record.get("name").asString();
+                String country = record.get("country").asString();
+                String category = record.get("category").asString();
+                Long score = record.get("score").asLong();
+                recommendations.add(new DestinationRecommendationDTO(destId, name, country, category, score));
+            }
+        } catch (Exception e) {
+            // Neo4j soft dependency â€” return empty list
+        }
+        return recommendations;
+    }
+
 }
