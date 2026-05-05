@@ -1,8 +1,8 @@
 [
   {
     "studentId": "55-8669",
-    "name": "Ahmed Moahemd Amin",
-    "githubUsername": "your-github-username",
+    "name": "Ahmed Mohamed Amin",
+    "githubUsername": "AhmedAmin410",
     "service": "booking-service"
   },
   {
@@ -47,5 +47,27 @@
     "name": "Amr Maged",
     "githubUsername": "AA-Amr",
     "service": "destination-service"
+  },
+  {
+    "studentId": "55-9661",
+    "name": "Amr Khaled",
+    "githubUsername": "Amrkhalledd",
+    "service": "activity-service"
+  },
+
+  {
+    "studentId": "58-7432",
+    "name": "Seif Abdelaziz",
+    "githubUsername": "saifabdelaziz452",
+    "service": "destination-service"
+  },
+
+  {
+    "studentId": "49-2850",
+    "name": "Abdelrahman ahmed nasser",
+    "githubUsername": "abdelrahman182001",
+    "service": "destination-service"
   }
+
+
 ]
