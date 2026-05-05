@@ -15,6 +15,33 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+  mongodb:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: rootpass
+      MONGO_INITDB_DATABASE: tripplanningmongo
+    healthcheck:
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass redispass
+    healthcheck:
+      test: [ "CMD", "redis-cli", "-a", "redispass", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+
+
+
 
   elasticsearch:
     image: elasticsearch:8.13.4
@@ -41,6 +68,7 @@ services:
       interval: 15s
       timeout: 30s
       retries: 15
+
 
   user-service:
     build: ./user-service
@@ -138,3 +166,5 @@ services:
 
 volumes:
   pgdata:
+
+
