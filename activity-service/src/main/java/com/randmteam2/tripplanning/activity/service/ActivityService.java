@@ -277,4 +277,170 @@ public class ActivityService {
     }
 
 
+    @Transactional
+    public long createBatch(Long itineraryId, List<Activity> activities) {
+        if (activityRepository.countItinerary(itineraryId) == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Itinerary not found");
+        }
+        for (Activity a : activities) {
+            a.setItineraryId(itineraryId);
+            if (a.getLatitude() == null  a.getLatitude() < -90
+            a.getLatitude() > 90) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Latitude must be between -90 and 90");
+            }
+            if (a.getLongitude() == null  a.getLongitude() < -180
+            a.getLongitude() > 180) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Longitude must be between -180 and 180");
+            }
+        }
+        long saved = activityRepository.saveAll(activities).size();
+        notifyObservers("ACTIVITY", Map.of("itineraryId", itineraryId, "action", "BATCH_CREATED", "details", "Batch of " + saved + " activities created for itinerary: " + itineraryId));
+        return saved;
+    }
+
+
+
+    @Transactional
+    public long purge(int olderThanDays) {
+        String cutoff = LocalDateTime.now().minusDays(olderThanDays)
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        long count = activityRepository.countOlderThan(cutoff);
+        activityRepository.deleteOlderThan(cutoff);
+        notifyObservers("ACTIVITY", Map.of("action", "OLD_DATA_PURGED", "details", "Purged " + count + " activities older than " + olderThanDays + " days"));
+        return count;
+    }
+
+    // â”€â”€â”€ S4-F8: Activity Summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    @Cacheable(value = "activity-service::S4-F8", key = "#itineraryId + ':' + #startDate + ':' + #endDate")
+    public ActivitySummaryDTO getSummary(Long itineraryId, String startDate, String endDate) {
+        if (activityRepository.countItinerary(itineraryId) == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Itinerary not found");
+        }
+        Object[] row = activityRepository.getActivitySummary(itineraryId, startDate, endDate);
+        ActivitySummaryDTO dto = new ActivitySummaryDTO();
+        dto.setItineraryId(itineraryId);
+        dto.setTotalActivities(row[0] != null ? ((Number) row[0]).longValue() : 0L);
+        dto.setAverageCost(row[1] != null ? ((Number) row[1]).doubleValue() : 0.0);
+        dto.setMaxCost(row[2] != null ? ((Number) row[2]).doubleValue() : 0.0);
+        dto.setFirstScheduledTime(row[3] != null ? row[3].toString() : null);
+        dto.setLastScheduledTime(row[4] != null ? row[4].toString() : null);
+        return dto;
+    }
+
+    // â”€â”€â”€ S4-F9: Budget-Friendly Activities â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    @Cacheable(value = "activity-service::S4-F9", key = "#maxCost + ':' + #sinceMinutes")
+    public List<BudgetActivityDTO> getBudgetFriendly(double maxCost, int sinceMinutes) {
+        String since = LocalDateTime.now().minusMinutes(sinceMinutes)
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        List<Activity> activities = activityRepository.findBudgetFriendly(maxCost, since);
+        return activities.stream().map(a -> {
+            BudgetActivityDTO dto = new BudgetActivityDTO();
+            dto.setActivityId(a.getId());
+            dto.setName(a.getName());
+            dto.setCategory(a.getCategory() != null ? a.getCategory().name() : null);
+            dto.setLatitude(a.getLatitude());
+            dto.setLongitude(a.getLongitude());
+            dto.setCost(a.getMetadata() != null && a.getMetadata().get("cost") != null
+                    ? ((Number) a.getMetadata().get("cost")).doubleValue() : null);
+            dto.setScheduledTime(a.getScheduledTime() != null ? a.getScheduledTime().toString() : null);
+            return dto;
+        }).collect(Collectors.toList());
+    }
+
+
+
+    public void recordLifecycleEvent(Long activityId, String status, String notes) {
+        Activity activity = getActivityById(activityId);
+
+        Set<String> validStatuses = Set.of("BOOKED", "STARTED", "COMPLETED", "CANCELLED");
+        if (!validStatuses.contains(status)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid status: " + status);
+        }
+
+        ActivityLifecycleEvent event = new ActivityLifecycleEvent();
+        event.setActivityId(activityId);
+        event.setTimestamp(Instant.now());
+        event.setStatus(status);
+        event.setCategory(activity.getCategory() != null ? activity.getCategory().name() : null);
+        event.setLatitude(activity.getLatitude());
+        event.setLongitude(activity.getLongitude());
+        event.setNotes(notes);
+
+        try {
+            lifecycleEventRepository.save(event);
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Cassandra write failed: " + e.getMessage());
+        }
+
+        notifyObservers("EVENT_RECORDED", Map.of(
+                "activityId", activityId,
+                "status", status,
+                "action", "EVENT_RECORDED"
+        ));
+
+        cacheUtils.evictByPattern("activity-service::S4-F12::" + activityId + "*");
+        cacheUtils.evictByPattern("activity-service::S4-F10::*");
+    }
+
+    // â”€â”€â”€ S4-F12: Activity Event Timeline â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    @Cacheable(value = "activity-service::S4-F12", key = "#activityId + ':' + #startTime + ':' + #endTime")
+    public List<ActivityEventDTO> getEventTimeline(Long activityId, String startTime, String endTime) {
+        getActivityById(activityId); // 404 check
+
+        List<ActivityLifecycleEvent> events;
+        try {
+            if (startTime != null && endTime != null) {
+                Instant start = Instant.parse(startTime);
+                Instant end = Instant.parse(endTime);
+                events = lifecycleEventRepository.findByActivityIdAndTimestampBetween(activityId, start, end);
+            } else {
+                events = lifecycleEventRepository.findByActivityId(activityId);
+            }
+        } catch (Exception e) {
+            return List.of();
+        }
+
+        return events.stream().map(e -> {
+            ActivityEventDTO dto = new ActivityEventDTO();
+            dto.setTimestamp(e.getTimestamp());
+            dto.setStatus(e.getStatus());
+            dto.setCategory(e.getCategory());
+            dto.setLatitude(e.getLatitude());
+            dto.setLongitude(e.getLongitude());
+            dto.setNotes(e.getNotes());
+            return dto;
+        }).collect(Collectors.toList());
+    }
+
+
+
+
+    @Cacheable(value = "activity-service::S4-F10", key = "#startDate + ':' + #endDate")
+    public ActivityAnalyticsDTO getAnalyticsDashboardCached(String startDate, String endDate) {
+        List<Object[]> rows = activityRepository.getAnalyticsByCategory(startDate, endDate);
+
+        long total = 0;
+        double totalCost = 0;
+        double totalDuration = 0;
+        Map<String, Long> byCategory = new LinkedHashMap<>();
+
+        for (Object[] row : rows) {
+            String category = (String) row[0];
+            long count = ((Number) row[1]).longValue();
+            double avgCost = row[2] != null ? ((Number) row[2]).doubleValue() : 0.0;
+            double avgDuration = row[3] != null ? ((Number) row[3]).doubleValue() : 0.0;
+            total += count;
+            totalCost += avgCost * count;
+            totalDuration += avgDuration * count;
+            byCategory.put(category, count);
+        }
+
+
+
+
 }
