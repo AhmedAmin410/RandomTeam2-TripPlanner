@@ -120,7 +120,7 @@ class DestinationReviewControllerTest {
         dest.setId(1L);
         DestinationReview updated = reviewEntity(8L, dest);
         updated.setContent("Updated");
-        when(destinationReviewService.updateReview(eq(8L), any())).thenReturn(updated);
+        when(destinationReviewService.updateReview(eq(8L), any(DestinationReview.class))).thenReturn(updated);
 
         mockMvc.perform(put("/api/reviews/8")
                         .contentType(MediaType.APPLICATION_JSON)
