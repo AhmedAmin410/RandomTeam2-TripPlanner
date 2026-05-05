@@ -25,10 +25,10 @@ services:
     ports:
       - "9200:9200"
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=30s' || exit 1"]
       interval: 15s
-      timeout: 10s
-      retries: 10
+      timeout: 35s
+      retries: 15
 
   cassandra:
     image: cassandra:4.1
@@ -37,10 +37,10 @@ services:
     environment:
       - CASSANDRA_CLUSTER_NAME=tripplanning
     healthcheck:
-      test: ["CMD-SHELL", "cqlsh -e 'describe cluster' || exit 1"]
+      test: ["CMD-SHELL", "cqlsh -e \"CREATE KEYSPACE IF NOT EXISTS tripplanningks WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1}; describe keyspaces\" || exit 1"]
       interval: 15s
-      timeout: 10s
-      retries: 10
+      timeout: 30s
+      retries: 15
 
   user-service:
     build: ./user-service
@@ -82,7 +82,7 @@ services:
   itinerary-service:
     build: ./itinerary-service
     ports:
-      - "8083:8080"
+      - "8083:8083"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tripplanningdb
       SPRING_DATASOURCE_USERNAME: postgres
@@ -99,7 +99,7 @@ services:
   activity-service:
     build: ./activity-service
     ports:
-      - "8084:8080"
+      - "8084:8084"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tripplanningdb
       SPRING_DATASOURCE_USERNAME: postgres
@@ -107,13 +107,14 @@ services:
       SPRING_CASSANDRA_CONTACT_POINTS: cassandra
       SPRING_CASSANDRA_PORT: 9042
       SPRING_CASSANDRA_LOCAL_DATACENTER: datacenter1
+      SPRING_CASSANDRA_KEYSPACE_NAME: tripplanningks
     depends_on:
       postgres:
         condition: service_healthy
       cassandra:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8084/actuator/health || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 10
