@@ -134,4 +134,14 @@ public class ActivityController {
         return ResponseEntity.ok(activityService.getActivityTimeline(id, startTime, endTime));
     }
 
+
+    // â”€â”€â”€ S4-F10: Analytics Dashboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    @GetMapping("/analytics")
+    public ResponseEntity<ActivityAnalyticsDTO> analyticsDashboard(
+            @RequestParam String startDate,
+            @RequestParam String endDate) {
+        return ResponseEntity.ok(activityService.getAnalyticsDashboard(startDate, endDate));
+    }
+
 }
