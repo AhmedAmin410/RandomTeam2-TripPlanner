@@ -2,6 +2,7 @@ package com.randomteam2.tripplanning.destination.controller;
 
 import com.randomteam2.tripplanning.destination.dto.*;
 import com.randomteam2.tripplanning.destination.model.Destination;
+import com.randomteam2.tripplanning.destination.model.DestinationReview;
 import com.randomteam2.tripplanning.destination.service.DestinationService;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -34,45 +35,6 @@ public class DestinationController {
         return ResponseEntity.ok(destinationService.getAllDestinations());
     }
 
-    /**
-     * S2-F1: optional category and/or rating bounds; results sorted by rating (highest first).
-     * Declared before {@code /{id}} so the literal path is not captured as an id.
-     */
-    @GetMapping("/search")
-    public ResponseEntity<List<Destination>> searchDestinations(
-            @RequestParam(required = false) String category,
-            @RequestParam(required = false) Double minRating,
-            @RequestParam(required = false) Double maxRating) {
-        return ResponseEntity.ok(destinationService.searchDestinations(category, minRating, maxRating));
-    }
-
-    @GetMapping("/details/search")
-    public ResponseEntity<List<Destination>> searchByDetails(@RequestParam String key,
-                                                             @RequestParam String value,
-                                                             @RequestParam(required = false) String status) {
-        return ResponseEntity.ok(destinationService.searchByDetailsKeyValue(key, value, status));
-    }
-
-    @GetMapping("/reports/top-rated")
-    public ResponseEntity<List<TopDestinationDTO>> topRatedDestinations(@RequestParam int limit) {
-        return ResponseEntity.ok(destinationService.getTopRatedDestinationsReport(limit));
-    }
-
-    @GetMapping("/reviews/low-rated")
-    public ResponseEntity<List<DestinationReviewAlertDTO>> lowRatedReviews(@RequestParam int maxRating) {
-        return ResponseEntity.ok(destinationService.getDestinationsWithLowRatedReviews(maxRating));
-    }
-
-    @GetMapping("/search/full-text")
-    public ResponseEntity<List<DestinationSearchResultDTO>> fullTextSearch(
-            @RequestParam(required = false) String query,
-            @RequestParam(required = false) String category,
-            @RequestParam(required = false) String status,
-            @RequestParam(required = false) Double minRating,
-            @RequestParam(required = false) Double maxRating) {
-        return ResponseEntity.ok(destinationService.fullTextSearch(query, category, status, minRating, maxRating));
-    }
-
     @GetMapping("/{id}")
     public ResponseEntity<Destination> getDestinationById(@PathVariable Long id) {
         return ResponseEntity.ok(destinationService.getDestinationById(id));
@@ -89,7 +51,45 @@ public class DestinationController {
         return ResponseEntity.noContent().build();
     }
 
+    // ─── CRUD: DestinationReview ─────────────────────────────────────────────
+
+    @PostMapping("/{destinationId}/reviews")
+    public ResponseEntity<DestinationReview> createReview(@PathVariable Long destinationId,
+                                                          @RequestBody DestinationReview review) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(destinationService.createReview(destinationId, review));
+    }
+
+    @GetMapping("/reviews")
+    public ResponseEntity<List<DestinationReview>> getAllReviews() {
+        return ResponseEntity.ok(destinationService.getAllReviews());
+    }
+
+    @GetMapping("/reviews/{reviewId}")
+    public ResponseEntity<DestinationReview> getReviewById(@PathVariable Long reviewId) {
+        return ResponseEntity.ok(destinationService.getReviewById(reviewId));
+    }
+
+    @PutMapping("/reviews/{reviewId}")
+    public ResponseEntity<DestinationReview> updateReview(@PathVariable Long reviewId,
+                                                          @RequestBody DestinationReview review) {
+        return ResponseEntity.ok(destinationService.updateReview(reviewId, review));
+    }
+
+    @DeleteMapping("/reviews/{reviewId}")
+    public ResponseEntity<Void> deleteReview(@PathVariable Long reviewId) {
+        destinationService.deleteReview(reviewId);
+        return ResponseEntity.noContent().build();
+    }
+
     // ─── M1 Features ─────────────────────────────────────────────────────────
+
+    @GetMapping("/search")
+    public ResponseEntity<List<Destination>> searchByCategoryAndRatingRange(
+            @RequestParam(required = false) String category,
+            @RequestParam Double minRating,
+            @RequestParam Double maxRating) {
+        return ResponseEntity.ok(destinationService.searchByCategoryAndRatingRange(category, minRating, maxRating));
+    }
 
     @PutMapping("/{id}/details")
     public ResponseEntity<Destination> updateDetails(@PathVariable Long id,
@@ -111,6 +111,18 @@ public class DestinationController {
         return ResponseEntity.ok(destinationService.updateStatus(id, body.getStatus()));
     }
 
+    @GetMapping("/details/search")
+    public ResponseEntity<List<Destination>> searchByDetails(@RequestParam String key,
+                                                             @RequestParam String value,
+                                                             @RequestParam(required = false) String status) {
+        return ResponseEntity.ok(destinationService.searchByDetailsKeyValue(key, value, status));
+    }
+
+    @GetMapping("/reports/top-rated")
+    public ResponseEntity<List<TopDestinationDTO>> topRatedDestinations(@RequestParam int limit) {
+        return ResponseEntity.ok(destinationService.getTopRatedDestinationsReport(limit));
+    }
+
     @PostMapping("/{id}/rate")
     public ResponseEntity<Destination> rateAfterVisit(@PathVariable Long id,
                                                       @RequestBody DestinationRateRequest body) {
@@ -124,15 +136,34 @@ public class DestinationController {
         return ResponseEntity.ok(destinationService.verifyDestinationReview(destinationId, reviewId, body));
     }
 
+    @GetMapping("/reviews/low-rated")
+    public ResponseEntity<List<DestinationReviewAlertDTO>> lowRatedReviews(@RequestParam int maxRating) {
+        return ResponseEntity.ok(destinationService.getDestinationsWithLowRatedReviews(maxRating));
+    }
+
+    // ─── M2 Features ─────────────────────────────────────────────────────────
+
+    /** S2-F10: Full-text search via Elasticsearch */
+    @GetMapping("/search/full-text")
+    public ResponseEntity<List<DestinationSearchResultDTO>> fullTextSearch(
+            @RequestParam(required = false) String query,
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) Double minRating,
+            @RequestParam(required = false) Double maxRating) {
+        return ResponseEntity.ok(destinationService.fullTextSearch(query, category, status, minRating, maxRating));
+    }
+
+    /** S2-F11: Index a destination into Elasticsearch */
     @PostMapping("/{id}/index")
     public ResponseEntity<Void> indexDestination(@PathVariable Long id) {
         destinationService.indexDestination(id);
         return ResponseEntity.ok().build();
     }
 
+    /** S2-F12: Get Destination Analytics Dashboard */
     @GetMapping("/{id}/dashboard")
     public ResponseEntity<DestinationDashboardDTO> getDestinationDashboard(@PathVariable Long id) {
         return ResponseEntity.ok(destinationService.getDestinationDashboard(id));
     }
-
 }
