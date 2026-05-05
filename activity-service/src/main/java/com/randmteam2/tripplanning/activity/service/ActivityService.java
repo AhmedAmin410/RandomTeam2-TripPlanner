@@ -235,4 +235,46 @@ public class ActivityService {
                 .collect(Collectors.toList());
     }
 
+
+
+    // â”€â”€â”€ S4-F10: Activity Analytics Dashboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    public ActivityAnalyticsDTO getAnalyticsDashboard(String startDate, String endDate) {
+        notifyObservers("ANALYTICS_VIEWED", Map.of(
+                "action", "ANALYTICS_VIEWED",
+                "startDate", startDate,
+                "endDate", endDate
+        ));
+        return getAnalyticsDashboardCached(startDate, endDate);
+    }
+
+    @Cacheable(value = "activity-service::S4-F10", key = "#startDate + ':' + #endDate")
+    public ActivityAnalyticsDTO getAnalyticsDashboardCached(String startDate, String endDate) {
+        List<Object[]> rows = activityRepository.getAnalyticsByCategory(startDate, endDate);
+
+        long total = 0;
+        double totalCost = 0;
+        double totalDuration = 0;
+        Map<String, Long> byCategory = new LinkedHashMap<>();
+
+        for (Object[] row : rows) {
+            String category = (String) row[0];
+            long count = ((Number) row[1]).longValue();
+            double avgCost = row[2] != null ? ((Number) row[2]).doubleValue() : 0.0;
+            double avgDuration = row[3] != null ? ((Number) row[3]).doubleValue() : 0.0;
+            total += count;
+            totalCost += avgCost * count;
+            totalDuration += avgDuration * count;
+            byCategory.put(category, count);
+        }
+
+        return ActivityAnalyticsDTO.builder()
+                .totalActivities(total)
+                .averageCost(total > 0 ? totalCost / total : 0.0)
+                .averageDurationHours(total > 0 ? totalDuration / total : 0.0)
+                .activitiesByCategory(byCategory)
+                .build();
+    }
+
+
 }
