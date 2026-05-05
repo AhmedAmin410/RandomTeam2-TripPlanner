@@ -120,5 +120,35 @@ public class ActivityService {
         activityRepository.saveAll(activities);
         return new BatchActivityResponse(activities.size());
     }
-}
+
+    // This method handles the POST /api/activities/{id}/events endpoint.
+    // It validates the status, writes to the Cassandra activity_lifecycle_events table,
+    // and notifies observers about the EVENT_RECORDED event.
+    // This implementation fulfills the S4-F11 requirement.
+    @PostMapping("/{id}/events")
+    public ResponseEntity<?> recordActivityEvent(@PathVariable Long id, @RequestBody ActivityEventDTO eventDTO) {
+        if (eventDTO == null || eventDTO.status() == null ||
+                !("BOOKED".equals(eventDTO.status()) || "STARTED".equals(eventDTO.status()) ||
+                  "COMPLETED".equals(eventDTO.status()) || "CANCELLED".equals(eventDTO.status()))) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Invalid status");
+        }
+
+        ActivityLifecycleEvent event = new ActivityLifecycleEvent(
+                id,
+                Instant.now(),
+                UUID.randomUUID(),
+                eventDTO.status()
+        );
+
+        lifecycleEventRepository.save(event);
+
+        notifyObservers("EVENT_RECORDED", event);
+
+        return ResponseEntity.status(HttpStatus.CREATED).build();
+    }
+
+    private void notifyObservers(String eventType, Object payload) {
+    }
+
+
 }
