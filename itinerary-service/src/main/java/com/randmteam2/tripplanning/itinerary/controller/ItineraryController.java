@@ -166,4 +166,13 @@ public class ItineraryController {
             return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
         }
     }
+
+    // â”€â”€â”€ S3-F12: Recommendations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    @GetMapping("/recommendations")
+    public ResponseEntity<List<DestinationRecommendationDTO>> recommendations(
+            @RequestParam Long userId,
+            @RequestParam(defaultValue = "5") int limit) {
+        return ResponseEntity.ok(itineraryService.getRecommendations(userId, limit));
+    }
 }
