@@ -48,6 +48,7 @@ public class Destination {
     @OneToMany(mappedBy = "destination", cascade = CascadeType.ALL, orphanRemoval = false)
     @JsonManagedReference
     private List<DestinationReview> destinationReviews;
+
     @PrePersist
     void onCreate() {
         if (createdAt == null) {
@@ -60,7 +61,6 @@ public class Destination {
             totalRatings = 0;
         }
     }
-
 
     public enum Status {
         ACTIVE, SEASONAL, INACTIVE
