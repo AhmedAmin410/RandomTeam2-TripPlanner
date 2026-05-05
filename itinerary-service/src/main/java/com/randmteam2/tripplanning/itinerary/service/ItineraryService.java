@@ -9,6 +9,9 @@ import com.randmteam2.tripplanning.itinerary.observer.EntityObserver;
 import com.randmteam2.tripplanning.itinerary.observer.MongoEventLogger;
 import com.randmteam2.tripplanning.itinerary.repository.ItineraryDayRepository;
 import com.randmteam2.tripplanning.itinerary.repository.ItineraryRepository;
+import org.neo4j.driver.Session;
+import org.neo4j.driver.Values;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -297,7 +300,7 @@ public class ItineraryService {
     }
     public ItineraryAnalyticsDashboardDTO getAnalyticsDashboard(LocalDate startDate, LocalDate endDate) {
 
-        // Log ANALYTICS_VIEWED on every call (even cache hits) — outside try block
+        // Log ANALYTICS_VIEWED on every call (even cache hits) Ã¢â‚¬â€ outside try block
         Map<String, Object> eventPayload = new HashMap<>();
         eventPayload.put("itineraryId", 0L);
         eventPayload.put("startDate", startDate.toString());
@@ -356,36 +359,6 @@ public class ItineraryService {
     }
 
 
-    // â”€â”€â”€ S3-F12: Recommendations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    @Cacheable(value = "itinerary-service::S3-F12", key = "#userId + ':' + #limit")
-    public List<DestinationRecommendationDTO> getRecommendations(Long userId, int limit) {
-        List<DestinationRecommendationDTO> recommendations = new ArrayList<>();
-        try (Session session = neo4jDriver.session()) {
-            String cypher = """
-                    MATCH (me:User {userId: $userId})-[:VISITED]->(d:Destination)<-[:VISITED]-(other:User)
-                    MATCH (other)-[:VISITED]->(rec:Destination)
-                    WHERE NOT (me)-[:VISITED]->(rec)
-                    RETURN rec.destinationId AS destinationId, rec.name AS name,
-                           rec.country AS country, rec.category AS category,
-                           COUNT(other) AS score
-                    ORDER BY score DESC
-                    LIMIT $limit
-                    """;
-            var result = session.run(cypher, Values.parameters("userId", userId, "limit", limit));
-            while (result.hasNext()) {
-                Record record = result.next();
-                Long destId = record.get("destinationId").asLong();
-                String name = record.get("name").asString();
-                String country = record.get("country").asString();
-                String category = record.get("category").asString();
-                Long score = record.get("score").asLong();
-                recommendations.add(new DestinationRecommendationDTO(destId, name, country, category, score));
-            }
-        } catch (Exception e) {
-            // Neo4j soft dependency â€” return empty list
-        }
-        return recommendations;
-    }
 
 }

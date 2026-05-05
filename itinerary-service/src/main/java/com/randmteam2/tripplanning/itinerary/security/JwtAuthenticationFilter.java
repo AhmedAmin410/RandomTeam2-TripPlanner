@@ -46,7 +46,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         try {
             tokenExtractor.handle(ctx);
 
-            // All handlers passed — populate Spring Security context
+            // All handlers passed Ã¢â‚¬â€ populate Spring Security context
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(
                             ctx.getEmail(),
