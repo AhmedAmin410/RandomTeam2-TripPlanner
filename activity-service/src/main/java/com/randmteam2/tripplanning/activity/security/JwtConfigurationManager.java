@@ -7,7 +7,7 @@ public class JwtConfigurationManager {
 
     private JwtConfigurationManager() {
         String envSecret = System.getenv("JWT_SECRET");
-        this.secret = (envSecret != null && !envSecret.isBlank()) ? envSecret : "7Tz8mG9kQp2vXwLcHdNjBfYsAeRuOiPb3V5W0yZ1sT4=";
+        this.secret = (envSecret != null && !envSecret.isBlank()) ? envSecret : "7Wl0A/qUHLdXuZKT3nra3mBBtOot+/SF/eLo0MTq5zQ=";
         String envExpiry = System.getenv("JWT_EXPIRATION_MS");
         this.expirationMs = (envExpiry != null && !envExpiry.isBlank()) ? Long.parseLong(envExpiry) : 86400000L;
     }

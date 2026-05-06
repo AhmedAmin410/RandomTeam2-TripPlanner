@@ -11,7 +11,7 @@ public class JwtConfigurationManager {
         String envSecret = System.getenv("JWT_SECRET");
         this.secret = (envSecret != null && !envSecret.isBlank())
                 ? envSecret
-                : "dGhpcyBpcyBhIHNlY3VyZSByYW5kb20ga2V5IGZvciBqd3Q=";
+                : "7Wl0A/qUHLdXuZKT3nra3mBBtOot+/SF/eLo0MTq5zQ=";
 
         String envExp = System.getenv("JWT_EXPIRATION_MS");
         this.expirationMs = (envExp != null && !envExp.isBlank())

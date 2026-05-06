@@ -410,9 +410,16 @@ public class BookingService {
         if (rows == null || rows.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Linked itinerary not found");
         }
-        java.sql.Date startDateSql = (java.sql.Date) rows.get(0)[0];
+        Object startDateObj = rows.get(0)[0];
+        LocalDate startDate;
+        if (startDateObj instanceof java.sql.Date d) {
+            startDate = d.toLocalDate();
+        } else if (startDateObj instanceof LocalDate ld) {
+            startDate = ld;
+        } else {
+            startDate = LocalDate.parse(startDateObj.toString());
+        }
         String itiStatus = (String) rows.get(0)[1];
-        LocalDate startDate = startDateSql.toLocalDate();
         boolean itineraryStarted = "IN_PROGRESS".equals(itiStatus) || "COMPLETED".equals(itiStatus);
 
         // 4. select strategy — no if/else chains here, selector does it

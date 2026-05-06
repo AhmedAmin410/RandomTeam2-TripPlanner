@@ -1,6 +1,8 @@
 package com.randmteam2.tripplanning.booking.service;
 
 import com.randmteam2.tripplanning.booking.dto.DestinationSeasonRevenueDTO;
+import com.randmteam2.tripplanning.booking.mongo.EventFactory;
+import com.randmteam2.tripplanning.booking.mongo.EventType;
 import com.randmteam2.tripplanning.booking.mongo.PaymentAuditEvent;
 import com.randmteam2.tripplanning.booking.mongo.PaymentAuditEventRepository;
 import com.randmteam2.tripplanning.booking.repository.BookingRepository;
@@ -50,10 +52,11 @@ public class BookingAnalyticsService {
     // called OUTSIDE @Cacheable so it fires on every request including cache hits
     public void logAnalyticsViewed() {
         try {
-            PaymentAuditEvent ev = new PaymentAuditEvent();
-            ev.setAction("ANALYTICS_VIEWED");
-            ev.setTimestamp(LocalDateTime.now());
-            ev.setDetails(Map.of("endpoint", "S5-F10"));
+            PaymentAuditEvent ev = (PaymentAuditEvent) EventFactory.createEvent(
+                    EventType.PAYMENT_AUDIT,
+                    Map.of("action", "ANALYTICS_VIEWED",
+                           "timestamp", LocalDateTime.now(),
+                           "details", Map.of("endpoint", "S5-F10")));
             auditRepository.save(ev);
         } catch (Exception e) {
             System.err.println("[WARN] MongoDB analytics log failed: " + e.getMessage());
