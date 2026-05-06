@@ -1,7 +1,6 @@
 services:
   postgres:
     image: postgres:16
-    container_name: tripplanning-db
     ports:
       - "5432:5432"
     environment:
@@ -15,6 +14,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
   mongodb:
     image: mongo:7
     ports:
@@ -24,24 +24,21 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: rootpass
       MONGO_INITDB_DATABASE: tripplanningmongo
     healthcheck:
-      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
       retries: 10
+
   redis:
     image: redis:7
     ports:
       - "6379:6379"
     command: redis-server --requirepass redispass
     healthcheck:
-      test: [ "CMD", "redis-cli", "-a", "redispass", "ping" ]
+      test: ["CMD", "redis-cli", "-a", "redispass", "ping"]
       interval: 10s
       timeout: 5s
       retries: 10
-
-
-
-
 
   elasticsearch:
     image: elasticsearch:8.13.4
@@ -69,7 +66,6 @@ services:
       timeout: 30s
       retries: 15
 
-
   user-service:
     build: ./user-service
     ports:
@@ -78,8 +74,16 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tripplanningdb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_DATA_MONGODB_URI: mongodb://root:rootpass@mongodb:27017/tripplanningmongo?authSource=admin
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_PASSWORD: redispass
     depends_on:
       postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
@@ -95,9 +99,17 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tripplanningdb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_DATA_MONGODB_URI: mongodb://root:rootpass@mongodb:27017/tripplanningmongo?authSource=admin
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_PASSWORD: redispass
       SPRING_ELASTICSEARCH_URIS: http://elasticsearch:9200
     depends_on:
       postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       elasticsearch:
         condition: service_healthy
@@ -115,8 +127,16 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tripplanningdb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_DATA_MONGODB_URI: mongodb://root:rootpass@mongodb:27017/tripplanningmongo?authSource=admin
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_PASSWORD: redispass
     depends_on:
       postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8083/actuator/health || exit 1"]
@@ -132,12 +152,20 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tripplanningdb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_DATA_MONGODB_URI: mongodb://root:rootpass@mongodb:27017/tripplanningmongo?authSource=admin
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_PASSWORD: redispass
       SPRING_CASSANDRA_CONTACT_POINTS: cassandra
       SPRING_CASSANDRA_PORT: 9042
       SPRING_CASSANDRA_LOCAL_DATACENTER: datacenter1
       SPRING_CASSANDRA_KEYSPACE_NAME: tripplanningks
     depends_on:
       postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
         condition: service_healthy
       cassandra:
         condition: service_healthy
@@ -155,8 +183,16 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tripplanningdb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_DATA_MONGODB_URI: mongodb://root:rootpass@mongodb:27017/tripplanningmongo?authSource=admin
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_PASSWORD: redispass
     depends_on:
       postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
@@ -166,5 +202,3 @@ services:
 
 volumes:
   pgdata:
-
-
