@@ -49,6 +49,10 @@ public class BookingService {
         return bookingRepository.findAll();
     }
 
+    public List<Booking> getRecommendations() {
+        return bookingRepository.findAll();
+    }
+
     @Cacheable(value = "booking-service", key = "'booking::' + #id")
     public Booking getBookingById(Long id) {
         return bookingRepository.findById(id)
