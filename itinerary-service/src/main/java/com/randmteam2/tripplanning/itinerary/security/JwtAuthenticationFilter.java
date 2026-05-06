@@ -1,6 +1,5 @@
 package com.randmteam2.tripplanning.itinerary.security;
 
-import com.randmteam2.tripplanning.itinerary.repository.ItineraryRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -18,11 +17,16 @@ import java.util.List;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
-    private final ItineraryRepository itineraryRepository;
 
-    public JwtAuthenticationFilter(JwtService jwtService, ItineraryRepository itineraryRepository) {
+    public JwtAuthenticationFilter(JwtService jwtService) {
         this.jwtService = jwtService;
-        this.itineraryRepository = itineraryRepository;
+    }
+
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String path = request.getServletPath();
+        return "/api/itineraries/health".equals(path)
+                || path.startsWith("/actuator");
     }
 
     @Override
@@ -36,7 +40,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         // Build the chain
         AuthHandler tokenExtractor = new TokenExtractionHandler();
         AuthHandler signatureValidator = new SignatureValidationHandler(jwtService);
-        AuthHandler userLoader = new UserLoaderHandler(itineraryRepository);
+        AuthHandler userLoader = new UserLoaderHandler();
         AuthHandler roleAuthorizer = new RoleAuthorizationHandler(null);
 
         tokenExtractor.setNext(signatureValidator);
