@@ -1,4 +1,4 @@
-package com.randmteam2.tripplanning.itinerary.security;
+package com.randmteam2.tripplanning.activity.security;
 
 public class AuthException extends Exception {
     private final int status;

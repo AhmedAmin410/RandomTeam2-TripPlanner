@@ -29,10 +29,7 @@ public class ItineraryController {
         this.recordVisitService = recordVisitService;
     }
 
-    @GetMapping("/health")
-    public ResponseEntity<String> health() {
-        return ResponseEntity.ok("OK");
-    }
+
 
     @PutMapping("/{id}/complete")
     public ResponseEntity<Itinerary> completeItinerary(@PathVariable Long id) {

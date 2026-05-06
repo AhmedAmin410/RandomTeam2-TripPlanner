@@ -23,7 +23,7 @@ spring:
       time-to-live: 600000
   cassandra:
     contact-points: ${SPRING_CASSANDRA_CONTACT_POINTS:localhost}
-    port: ${SPRING_CASSANDRA_PORT:9042}
+    port: ${SPRING_CASSANDRA_PORT:19042}
     local-datacenter: ${SPRING_CASSANDRA_LOCAL_DATACENTER:datacenter1}
     keyspace-name: ${SPRING_CASSANDRA_KEYSPACE_NAME:tripplanningks}
     schema-action: CREATE_IF_NOT_EXISTS

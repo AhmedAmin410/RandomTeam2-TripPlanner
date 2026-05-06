@@ -3,7 +3,6 @@ package com.randmteam2.tripplanning.itinerary.security;
 public class JwtConfigurationManager {
 
     private static volatile JwtConfigurationManager instance;
-
     private final String secret;
     private final long expirationMs;
 
@@ -11,12 +10,9 @@ public class JwtConfigurationManager {
         String envSecret = System.getenv("JWT_SECRET");
         this.secret = (envSecret != null && !envSecret.isBlank())
                 ? envSecret
-                : "dGhpcyBpcyBhIHNlY3VyZSByYW5kb20ga2V5IGZvciBqd3Q=";
-
+                : "7Wl0A/qUHLdXuZKT3nra3mBBtOot+/SF/eLo0MTq5zQ=";
         String envExp = System.getenv("JWT_EXPIRATION_MS");
-        this.expirationMs = (envExp != null && !envExp.isBlank())
-                ? Long.parseLong(envExp)
-                : 86400000L;
+        this.expirationMs = (envExp != null) ? Long.parseLong(envExp) : 86400000L;
     }
 
     public static JwtConfigurationManager getInstance() {
@@ -30,6 +26,6 @@ public class JwtConfigurationManager {
         return instance;
     }
 
-    public String getSecret() { return secret; }
-    public long getExpirationMs() { return expirationMs; }
+    public String getSecret()       { return secret; }
+    public long   getExpirationMs() { return expirationMs; }
 }

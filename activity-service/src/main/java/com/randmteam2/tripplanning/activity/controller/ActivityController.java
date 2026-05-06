@@ -21,11 +21,6 @@ public class ActivityController {
         this.activityService = activityService;
     }
 
-    @GetMapping("/health")
-    public ResponseEntity<String> health() {
-        return ResponseEntity.ok("OK");
-    }
-
 
     @PostMapping
     public ResponseEntity<Activity> create(@RequestBody Activity activity) {

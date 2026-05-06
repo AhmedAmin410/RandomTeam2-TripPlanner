@@ -1,7 +1,9 @@
 package com.randmteam2.tripplanning.itinerary.security;
 
-public class RoleAuthorizationHandler extends AuthHandler {
+import com.randmteam2.tripplanning.itinerary.security.AuthContext;
+import com.randmteam2.tripplanning.itinerary.security.AuthHandler;
 
+public class RoleAuthorizationHandler extends AuthHandler {
     private final String requiredRole;
 
     public RoleAuthorizationHandler(String requiredRole) {
@@ -10,9 +12,12 @@ public class RoleAuthorizationHandler extends AuthHandler {
 
     @Override
     public void handle(AuthContext ctx) throws AuthException {
-        if (requiredRole != null && !requiredRole.equals(ctx.getRole())) {
-            throw new AuthException("Insufficient role: requires " + requiredRole, 403);
+        if (requiredRole != null) {
+            String role = ctx.claims.get("role", String.class);
+            if (!requiredRole.equals(role)) {
+                throw new AuthException(403, "Insufficient role");
+            }
         }
-        if (next != null) next.handle(ctx);
+        proceed(ctx);
     }
 }

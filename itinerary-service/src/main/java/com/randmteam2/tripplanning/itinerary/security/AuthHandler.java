@@ -1,7 +1,9 @@
 package com.randmteam2.tripplanning.itinerary.security;
 
+import com.randmteam2.tripplanning.itinerary.security.AuthContext;
+
 public abstract class AuthHandler {
-    protected AuthHandler next;
+    private AuthHandler next;
 
     public AuthHandler setNext(AuthHandler next) {
         this.next = next;
@@ -9,4 +11,8 @@ public abstract class AuthHandler {
     }
 
     public abstract void handle(AuthContext ctx) throws AuthException;
+
+    protected void proceed(AuthContext ctx) throws AuthException {
+        if (next != null) next.handle(ctx);
+    }
 }

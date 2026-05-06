@@ -1,25 +1,14 @@
 package com.randmteam2.tripplanning.itinerary.security;
 
+import io.jsonwebtoken.Claims;
 import jakarta.servlet.http.HttpServletRequest;
 
 public class AuthContext {
-    private final HttpServletRequest request;
-    private String token;
-    private String email;
-    private Long userId;
-    private String role;
+    public final HttpServletRequest request;
+    public String token;
+    public Claims claims;
 
     public AuthContext(HttpServletRequest request) {
         this.request = request;
     }
-
-    public HttpServletRequest getRequest() { return request; }
-    public String getToken() { return token; }
-    public void setToken(String token) { this.token = token; }
-    public String getEmail() { return email; }
-    public void setEmail(String email) { this.email = email; }
-    public Long getUserId() { return userId; }
-    public void setUserId(Long userId) { this.userId = userId; }
-    public String getRole() { return role; }
-    public void setRole(String role) { this.role = role; }
 }

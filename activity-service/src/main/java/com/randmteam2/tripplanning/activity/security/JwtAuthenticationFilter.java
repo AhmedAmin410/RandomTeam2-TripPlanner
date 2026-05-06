@@ -1,9 +1,11 @@
 package com.randmteam2.tripplanning.activity.security;
 
+import com.randmteam2.tripplanning.activity.security.AuthHandler;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -16,41 +18,37 @@ import java.util.List;
 @Component
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
-    private final JwtService jwtService;
+    @Autowired private JwtService jwtService;
 
-    public JwtAuthenticationFilter(JwtService jwtService) {
-        this.jwtService = jwtService;
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        return "/api/itineraries/health".equals(request.getServletPath());
     }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
-                                    FilterChain filterChain) throws ServletException, IOException {
+                                    FilterChain filterChain)
+            throws ServletException, IOException {
 
-        AuthContext context = new AuthContext(request);
+        AuthHandler head = new TokenExtractionHandler();
+        head.setNext(new SignatureValidationHandler(jwtService))
+                .setNext(new RoleAuthorizationHandler(null));
 
-        AuthHandler extraction = new TokenExtractionHandler();
-        AuthHandler signature  = new SignatureValidationHandler(jwtService);
-        AuthHandler role       = new RoleAuthorizationHandler();
-
-        extraction.setNext(signature).setNext(role);
-        extraction.handle(context);
-
-        if (context.isFailed()) {
-            response.sendError(context.getStatusCode(), context.getErrorMessage());
-            return;
-        }
-
-        if (context.getEmail() != null && context.getRole() != null
-                && SecurityContextHolder.getContext().getAuthentication() == null) {
+        AuthContext ctx = new AuthContext(request);
+        try {
+            head.handle(ctx);
+            String role = ctx.claims.get("role", String.class);
             var auth = new UsernamePasswordAuthenticationToken(
-                    context.getEmail(), null,
-                    List.of(new SimpleGrantedAuthority("ROLE_" + context.getRole()))
-            );
-            auth.setDetails(context.getUserId());
+                    ctx.claims.getSubject(), null,
+                    List.of(new SimpleGrantedAuthority("ROLE_" + role)));
             SecurityContextHolder.getContext().setAuthentication(auth);
+            filterChain.doFilter(request, response);
+        } catch (AuthException e) {
+            SecurityContextHolder.clearContext();
+            response.setStatus(e.getStatus());
+            response.setContentType("application/json");
+            response.getWriter().write("{\"error\":\"" + e.getMessage() + "\"}");
         }
-
-        filterChain.doFilter(request, response);
     }
 }

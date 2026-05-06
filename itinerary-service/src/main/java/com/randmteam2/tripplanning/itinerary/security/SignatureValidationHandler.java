@@ -1,7 +1,10 @@
 package com.randmteam2.tripplanning.itinerary.security;
 
-public class SignatureValidationHandler extends AuthHandler {
+import com.randmteam2.tripplanning.itinerary.security.AuthContext;
+import com.randmteam2.tripplanning.itinerary.security.AuthException;
+import com.randmteam2.tripplanning.itinerary.security.AuthHandler;
 
+public class SignatureValidationHandler extends AuthHandler {
     private final JwtService jwtService;
 
     public SignatureValidationHandler(JwtService jwtService) {
@@ -10,12 +13,11 @@ public class SignatureValidationHandler extends AuthHandler {
 
     @Override
     public void handle(AuthContext ctx) throws AuthException {
-        if (!jwtService.isTokenValid(ctx.getToken())) {
-            throw new AuthException("Invalid or expired JWT token", 401);
+        try {
+            ctx.claims = jwtService.extractAllClaims(ctx.token);
+        } catch (Exception e) {
+            throw new AuthException(401, "Invalid or expired token");
         }
-        ctx.setEmail(jwtService.extractEmail(ctx.getToken()));
-        ctx.setUserId(jwtService.extractUserId(ctx.getToken()));
-        ctx.setRole(jwtService.extractRole(ctx.getToken()));
-        if (next != null) next.handle(ctx);
+        proceed(ctx);
     }
 }
