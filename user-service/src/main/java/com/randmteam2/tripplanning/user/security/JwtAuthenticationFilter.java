@@ -1,8 +1,8 @@
 package com.randmteam2.tripplanning.user.security;
 
-import com.randmteam2.tripplanning.user.security.AuthContext;
-import com.randmteam2.tripplanning.user.security.RoleAuthorizationHandler;
-import com.randmteam2.tripplanning.user.security.TokenExtractionHandler;
+import com.randmteam2.tripplanning.user.model.User;
+import com.randmteam2.tripplanning.user.model.UserStatus;
+import com.randmteam2.tripplanning.user.repository.UserRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -25,6 +25,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     @Autowired private JwtService jwtService;
     @Autowired @Lazy private UserDetailsService userDetailsService;
+    @Autowired private UserRepository userRepository;
 
     private static final Pattern ADMIN_ROLE_PATTERN =
             Pattern.compile("^PUT:/api/users/\\d+/role$");
@@ -39,8 +40,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getServletPath();
         return "/api/users/health".equals(path)
-                || "/api/auth/register".equals(path)
-                || "/api/auth/login".equals(path)
+                || "/api/users/register".equals(path)
+                || "/api/users/login".equals(path)
                 || path.startsWith("/actuator");
     }
 
@@ -53,12 +54,17 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String requiredRole = resolveRequiredRole(request);
         AuthHandler head = new TokenExtractionHandler();
         head.setNext(new SignatureValidationHandler(jwtService))
-                .setNext(new UserLoaderHandler(userDetailsService))
+                .setNext(new UserLoaderHandler())
                 .setNext(new RoleAuthorizationHandler(requiredRole));
 
         AuthContext ctx = new AuthContext(request);
         try {
             head.handle(ctx);
+            String email = ctx.claims.getSubject();
+            User userFromDb = userRepository.findByEmail(email).orElse(null);
+            if (userFromDb == null || userFromDb.getStatus() == UserStatus.DEACTIVATED) {
+                throw new AuthException(401, "User account is deactivated or does not exist");
+            }
             String role = ctx.claims.get("role", String.class);
             var auth = new UsernamePasswordAuthenticationToken(
                     ctx.claims.getSubject(), null,
