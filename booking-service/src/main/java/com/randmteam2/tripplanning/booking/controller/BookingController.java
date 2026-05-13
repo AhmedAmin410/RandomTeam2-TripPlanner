@@ -10,6 +10,9 @@ import com.randmteam2.tripplanning.booking.model.Booking;
 import com.randmteam2.tripplanning.booking.service.BookingService;
 import com.randmteam2.tripplanning.booking.service.PaymentHistoryService;
 import com.randmteam2.tripplanning.booking.service.SettlementService;
+import com.randmteam2.tripplanning.contracts.dto.ConfirmedSummaryDTO;
+import com.randmteam2.tripplanning.contracts.dto.ItineraryBookingAggregateDTO;
+import com.randmteam2.tripplanning.contracts.dto.UserBookingTotalDTO;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -17,6 +20,7 @@ import org.springframework.web.bind.annotation.*;
 import com.randmteam2.tripplanning.booking.dto.RefundCancellationRequest;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/bookings")
@@ -97,6 +101,25 @@ public class BookingController {
     public ResponseEntity<UserBookingSummaryDTO> getUserBookingSummary(
             @PathVariable Long userId) {
         return ResponseEntity.ok(bookingService.getUserBookingSummary(userId));
+    }
+
+    @GetMapping("/user/{userId}/total")
+    public ResponseEntity<UserBookingTotalDTO> getUserBookingTotal(
+            @PathVariable Long userId,
+            @RequestParam String startDate,
+            @RequestParam String endDate) {
+        return ResponseEntity.ok(bookingService.getUserBookingTotal(userId, startDate, endDate));
+    }
+
+    @PostMapping("/aggregate-by-itineraries")
+    public ResponseEntity<ItineraryBookingAggregateDTO> aggregateByItineraries(
+            @RequestBody Map<String, Object> request) {
+        return ResponseEntity.ok(bookingService.aggregateByItineraries(request));
+    }
+
+    @GetMapping("/itinerary/{itineraryId}/confirmed-summary")
+    public ResponseEntity<ConfirmedSummaryDTO> getConfirmedSummary(@PathVariable Long itineraryId) {
+        return ResponseEntity.ok(bookingService.getConfirmedSummary(itineraryId));
     }
 
     // ── S5-F4 ─────────────────────────────────────────────────────────────

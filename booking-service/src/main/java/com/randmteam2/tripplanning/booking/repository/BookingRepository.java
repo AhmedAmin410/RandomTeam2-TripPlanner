@@ -15,12 +15,60 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
 
     List<Booking> findByItineraryIdAndStatus(Long itineraryId, com.randmteam2.tripplanning.booking.model.BookingStatus status);
 
+    long countByItineraryIdAndStatus(Long itineraryId, com.randmteam2.tripplanning.booking.model.BookingStatus status);
+
     @Query("""
         select coalesce(sum(b.amount), 0)
         from Booking b
         where b.itineraryId = :itineraryId and b.status = com.randmteam2.tripplanning.booking.model.BookingStatus.CONFIRMED
         """)
     Double sumConfirmedAmountByItineraryId(@Param("itineraryId") Long itineraryId);
+
+    @Query("""
+        select coalesce(sum(b.amount), 0)
+        from Booking b
+        where b.userId = :userId
+          and b.status = com.randmteam2.tripplanning.booking.model.BookingStatus.CONFIRMED
+          and b.createdAt between :startDate and :endDate
+        """)
+    Double sumConfirmedAmountByUserAndDateRange(@Param("userId") Long userId,
+                                                @Param("startDate") LocalDateTime startDate,
+                                                @Param("endDate") LocalDateTime endDate);
+
+    @Query("""
+        select count(b)
+        from Booking b
+        where b.userId = :userId
+          and b.status = com.randmteam2.tripplanning.booking.model.BookingStatus.CONFIRMED
+          and b.createdAt between :startDate and :endDate
+        """)
+    Long countConfirmedTripsByUserAndDateRange(@Param("userId") Long userId,
+                                               @Param("startDate") LocalDateTime startDate,
+                                               @Param("endDate") LocalDateTime endDate);
+
+    @Query("""
+        select coalesce(sum(b.amount), 0)
+        from Booking b
+        where b.itineraryId in :itineraryIds
+          and b.status = :status
+          and b.createdAt between :startDate and :endDate
+        """)
+    Double sumAmountByItineraryIdsAndStatus(@Param("itineraryIds") List<Long> itineraryIds,
+                                            @Param("status") com.randmteam2.tripplanning.booking.model.BookingStatus status,
+                                            @Param("startDate") LocalDateTime startDate,
+                                            @Param("endDate") LocalDateTime endDate);
+
+    @Query("""
+        select count(b)
+        from Booking b
+        where b.itineraryId in :itineraryIds
+          and b.status = :status
+          and b.createdAt between :startDate and :endDate
+        """)
+    Long countByItineraryIdsAndStatus(@Param("itineraryIds") List<Long> itineraryIds,
+                                      @Param("status") com.randmteam2.tripplanning.booking.model.BookingStatus status,
+                                      @Param("startDate") LocalDateTime startDate,
+                                      @Param("endDate") LocalDateTime endDate);
 
     @Modifying
     @Query("""
