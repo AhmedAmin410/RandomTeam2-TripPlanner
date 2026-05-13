@@ -73,9 +73,9 @@ public class SettlementService {
 
         try {
             Settlement saved = settlementRepository.saveAndFlush(settlement);
-            writeSettlementAudit(saved, "SETTLEMENT_PENDING", null);
             paymentEventPublisher.publish("payment.initiated",
                     new PaymentInitiatedEvent(saved.getId(), saved.getItineraryId(), saved.getAmount()));
+            writeSettlementAudit(saved, "SETTLEMENT_PENDING", null);
             log.info("Created pending settlement {} for itinerary={}", saved.getId(), saved.getItineraryId());
         } catch (DataIntegrityViolationException duplicate) {
             log.info("Duplicate itinerary.completed ignored for itinerary={}", event.itineraryId());
