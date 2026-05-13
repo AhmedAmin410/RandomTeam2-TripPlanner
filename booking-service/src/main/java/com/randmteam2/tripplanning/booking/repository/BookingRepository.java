@@ -2,6 +2,7 @@ package com.randmteam2.tripplanning.booking.repository;
 
 import com.randmteam2.tripplanning.booking.model.Booking;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -11,6 +12,35 @@ import java.util.List;
 
 @Repository
 public interface BookingRepository extends JpaRepository<Booking, Long> {
+
+    List<Booking> findByItineraryIdAndStatus(Long itineraryId, com.randmteam2.tripplanning.booking.model.BookingStatus status);
+
+    @Query("""
+        select coalesce(sum(b.amount), 0)
+        from Booking b
+        where b.itineraryId = :itineraryId and b.status = com.randmteam2.tripplanning.booking.model.BookingStatus.CONFIRMED
+        """)
+    Double sumConfirmedAmountByItineraryId(@Param("itineraryId") Long itineraryId);
+
+    @Modifying
+    @Query("""
+        update Booking b
+        set b.status = :target
+        where b.id = :bookingId and b.status = :source
+        """)
+    int transitionBookingStatus(@Param("bookingId") Long bookingId,
+                                @Param("source") com.randmteam2.tripplanning.booking.model.BookingStatus source,
+                                @Param("target") com.randmteam2.tripplanning.booking.model.BookingStatus target);
+
+    @Modifying
+    @Query("""
+        update Booking b
+        set b.status = :target
+        where b.itineraryId = :itineraryId and b.status = :source
+        """)
+    int transitionBookingsForItinerary(@Param("itineraryId") Long itineraryId,
+                                       @Param("source") com.randmteam2.tripplanning.booking.model.BookingStatus source,
+                                       @Param("target") com.randmteam2.tripplanning.booking.model.BookingStatus target);
 
     // S5-F1
     @Query(value = """

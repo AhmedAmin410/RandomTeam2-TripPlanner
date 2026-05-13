@@ -12,6 +12,8 @@ public class PaymentAuditEvent implements MongoEvent {
     @Id
     private String id;
     private Long bookingId;
+    private Long settlementId;
+    private Long itineraryId;
     private String action;
     private LocalDateTime timestamp;
     private String method;
@@ -22,6 +24,10 @@ public class PaymentAuditEvent implements MongoEvent {
     public void setId(String id)                  { this.id = id; }
     public Long getBookingId()                    { return bookingId; }
     public void setBookingId(Long bookingId)      { this.bookingId = bookingId; }
+    public Long getSettlementId()                 { return settlementId; }
+    public void setSettlementId(Long settlementId){ this.settlementId = settlementId; }
+    public Long getItineraryId()                  { return itineraryId; }
+    public void setItineraryId(Long itineraryId)  { this.itineraryId = itineraryId; }
     public String getAction()                     { return action; }
     public void setAction(String action)          { this.action = action; }
     public LocalDateTime getTimestamp()           { return timestamp; }

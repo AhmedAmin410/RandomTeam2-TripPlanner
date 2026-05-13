@@ -3,10 +3,13 @@ package com.randmteam2.tripplanning.booking.controller;
 import com.randmteam2.tripplanning.booking.dto.BookingDetailsDTO;
 import com.randmteam2.tripplanning.booking.dto.PaymentHistoryEntryDTO;
 import com.randmteam2.tripplanning.booking.dto.RevenueReportDTO;
+import com.randmteam2.tripplanning.booking.dto.SettlementProcessRequest;
+import com.randmteam2.tripplanning.booking.dto.SettlementResultDTO;
 import com.randmteam2.tripplanning.booking.dto.UserBookingSummaryDTO;
 import com.randmteam2.tripplanning.booking.model.Booking;
 import com.randmteam2.tripplanning.booking.service.BookingService;
 import com.randmteam2.tripplanning.booking.service.PaymentHistoryService;
+import com.randmteam2.tripplanning.booking.service.SettlementService;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -21,11 +24,14 @@ public class BookingController {
 
     private final BookingService bookingService;
     private final PaymentHistoryService paymentHistoryService;
+    private final SettlementService settlementService;
 
     public BookingController(BookingService bookingService,
-                             PaymentHistoryService paymentHistoryService) {
+                             PaymentHistoryService paymentHistoryService,
+                             SettlementService settlementService) {
         this.bookingService = bookingService;
         this.paymentHistoryService = paymentHistoryService;
+        this.settlementService = settlementService;
     }
 
     // ── CRUD ──────────────────────────────────────────────────────────────
@@ -160,5 +166,12 @@ public class BookingController {
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size) {
         return ResponseEntity.ok(paymentHistoryService.getPaymentHistory(id, page, size));
+    }
+
+    @PostMapping("/settlement/process")
+    public ResponseEntity<SettlementResultDTO> processSettlement(
+            @RequestBody SettlementProcessRequest request,
+            @RequestHeader(name = "X-User-Id", required = false) Long authenticatedUserId) {
+        return ResponseEntity.ok(settlementService.processSettlement(request, authenticatedUserId));
     }
 }
