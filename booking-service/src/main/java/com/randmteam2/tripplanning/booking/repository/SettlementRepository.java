@@ -22,7 +22,7 @@ public interface SettlementRepository extends JpaRepository<Settlement, Long> {
     @Query("select s from Settlement s where s.itineraryId = :itineraryId")
     Optional<Settlement> lockByItineraryId(@Param("itineraryId") Long itineraryId);
 
-    @Modifying
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""
             update Settlement s
             set s.status = :target
@@ -32,7 +32,7 @@ public interface SettlementRepository extends JpaRepository<Settlement, Long> {
                          @Param("source") SettlementStatus source,
                          @Param("target") SettlementStatus target);
 
-    @Modifying
+    @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("""
             update Settlement s
             set s.status = :target,
