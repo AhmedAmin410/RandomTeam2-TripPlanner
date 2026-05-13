@@ -13,6 +13,9 @@ import com.randmteam2.tripplanning.booking.mongo.PaymentAuditEvent;
 import com.randmteam2.tripplanning.booking.mongo.PaymentAuditEventRepository;
 import com.randmteam2.tripplanning.booking.observer.BookingEvent;
 import com.randmteam2.tripplanning.booking.observer.BookingEventPublisher;
+import com.randmteam2.tripplanning.contracts.dto.ConfirmedSummaryDTO;
+import com.randmteam2.tripplanning.contracts.dto.ItineraryBookingAggregateDTO;
+import com.randmteam2.tripplanning.contracts.dto.UserBookingTotalDTO;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -136,6 +139,50 @@ public class BookingService {
                 .totalAmount(totalAmount)
                 .typeBreakdown(typeBreakdown)
                 .build();
+    }
+
+    @Cacheable(value = "booking-service", key = "'S5-SYNC-USER-TOTAL::' + #userId + '::' + #startDate + '::' + #endDate")
+    public UserBookingTotalDTO getUserBookingTotal(Long userId, String startDate, String endDate) {
+        LocalDateTime start = parseStart(startDate);
+        LocalDateTime end = parseEnd(endDate);
+        if (start.isAfter(end)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate must be before endDate");
+        }
+
+        Double totalAmount = bookingRepository.sumConfirmedAmountByUserAndDateRange(userId, start, end);
+        Long tripCount = bookingRepository.countConfirmedTripsByUserAndDateRange(userId, start, end);
+        return new UserBookingTotalDTO(
+                userId,
+                totalAmount != null ? totalAmount : 0.0,
+                tripCount != null ? tripCount : 0L);
+    }
+
+    @Cacheable(value = "booking-service", key = "'S5-SYNC-AGGREGATE::' + #request")
+    public ItineraryBookingAggregateDTO aggregateByItineraries(Map<String, Object> request) {
+        List<Long> itineraryIds = extractItineraryIds(request.get("itineraryIds"));
+        if (itineraryIds.isEmpty()) {
+            return new ItineraryBookingAggregateDTO(0L, 0.0);
+        }
+
+        BookingStatus status = parseBookingStatus(String.valueOf(request.getOrDefault("status", "CONFIRMED")));
+        LocalDateTime start = parseStart(Objects.toString(request.get("startDate"), null));
+        LocalDateTime end = parseEnd(Objects.toString(request.get("endDate"), null));
+        if (start.isAfter(end)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate must be before endDate");
+        }
+
+        Long totalBookings = bookingRepository.countByItineraryIdsAndStatus(itineraryIds, status, start, end);
+        Double totalRevenue = bookingRepository.sumAmountByItineraryIdsAndStatus(itineraryIds, status, start, end);
+        return new ItineraryBookingAggregateDTO(
+                totalBookings != null ? totalBookings : 0L,
+                totalRevenue != null ? totalRevenue : 0.0);
+    }
+
+    @Cacheable(value = "booking-service", key = "'S5-SYNC-CONFIRMED-SUMMARY::' + #itineraryId")
+    public ConfirmedSummaryDTO getConfirmedSummary(Long itineraryId) {
+        long count = bookingRepository.countByItineraryIdAndStatus(itineraryId, BookingStatus.CONFIRMED);
+        Double totalRevenue = bookingRepository.sumConfirmedAmountByItineraryId(itineraryId);
+        return new ConfirmedSummaryDTO(count, totalRevenue != null ? totalRevenue : 0.0);
     }
 
     // ── S5-F4 ─────────────────────────────────────────────────────────────
@@ -479,5 +526,57 @@ public class BookingService {
         } catch (Exception e) {
             System.err.println("[WARN] MongoDB write failed: " + e.getMessage());
         }
+    }
+
+    private LocalDateTime parseStart(String value) {
+        if (value == null || value.isBlank()) {
+            return LocalDateTime.of(2000, 1, 1, 0, 0);
+        }
+        return parseDateTime(value, true);
+    }
+
+    private LocalDateTime parseEnd(String value) {
+        if (value == null || value.isBlank()) {
+            return LocalDateTime.of(2100, 1, 1, 23, 59, 59, 999_000_000);
+        }
+        return parseDateTime(value, false);
+    }
+
+    private LocalDateTime parseDateTime(String value, boolean startOfDay) {
+        String normalized = value.trim().replace(" ", "T");
+        if (normalized.length() == 10) {
+            LocalDate date = LocalDate.parse(normalized);
+            return startOfDay ? date.atStartOfDay() : date.atTime(23, 59, 59, 999_000_000);
+        }
+        return LocalDateTime.parse(normalized);
+    }
+
+    private BookingStatus parseBookingStatus(String status) {
+        try {
+            return BookingStatus.valueOf(status.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unsupported booking status: " + status);
+        }
+    }
+
+    private List<Long> extractItineraryIds(Object rawIds) {
+        if (!(rawIds instanceof Collection<?> collection)) {
+            return List.of();
+        }
+        return collection.stream()
+                .map(this::toLong)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+    }
+
+    private Long toLong(Object value) {
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        if (value instanceof String text && !text.isBlank()) {
+            return Long.parseLong(text);
+        }
+        return null;
     }
 }
