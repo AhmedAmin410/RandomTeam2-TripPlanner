@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: booking-service-configmap
+  namespace: tripplanning
+data:
+  SPRING_DATASOURCE_URL: jdbc:postgresql://booking-postgres:5432/tripdb-bookings
+  SPRING_DATASOURCE_USERNAME: postgres
+  SPRING_RABBITMQ_HOST: rabbitmq
+  SPRING_RABBITMQ_PORT: "5672"
+  SPRING_RABBITMQ_USERNAME: guest
+  SPRING_DATA_MONGODB_URI: mongodb://root:rootpass@mongo:27017/tripplanningmongo?authSource=admin
+  SPRING_DATA_REDIS_HOST: redis
+  SPRING_DATA_REDIS_PORT: "6379"
+  FEIGN_USER_SERVICE_URL: http://user-service:8080
+  FEIGN_ITINERARY_SERVICE_URL: http://itinerary-service:8080
+  FEIGN_DESTINATION_SERVICE_URL: http://destination-service:8080
+  MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: prometheus,health,info
+  MANAGEMENT_METRICS_DISTRIBUTION_PERCENTILES_HISTOGRAM_HTTP_SERVER_REQUESTS: "true"
