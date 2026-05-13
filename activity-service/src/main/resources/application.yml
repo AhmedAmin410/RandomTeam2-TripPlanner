@@ -39,3 +39,20 @@ server:
 jwt:
   secret: ${JWT_SECRET:dGhpcyBpcyBhIHNlY3VyZSByYW5kb20ga2V5IGZvciBqd3Q=}
   expiration: ${JWT_EXPIRATION_MS:86400000}
+  rabbitmq:
+    host: ${SPRING_RABBITMQ_HOST:localhost}
+    port: 5672
+    username: guest
+    password: guest
+    listener:
+      simple:
+        acknowledge-mode: auto
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          initial-interval: 1000
+          max-attempts: 3
+
+feign:
+  itinerary-service:
+    url: ${FEIGN_ITINERARY_SERVICE_URL:http://localhost:8083}
