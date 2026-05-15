@@ -168,8 +168,12 @@ public User updatePreferences(
     }
 
     @PutMapping("/{id}/deactivate")
-    public User deactivateUser(@PathVariable Long id) {
-        return userService.deactivateUser(id);
+    public ResponseEntity<?> deactivateUser(@PathVariable Long id) {
+        try {
+            return ResponseEntity.ok(userService.deactivateUser(id));
+        } catch (org.springframework.web.server.ResponseStatusException e) {
+            return ResponseEntity.status(e.getStatusCode()).body(Map.of("error", e.getReason()));
+        }
     }
 
     @GetMapping("/reports/top-travelers")
