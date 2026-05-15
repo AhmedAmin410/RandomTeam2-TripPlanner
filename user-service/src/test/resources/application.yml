@@ -1,4 +1,7 @@
 spring:
+  cloud:
+    compatibility-verifier:
+      enabled: false
   datasource:
     url: jdbc:h2:mem:testdb;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
     username: sa
@@ -24,3 +27,9 @@ spring:
 jwt:
   secret: 7Wl0A/qUHLdXuZKT3nra3mBBtOot+/SF/eLo0MTq5zQ=
   expiration: 86400000
+
+feign:
+  itinerary-service:
+    url: http://localhost:8083
+  booking-service:
+    url: http://localhost:8085
