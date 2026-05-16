@@ -1,6 +1,8 @@
 package com.randmteam2.tripplanning.booking.service;
 
 import com.randmteam2.tripplanning.booking.dto.RefundCancellationRequest;
+import com.randmteam2.tripplanning.booking.feign.ItineraryServiceClient;
+import com.randmteam2.tripplanning.booking.feign.UserServiceClient;
 import com.randmteam2.tripplanning.booking.model.Booking;
 import com.randmteam2.tripplanning.booking.model.BookingStatus;
 import com.randmteam2.tripplanning.booking.model.BookingType;
@@ -19,10 +21,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.sql.Date;
 import java.time.LocalDate;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -42,6 +42,8 @@ class BookingServiceRefundCancellationTest {
     @Mock private PaymentAuditEventRepository auditRepository;
     @Mock private BookingEventPublisher eventPublisher;
     @Mock private BookingCacheInvalidationService cacheInvalidationService;
+    @Mock private UserServiceClient userServiceClient;
+    @Mock private ItineraryServiceClient itineraryServiceClient;
 
     private BookingService bookingService;
 
@@ -53,7 +55,9 @@ class BookingServiceRefundCancellationTest {
                 bookingCouponRepository,
                 auditRepository,
                 eventPublisher,
-                cacheInvalidationService
+                cacheInvalidationService,
+                userServiceClient,
+                itineraryServiceClient
         );
     }
 
@@ -64,11 +68,12 @@ class BookingServiceRefundCancellationTest {
         request.setReason("User changed travel dates");
 
         when(bookingRepository.findById(10L)).thenReturn(Optional.of(booking));
-        when(bookingRepository.findItineraryStartDateAndStatus(99L))
-                .thenReturn(List.<Object[]>of(new Object[] {
-                        Date.valueOf(LocalDate.now().plusDays(10)),
-                        "PLANNED"
-                }));
+        when(itineraryServiceClient.getItinerary(99L)).thenReturn(Map.of(
+                "status", "PLANNED",
+                "startDate", LocalDate.now().plusDays(10).toString()
+        ));
+        when(bookingRepository.transitionBookingStatus(10L, BookingStatus.CONFIRMED, BookingStatus.CANCELLED))
+                .thenReturn(1);
         when(bookingRepository.save(any(Booking.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         Booking saved = bookingService.processRefundCancellation(10L, request);
@@ -103,11 +108,10 @@ class BookingServiceRefundCancellationTest {
         request.setReason("Too late");
 
         when(bookingRepository.findById(10L)).thenReturn(Optional.of(booking));
-        when(bookingRepository.findItineraryStartDateAndStatus(99L))
-                .thenReturn(List.<Object[]>of(new Object[] {
-                        Date.valueOf(LocalDate.now().plusDays(5)),
-                        "IN_PROGRESS"
-                }));
+        when(itineraryServiceClient.getItinerary(99L)).thenReturn(Map.of(
+                "status", "IN_PROGRESS",
+                "startDate", LocalDate.now().plusDays(5).toString()
+        ));
 
         assertThatThrownBy(() -> bookingService.processRefundCancellation(10L, request))
                 .isInstanceOf(ResponseStatusException.class)
@@ -140,7 +144,7 @@ class BookingServiceRefundCancellationTest {
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
                 .isEqualTo(HttpStatus.BAD_REQUEST);
 
-        verify(bookingRepository, never()).findItineraryStartDateAndStatus(any());
+        verify(itineraryServiceClient, never()).getItinerary(any());
         verify(bookingRepository, never()).save(any(Booking.class));
         verify(auditRepository, never()).save(any(PaymentAuditEvent.class));
         verify(cacheInvalidationService, never()).evictRefundRelatedCaches();

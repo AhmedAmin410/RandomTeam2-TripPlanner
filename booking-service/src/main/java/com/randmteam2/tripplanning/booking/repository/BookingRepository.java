@@ -111,13 +111,14 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
         """, nativeQuery = true)
     List<Object[]> getUserBookingSummary(@Param("userId") Long userId);
 
-    // S5-F3 user check
-    @Query(value = "SELECT id FROM users WHERE id = :userId", nativeQuery = true)
-    List<Object[]> checkUserExists(@Param("userId") Long userId);
-
-    // S5-F4
-    @Query(value = "SELECT status FROM itineraries WHERE id = :id", nativeQuery = true)
-    List<Object[]> findItineraryById(@Param("id") Long id);
+    // S5-F10 confirmed bookings in date range (local table only)
+    @Query("""
+        select b from Booking b
+        where b.status = com.randmteam2.tripplanning.booking.model.BookingStatus.CONFIRMED
+          and b.createdAt between :startDate and :endDate
+        """)
+    List<Booking> findConfirmedBookingsInRange(@Param("startDate") LocalDateTime startDate,
+                                               @Param("endDate") LocalDateTime endDate);
 
     // S5-F6
     @Query(value = """
@@ -145,50 +146,4 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
 
     List<Object[]> getTopUsedCoupons(@Param("limit") int limit);
 
-    // MOD-BK1: get destination_id from an itinerary
-    @Query(value = "SELECT destination_id FROM itineraries WHERE id = :itineraryId",
-            nativeQuery = true)
-    Long findDestinationIdByItineraryId(@Param("itineraryId") Long itineraryId);
-
-    // MOD-BK1: count active itineraries for a destination
-    @Query(value = """
-    SELECT COUNT(*) FROM itineraries
-    WHERE destination_id = :destinationId
-    AND status IN ('PLANNED', 'IN_PROGRESS')
-    """, nativeQuery = true)
-    long countActiveItinerariesForDestination(@Param("destinationId") Long destinationId);
-
-    // DP-1: get itinerary startDate and status for refund strategy selection
-    @Query(value = "SELECT start_date, status FROM itineraries WHERE id = :itineraryId",
-            nativeQuery = true)
-    List<Object[]> findItineraryStartDateAndStatus(@Param("itineraryId") Long itineraryId);
-
-    // S5-F10
-    @Query(value = """
-    SELECT
-        d.id                                                                    AS destinationId,
-        d.name                                                                  AS destinationName,
-        SUM(b.amount)                                                           AS totalRevenue,
-        SUM(COALESCE(CAST(b.booking_details->>'seasonalSurcharge' AS numeric), 0.0))
-                                                                                AS surchargeRevenue,
-        SUM(b.amount)
-            - SUM(COALESCE(CAST(b.booking_details->>'seasonalSurcharge' AS numeric), 0.0))
-                                                                                AS baseRevenue,
-        COUNT(*) FILTER (
-            WHERE COALESCE(CAST(b.booking_details->>'seasonalSurcharge' AS numeric), 0.0) > 0
-        )                                                                       AS peakBookingCount,
-        COUNT(*) FILTER (
-            WHERE COALESCE(CAST(b.booking_details->>'seasonalSurcharge' AS numeric), 0.0) = 0
-        )                                                                       AS offPeakBookingCount
-    FROM bookings b
-    JOIN itineraries i  ON i.id  = b.itin_id
-    JOIN destinations d ON d.id  = i.destination_id
-    WHERE b.status     = 'CONFIRMED'
-      AND b.created_at BETWEEN :startDate AND :endDate
-    GROUP BY d.id, d.name
-    ORDER BY SUM(b.amount) DESC
-    """, nativeQuery = true)
-    List<Object[]> findRevenueByDestinationAndSeason(
-            @Param("startDate") LocalDateTime startDate,
-            @Param("endDate")   LocalDateTime endDate);
 }

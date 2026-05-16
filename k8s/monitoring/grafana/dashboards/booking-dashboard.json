@@ -217,6 +217,69 @@
         },
         "overrides": []
       }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Error Rate (LogQL)",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "expr": "count_over_time({app=\"tripplanning\", service=\"booking-service\", level=\"ERROR\"} | json [1m])",
+          "legendFormat": "errors/min"
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 24
+      }
+    },
+    {
+      "id": 10,
+      "type": "logs",
+      "title": "Settlement Audit Trail",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "expr": "{app=\"tripplanning\", service=\"booking-service\"} | json | message =~ \".*settlement.*\"",
+          "legendFormat": ""
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 24
+      }
+    },
+    {
+      "id": 11,
+      "type": "logs",
+      "title": "Slow Operations",
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "targets": [
+        {
+          "expr": "{app=\"tripplanning\", service=\"booking-service\"} | json | message =~ \".*Slow.*\"",
+          "legendFormat": ""
+        }
+      ],
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 24
+      }
     }
   ]
 }
