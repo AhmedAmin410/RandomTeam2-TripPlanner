@@ -66,4 +66,12 @@ public class DestinationCacheInvalidationService {
     public void evictFullTextSearchCaches() {
         evictPattern("destination-service::S2-F10::*");
     }
+
+    public void invalidateItinerarySagaCaches(Long destinationId) {
+        if (destinationId == null) {
+            return;
+        }
+        evictPattern("destination-service::S2-F3::" + destinationId + "::*");
+        evictKey("destination-service::S2-F12::" + destinationId);
+    }
 }

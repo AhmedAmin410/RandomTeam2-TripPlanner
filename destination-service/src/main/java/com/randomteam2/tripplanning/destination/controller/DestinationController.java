@@ -35,6 +35,12 @@ public class DestinationController {
         return ResponseEntity.ok(destinationService.getAllDestinations());
     }
 
+    @PostMapping("/batch")
+    public ResponseEntity<List<DestinationSummaryDTO>> getDestinationsBatch(
+            @RequestBody DestinationBatchRequest request) {
+        return ResponseEntity.ok(destinationService.getDestinationsBatch(request));
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<Destination> getDestinationById(@PathVariable Long id) {
         return ResponseEntity.ok(destinationService.getDestinationById(id));
