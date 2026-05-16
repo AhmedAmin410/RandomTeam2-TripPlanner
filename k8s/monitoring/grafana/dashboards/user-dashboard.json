@@ -1,19 +1,68 @@
 {
-  "title": "User Service Dashboard",
+  "title": "Trip Planning - User Service S1",
   "uid": "user-service-dashboard",
-  "schemaVersion": 36,
-  "version": 1,
-  "refresh": "30s",
-  "tags": ["tripplanning", "user-service"],
-  "time": { "from": "now-1h", "to": "now" },
+  "schemaVersion": 39,
+  "version": 2,
+  "refresh": "15s",
+  "timezone": "browser",
+  "editable": true,
+  "tags": ["tripplanning", "user-service", "s1"],
+  "time": { "from": "now-6h", "to": "now" },
   "panels": [
-
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "Service Up (Prometheus)",
+      "description": "Whether Prometheus can scrape user-service /actuator/prometheus (target job user-service).",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "up{job=\"user-service\"}",
+          "legendFormat": "user-service",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 0 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "HTTP 4xx and 5xx",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (status, uri) (rate(http_server_requests_seconds_count{job=\"user-service\", status=~\"4..|5..\"}[5m]))",
+          "legendFormat": "{{status}} {{uri}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 10, "x": 4, "y": 0 }
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "HTTP Request Rate",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (method, uri) (rate(http_server_requests_seconds_count{job=\"user-service\"}[5m]))",
+          "legendFormat": "{{method}} {{uri}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 10, "x": 14, "y": 0 }
+    },
     {
       "id": 1,
       "title": "Error Rate (errors/min)",
-      "description": "Count of ERROR-level log lines from user-service per minute. Spike detection — sudden increase means something is wrong.",
+      "description": "Count of ERROR-level log lines from user-service per minute.",
       "type": "timeseries",
-      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
       "datasource": { "type": "loki", "uid": "loki" },
       "targets": [
         {
@@ -29,13 +78,12 @@
         }
       }
     },
-
     {
       "id": 2,
       "title": "Feign Call Outcomes (Success vs Failure)",
-      "description": "Successful Feign calls vs FeignException catches to itinerary-service and booking-service. Detect when downstream services are degraded.",
+      "description": "Feign successes vs failures to itinerary-service and booking-service.",
       "type": "timeseries",
-      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
       "datasource": { "type": "loki", "uid": "loki" },
       "targets": [
         {
@@ -63,13 +111,12 @@
         ]
       }
     },
-
     {
       "id": 3,
       "title": "Slow Operation Warnings",
-      "description": "Log lines where an operation exceeded the slow-threshold (> 1000ms). Useful for detecting when S1-F6 top-travelers Feign fan-out is degraded.",
+      "description": "Log lines where an operation exceeded the slow-threshold (> 1000ms).",
       "type": "timeseries",
-      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
       "datasource": { "type": "loki", "uid": "loki" },
       "targets": [
         {
@@ -85,30 +132,13 @@
         }
       }
     },
-
-    {
-      "id": 4,
-      "title": "HTTP Request Rate (req/sec)",
-      "description": "Requests per second per endpoint on user-service from Prometheus.",
-      "type": "timeseries",
-      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
-      "targets": [
-        {
-          "expr": "sum by (uri) (rate(http_server_requests_seconds_count{job=\"user-service\"}[5m]))",
-          "legendFormat": "{{uri}}",
-          "refId": "A"
-        }
-      ]
-    },
-
     {
       "id": 5,
       "title": "HTTP Latency Percentiles (P50 / P95 / P99)",
-      "description": "Latency percentiles for all user-service endpoints. High P99 on /api/users/{id}/trip-summary indicates slow Feign calls to itinerary-service.",
+      "description": "Latency percentiles for user-service. High P99 on /api/users/{id}/trip-summary may indicate slow Feign calls.",
       "type": "timeseries",
-      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "targets": [
         {
           "expr": "histogram_quantile(0.50, sum by (le, uri) (rate(http_server_requests_seconds_bucket{job=\"user-service\"}[5m])))",
@@ -125,16 +155,19 @@
           "legendFormat": "P99 {{uri}}",
           "refId": "C"
         }
-      ]
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "s" },
+        "overrides": []
+      }
     },
-
     {
       "id": 6,
       "title": "JVM Heap Usage (MB)",
-      "description": "JVM heap used vs committed for user-service. Watch for steady growth indicating a memory leak.",
+      "description": "JVM heap used vs committed for user-service.",
       "type": "timeseries",
-      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
-      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "x": 0, "y": 24, "w": 24, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "targets": [
         {
           "expr": "jvm_memory_used_bytes{job=\"user-service\", area=\"heap\"} / 1048576",
@@ -148,9 +181,7 @@
         }
       ]
     }
-
   ],
-
   "templating": { "list": [] },
   "annotations": { "list": [] }
 }
