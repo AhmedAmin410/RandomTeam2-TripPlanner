@@ -1,0 +1,37 @@
+{
+  "dashboard": {
+    "title": "Activity Service Dashboard",
+    "panels": [
+      {
+        "type": "graph",
+        "title": "RabbitMQ Messages Published",
+        "targets": [
+          {
+            "expr": "rate(rabbitmq_queue_messages_published_total[5m])",
+            "legendFormat": "Published Messages"
+          }
+        ]
+      },
+      {
+        "type": "graph",
+        "title": "RabbitMQ Queue Depth",
+        "targets": [
+          {
+            "expr": "rabbitmq_queue_messages_ready",
+            "legendFormat": "Ready Messages"
+          }
+        ]
+      },
+      {
+        "type": "graph",
+        "title": "RabbitMQ Consumer Utilization",
+        "targets": [
+          {
+            "expr": "rabbitmq_queue_consumers",
+            "legendFormat": "Consumers"
+          }
+        ]
+      }
+    ]
+  }
+}

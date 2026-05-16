@@ -1,0 +1,4 @@
+  - job_name: 'activity-service'
+    scrape_interval: 5s
+    static_configs:
+      - targets: ['activity-service:8080']

@@ -1,0 +1,7 @@
+- route:
+    id: activity-service
+    uri: http://activity-service:8080
+    predicates:
+      - Path=/activity/**
+    filters:
+      - StripPrefix=1
