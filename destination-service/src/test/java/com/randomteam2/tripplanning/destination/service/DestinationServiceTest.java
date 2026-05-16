@@ -3,10 +3,17 @@ package com.randomteam2.tripplanning.destination.service;
 import com.randomteam2.tripplanning.destination.adapter.ElasticsearchHitAdapter;
 import com.randomteam2.tripplanning.destination.adapter.MongoDocumentAdapter;
 import com.randomteam2.tripplanning.destination.adapter.ObjectArrayDtoAdapter;
+import com.randomteam2.tripplanning.destination.dto.DestinationBookingRevenueAggregateDTO;
+import com.randomteam2.tripplanning.destination.dto.DestinationDashboardAggregateDTO;
 import com.randomteam2.tripplanning.destination.dto.DestinationDashboardDTO;
 import com.randomteam2.tripplanning.destination.dto.DestinationRateRequest;
 import com.randomteam2.tripplanning.destination.dto.DestinationReviewAlertDTO;
 import com.randomteam2.tripplanning.destination.dto.DestinationRevenueDTO;
+import com.randomteam2.tripplanning.destination.dto.ItineraryDTO;
+import com.randomteam2.tripplanning.destination.dto.UserDTO;
+import com.randomteam2.tripplanning.destination.feign.ItineraryServiceClient;
+import com.randomteam2.tripplanning.destination.feign.UserServiceClient;
+import com.randomteam2.tripplanning.destination.messaging.DestinationEventPublisher;
 import com.randomteam2.tripplanning.destination.dto.DestinationSearchResultDTO;
 import com.randomteam2.tripplanning.destination.dto.TopDestinationDTO;
 import com.randomteam2.tripplanning.destination.dto.VerifyDestinationReviewRequest;
@@ -46,6 +53,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -85,6 +93,9 @@ class DestinationServiceTest {
     @Mock private DestinationEventRepository destinationEventRepository;
     @Mock private RedisTemplate<String, Object> redisTemplate;
     @Mock private ValueOperations<String, Object> valueOperations;
+    @Mock private ItineraryServiceClient itineraryServiceClient;
+    @Mock private UserServiceClient userServiceClient;
+    @Mock private DestinationEventPublisher destinationEventPublisher;
     @Mock private EntityObserver mockObserver;
     @InjectMocks private DestinationService destinationService;
 
@@ -104,9 +115,11 @@ class DestinationServiceTest {
         LocalDate start = LocalDate.of(2026, 3, 1);
         LocalDate end = LocalDate.of(2026, 3, 31);
         when(destinationRepository.findById(1L)).thenReturn(Optional.of(destination));
-        when(destinationRepository.findDestinationRevenueSummary(1L, start, end))
-                .thenReturn(new Object[]{5L, 2000.0, 400.0});
-        when(objectArrayDtoAdapter.adaptRevenue(1L, "Cairo", new Object[]{5L, 2000.0, 400.0}))
+        DestinationBookingRevenueAggregateDTO aggregate = new DestinationBookingRevenueAggregateDTO(
+                5L, BigDecimal.valueOf(2000.0), BigDecimal.valueOf(400.0));
+        when(itineraryServiceClient.getDestinationBookingRevenue(1L, "2026-03-01", "2026-03-31"))
+                .thenReturn(aggregate);
+        when(objectArrayDtoAdapter.adaptRevenue(1L, "Cairo", aggregate))
                 .thenReturn(DestinationRevenueDTO.builder()
                         .destinationId(1L).name("Cairo")
                         .totalBookings(5L).totalRevenue(2000.0).averageBookingAmount(400.0)
@@ -118,7 +131,7 @@ class DestinationServiceTest {
         assertThat(dto.getTotalRevenue()).isEqualTo(2000.0);
         assertThat(dto.getAverageBookingAmount()).isEqualTo(400.0);
         verify(destinationRepository).findById(1L);
-        verify(destinationRepository).findDestinationRevenueSummary(1L, start, end);
+        verify(itineraryServiceClient).getDestinationBookingRevenue(1L, "2026-03-01", "2026-03-31");
     }
 
     @Test
@@ -128,9 +141,11 @@ class DestinationServiceTest {
         LocalDate start = LocalDate.of(2026, 4, 1);
         LocalDate end = LocalDate.of(2026, 4, 30);
         when(destinationRepository.findById(2L)).thenReturn(Optional.of(destination));
-        when(destinationRepository.findDestinationRevenueSummary(2L, start, end))
-                .thenReturn(new Object[]{0L, 0.0, 0.0});
-        when(objectArrayDtoAdapter.adaptRevenue(2L, "Alexandria", new Object[]{0L, 0.0, 0.0}))
+        DestinationBookingRevenueAggregateDTO aggregate = new DestinationBookingRevenueAggregateDTO(
+                0L, BigDecimal.ZERO, BigDecimal.ZERO);
+        when(itineraryServiceClient.getDestinationBookingRevenue(2L, "2026-04-01", "2026-04-30"))
+                .thenReturn(aggregate);
+        when(objectArrayDtoAdapter.adaptRevenue(2L, "Alexandria", aggregate))
                 .thenReturn(DestinationRevenueDTO.builder()
                         .destinationId(2L).name("Alexandria")
                         .totalBookings(0L).totalRevenue(0.0).averageBookingAmount(0.0)
@@ -149,7 +164,7 @@ class DestinationServiceTest {
         assertThatThrownBy(() -> destinationService.getDestinationRevenueSummary(99L, start, end))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(404));
-        verify(destinationRepository, never()).findDestinationRevenueSummary(any(), any(), any());
+        verify(itineraryServiceClient, never()).getDestinationBookingRevenue(any(), any(), any());
     }
 
     @Test
@@ -160,7 +175,7 @@ class DestinationServiceTest {
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
         verify(destinationRepository, never()).findById(any());
-        verify(destinationRepository, never()).findDestinationRevenueSummary(any(), any(), any());
+        verify(itineraryServiceClient, never()).getDestinationBookingRevenue(any(), any(), any());
     }
 
     @Test
@@ -170,8 +185,8 @@ class DestinationServiceTest {
         LocalDate start = LocalDate.of(2026, 3, 1);
         LocalDate end = LocalDate.of(2026, 3, 31);
         when(destinationRepository.findById(1L)).thenReturn(Optional.of(destination));
-        // No need to stub findDestinationRevenueSummary; service handles null by returning DTO with zeros
-        when(objectArrayDtoAdapter.adaptRevenue(1L, "Cairo", null))
+        when(itineraryServiceClient.getDestinationBookingRevenue(1L, "2026-03-01", "2026-03-31")).thenReturn(null);
+        when(objectArrayDtoAdapter.adaptRevenue(1L, "Cairo", (DestinationBookingRevenueAggregateDTO) null))
                 .thenReturn(DestinationRevenueDTO.builder()
                         .destinationId(1L).name("Cairo")
                         .totalBookings(0L).totalRevenue(0.0).averageBookingAmount(0.0)
@@ -269,7 +284,7 @@ class DestinationServiceTest {
     void updateStatus_inactiveWithActiveItineraries_throws400() {
         Destination dest = newDestination(1L);
         when(destinationRepository.findById(1L)).thenReturn(Optional.of(dest));
-        when(destinationRepository.countActiveItinerariesReferencingDestination(1L)).thenReturn(1L);
+        when(itineraryServiceClient.getDestinationActiveItineraryCount(1L)).thenReturn(1);
         assertThatThrownBy(() -> destinationService.updateStatus(1L, "INACTIVE"))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
@@ -284,16 +299,17 @@ class DestinationServiceTest {
         when(destinationRepository.save(any(Destination.class))).thenAnswer(inv -> inv.getArgument(0));
         Destination updated = destinationService.updateStatus(2L, "ACTIVE");
         assertThat(updated.getStatus()).isEqualTo(Destination.Status.ACTIVE);
-        verify(destinationRepository, never()).countActiveItinerariesReferencingDestination(anyLong());
+        verify(itineraryServiceClient, never()).getDestinationActiveItineraryCount(anyLong());
         verify(cacheInvalidationService).evictDestinationCaches(2L);
         verify(mongoEventLogger).onEvent(eq("STATUS_CHANGED"), any());
+        verify(destinationEventPublisher).publishStatusChanged(any());
     }
 
     @Test
     void updateStatus_inactiveWhenNoActiveItineraries_saves() {
         Destination dest = newDestination(3L);
         when(destinationRepository.findById(3L)).thenReturn(Optional.of(dest));
-        when(destinationRepository.countActiveItinerariesReferencingDestination(3L)).thenReturn(0L);
+        when(itineraryServiceClient.getDestinationActiveItineraryCount(3L)).thenReturn(0);
         when(destinationRepository.save(any(Destination.class))).thenAnswer(inv -> inv.getArgument(0));
         Destination updated = destinationService.updateStatus(3L, "inactive");
         assertThat(updated.getStatus()).isEqualTo(Destination.Status.INACTIVE);
@@ -308,7 +324,7 @@ class DestinationServiceTest {
         when(destinationRepository.save(any(Destination.class))).thenAnswer(i -> i.getArgument(0));
         Destination updated = destinationService.updateStatus(4L, "SEASONAL");
         assertThat(updated.getStatus()).isEqualTo(Destination.Status.SEASONAL);
-        verify(destinationRepository, never()).countActiveItinerariesReferencingDestination(anyLong());
+        verify(itineraryServiceClient, never()).getDestinationActiveItineraryCount(anyLong());
         verify(mongoEventLogger).onEvent(eq("STATUS_CHANGED"), any());
     }
 
@@ -434,7 +450,7 @@ class DestinationServiceTest {
         assertThatThrownBy(() -> destinationService.rateAfterVisit(99L, req))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(404));
-        verify(destinationRepository, never()).findItineraryDestinationIdAndStatus(any());
+        verify(itineraryServiceClient, never()).getItinerary(any());
     }
 
     @Test
@@ -465,7 +481,7 @@ class DestinationServiceTest {
     void rateAfterVisit_itineraryNotFound_throws404() {
         Destination d = newDestination(1L);
         when(destinationRepository.findById(1L)).thenReturn(Optional.of(d));
-        when(destinationRepository.findItineraryDestinationIdAndStatus(10L)).thenReturn(List.of());
+        when(itineraryServiceClient.getItinerary(10L)).thenThrow(feignNotFound());
         DestinationRateRequest req = new DestinationRateRequest();
         req.setItineraryId(10L);
         req.setRating(5);
@@ -478,8 +494,8 @@ class DestinationServiceTest {
     void rateAfterVisit_wrongDestination_throws400() {
         Destination d = newDestination(1L);
         when(destinationRepository.findById(1L)).thenReturn(Optional.of(d));
-        when(destinationRepository.findItineraryDestinationIdAndStatus(10L))
-                .thenReturn(List.<Object[]>of(new Object[]{2L, "COMPLETED"}));
+        when(itineraryServiceClient.getItinerary(10L))
+                .thenReturn(new ItineraryDTO(10L, 2L, 1L, "COMPLETED"));
         DestinationRateRequest req = new DestinationRateRequest();
         req.setItineraryId(10L);
         req.setRating(5);
@@ -492,8 +508,8 @@ class DestinationServiceTest {
     void rateAfterVisit_notCompleted_throws400() {
         Destination d = newDestination(1L);
         when(destinationRepository.findById(1L)).thenReturn(Optional.of(d));
-        when(destinationRepository.findItineraryDestinationIdAndStatus(10L))
-                .thenReturn(List.<Object[]>of(new Object[]{1L, "PLANNED"}));
+        when(itineraryServiceClient.getItinerary(10L))
+                .thenReturn(new ItineraryDTO(10L, 1L, 1L, "PLANNED"));
         DestinationRateRequest req = new DestinationRateRequest();
         req.setItineraryId(10L);
         req.setRating(5);
@@ -506,8 +522,8 @@ class DestinationServiceTest {
     void rateAfterVisit_firstRating_setsAverageAndCount() {
         Destination d = newDestination(1L);
         when(destinationRepository.findById(1L)).thenReturn(Optional.of(d));
-        when(destinationRepository.findItineraryDestinationIdAndStatus(10L))
-                .thenReturn(List.<Object[]>of(new Object[]{1L, "COMPLETED"}));
+        when(itineraryServiceClient.getItinerary(10L))
+                .thenReturn(new ItineraryDTO(10L, 1L, 99L, "COMPLETED"));
         when(destinationRepository.save(any(Destination.class))).thenAnswer(inv -> inv.getArgument(0));
         DestinationRateRequest req = new DestinationRateRequest();
         req.setItineraryId(10L);
@@ -517,6 +533,7 @@ class DestinationServiceTest {
         assertThat(updated.getTotalRatings()).isEqualTo(1);
         verify(cacheInvalidationService).evictDestinationCaches(1L);
         verify(mongoEventLogger).onEvent(eq("RATING_ADDED"), any());
+        verify(destinationEventPublisher).publishRated(any());
     }
 
     @Test
@@ -525,8 +542,8 @@ class DestinationServiceTest {
         d.setRating(5.0);
         d.setTotalRatings(1);
         when(destinationRepository.findById(1L)).thenReturn(Optional.of(d));
-        when(destinationRepository.findItineraryDestinationIdAndStatus(11L))
-                .thenReturn(List.<Object[]>of(new Object[]{1L, "COMPLETED"}));
+        when(itineraryServiceClient.getItinerary(11L))
+                .thenReturn(new ItineraryDTO(11L, 1L, 1L, "COMPLETED"));
         when(destinationRepository.save(any(Destination.class))).thenAnswer(inv -> inv.getArgument(0));
         DestinationRateRequest req = new DestinationRateRequest();
         req.setItineraryId(11L);
@@ -540,8 +557,8 @@ class DestinationServiceTest {
     void rateAfterVisit_ratingOne_isValidBoundary() {
         Destination d = newDestination(1L);
         when(destinationRepository.findById(1L)).thenReturn(Optional.of(d));
-        when(destinationRepository.findItineraryDestinationIdAndStatus(5L))
-                .thenReturn(List.<Object[]>of(new Object[]{1L, "COMPLETED"}));
+        when(itineraryServiceClient.getItinerary(5L))
+                .thenReturn(new ItineraryDTO(5L, 1L, 1L, "PAID"));
         when(destinationRepository.save(any(Destination.class))).thenAnswer(i -> i.getArgument(0));
         DestinationRateRequest req = new DestinationRateRequest();
         req.setItineraryId(5L);
@@ -562,7 +579,7 @@ class DestinationServiceTest {
         assertThatThrownBy(() -> destinationService.verifyDestinationReview(99L, 10L, req))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(404));
-        verify(destinationRepository, never()).countAdminUserById(anyLong());
+        verify(userServiceClient, never()).getUser(any());
     }
 
     @Test
@@ -576,8 +593,14 @@ class DestinationServiceTest {
 
     @Test
     void verifyReview_nonAdmin_throws403() {
-        when(destinationRepository.findById(1L)).thenReturn(Optional.of(newDestination(1L)));
-        when(destinationRepository.countAdminUserById(3L)).thenReturn(0L);
+        Destination d1 = newDestination(1L);
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(d1));
+        DestinationReview review = new DestinationReview();
+        review.setId(10L);
+        review.setDestination(d1);
+        review.setVisitDate(LocalDate.now().minusDays(1));
+        when(destinationReviewRepository.findById(10L)).thenReturn(Optional.of(review));
+        when(userServiceClient.getUser(3L)).thenReturn(new UserDTO(3L, "USER"));
         VerifyDestinationReviewRequest req = new VerifyDestinationReviewRequest();
         req.setVerifiedBy(3L);
         assertThatThrownBy(() -> destinationService.verifyDestinationReview(1L, 10L, req))
@@ -588,7 +611,6 @@ class DestinationServiceTest {
     @Test
     void verifyReview_reviewNotFound_throws404() {
         when(destinationRepository.findById(1L)).thenReturn(Optional.of(newDestination(1L)));
-        when(destinationRepository.countAdminUserById(3L)).thenReturn(1L);
         when(destinationReviewRepository.findById(99L)).thenReturn(Optional.empty());
         VerifyDestinationReviewRequest req = new VerifyDestinationReviewRequest();
         req.setVerifiedBy(3L);
@@ -602,7 +624,6 @@ class DestinationServiceTest {
         Destination d1 = newDestination(1L);
         Destination d2 = newDestination(2L);
         when(destinationRepository.findById(1L)).thenReturn(Optional.of(d1));
-        when(destinationRepository.countAdminUserById(3L)).thenReturn(1L);
         DestinationReview review = new DestinationReview();
         review.setId(10L);
         review.setDestination(d2);
@@ -619,7 +640,6 @@ class DestinationServiceTest {
     void verifyReview_futureVisit_throws400() {
         Destination d1 = newDestination(1L);
         when(destinationRepository.findById(1L)).thenReturn(Optional.of(d1));
-        when(destinationRepository.countAdminUserById(3L)).thenReturn(1L);
         DestinationReview review = new DestinationReview();
         review.setId(10L);
         review.setDestination(d1);
@@ -636,7 +656,7 @@ class DestinationServiceTest {
     void verifyReview_todayVisitDate_isNotFuture_succeeds() {
         Destination d1 = newDestination(1L);
         when(destinationRepository.findById(1L)).thenReturn(Optional.of(d1));
-        when(destinationRepository.countAdminUserById(3L)).thenReturn(1L);
+        when(userServiceClient.getUser(3L)).thenReturn(new UserDTO(3L, "ADMIN"));
         DestinationReview review = new DestinationReview();
         review.setId(20L);
         review.setType(ReviewType.VISITOR);
@@ -659,7 +679,7 @@ class DestinationServiceTest {
     void verifyReview_success_setsVerifiedAndMetadata() {
         Destination d1 = newDestination(1L);
         when(destinationRepository.findById(1L)).thenReturn(Optional.of(d1));
-        when(destinationRepository.countAdminUserById(3L)).thenReturn(1L);
+        when(userServiceClient.getUser(3L)).thenReturn(new UserDTO(3L, "ADMIN"));
         DestinationReview review = new DestinationReview();
         review.setId(10L);
         review.setType(ReviewType.VISITOR);
@@ -919,7 +939,8 @@ class DestinationServiceTest {
         dest.setRating(4.5);
         dest.setTotalRatings(2);
         when(destinationRepository.findById(1L)).thenReturn(Optional.of(dest));
-        when(destinationRepository.findDestinationDashboardStats(1L)).thenReturn(new Object[]{5L, 3L, 3L});
+        when(itineraryServiceClient.getDestinationDashboardAggregate(1L))
+                .thenReturn(new DestinationDashboardAggregateDTO(5L, 3L, 3L));
         DestinationDashboardDTO dto = destinationService.getDestinationDashboard(1L);
         assertThat(dto.getDestinationId()).isEqualTo(1L);
         assertThat(dto.getName()).isEqualTo("Luxor");
@@ -935,7 +956,8 @@ class DestinationServiceTest {
         Destination dest = newDestination(5L);
         dest.setName("Empty");
         when(destinationRepository.findById(5L)).thenReturn(Optional.of(dest));
-        when(destinationRepository.findDestinationDashboardStats(5L)).thenReturn(new Object[]{0L, 0L, 0L});
+        when(itineraryServiceClient.getDestinationDashboardAggregate(5L))
+                .thenReturn(new DestinationDashboardAggregateDTO(0L, 0L, 0L));
         DestinationDashboardDTO dto = destinationService.getDestinationDashboard(5L);
         assertThat(dto.getTotalItineraries()).isEqualTo(0L);
         assertThat(dto.getCompletedItineraries()).isEqualTo(0L);
@@ -946,7 +968,7 @@ class DestinationServiceTest {
     void dashboard_nullStats_returnsZeroes() {
         Destination dest = newDestination(3L);
         when(destinationRepository.findById(3L)).thenReturn(Optional.of(dest));
-        when(destinationRepository.findDestinationDashboardStats(3L)).thenReturn(null);
+        when(itineraryServiceClient.getDestinationDashboardAggregate(3L)).thenReturn(null);
         DestinationDashboardDTO dto = destinationService.getDestinationDashboard(3L);
         assertThat(dto.getTotalItineraries()).isEqualTo(0L);
     }
@@ -955,7 +977,8 @@ class DestinationServiceTest {
     void dashboard_logsDashboardViewedOnEveryCall_includingCacheHits() {
         Destination dest = newDestination(1L);
         when(destinationRepository.findById(1L)).thenReturn(Optional.of(dest));
-        when(destinationRepository.findDestinationDashboardStats(1L)).thenReturn(new Object[]{0L, 0L, 0L});
+        when(itineraryServiceClient.getDestinationDashboardAggregate(1L))
+                .thenReturn(new DestinationDashboardAggregateDTO(0L, 0L, 0L));
         destinationService.getDestinationDashboard(1L);
         destinationService.getDestinationDashboard(1L);
         // DASHBOARD_VIEWED must be fired on every invocation, even if response was cached
@@ -1268,9 +1291,11 @@ class DestinationServiceTest {
     }
 
     @Test
-    void dp6_objectArrayDtoAdapter_adaptRevenue_mapsRowToDto() {
+    void dp6_objectArrayDtoAdapter_adaptRevenue_mapsAggregateToDto() {
         ObjectArrayDtoAdapter adapter = new ObjectArrayDtoAdapter();
-        DestinationRevenueDTO dto = adapter.adaptRevenue(1L, "Cairo", new Object[]{5L, 2000.0, 400.0});
+        DestinationBookingRevenueAggregateDTO aggregate = new DestinationBookingRevenueAggregateDTO(
+                5L, BigDecimal.valueOf(2000.0), BigDecimal.valueOf(400.0));
+        DestinationRevenueDTO dto = adapter.adaptRevenue(1L, "Cairo", aggregate);
         assertThat(dto.getDestinationId()).isEqualTo(1L);
         assertThat(dto.getName()).isEqualTo("Cairo");
         assertThat(dto.getTotalBookings()).isEqualTo(5L);
@@ -1279,9 +1304,9 @@ class DestinationServiceTest {
     }
 
     @Test
-    void dp6_objectArrayDtoAdapter_nullRow_returnsZeroes() {
+    void dp6_objectArrayDtoAdapter_nullAggregate_returnsZeroes() {
         ObjectArrayDtoAdapter adapter = new ObjectArrayDtoAdapter();
-        DestinationRevenueDTO dto = adapter.adaptRevenue(2L, "Alexandria", null);
+        DestinationRevenueDTO dto = adapter.adaptRevenue(2L, "Alexandria", (DestinationBookingRevenueAggregateDTO) null);
         assertThat(dto.getTotalBookings()).isEqualTo(0L);
         assertThat(dto.getTotalRevenue()).isEqualTo(0.0);
         assertThat(dto.getAverageBookingAmount()).isEqualTo(0.0);
@@ -1290,6 +1315,14 @@ class DestinationServiceTest {
     // =========================================================================
     // Helpers
     // =========================================================================
+
+    private static feign.FeignException.NotFound feignNotFound() {
+        return new feign.FeignException.NotFound(
+                "Not found",
+                feign.Request.create(feign.Request.HttpMethod.GET, "/test", Map.of(), null, null, null),
+                null,
+                null);
+    }
 
     private static Destination newDestination(Long id) {
         Destination d = new Destination();
