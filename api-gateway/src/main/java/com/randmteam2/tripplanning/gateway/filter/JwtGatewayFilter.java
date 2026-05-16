@@ -94,8 +94,7 @@ public class JwtGatewayFilter implements GlobalFilter, Ordered {
     }
 
     /**
-     * /api/auth/**, public registration/login, /api/users/health, and all actuator endpoints
-     * (/actuator/health, liveness, readiness, prometheus, etc.).
+     * /api/auth/**, public registration/login, all service /api/*/health probes, and actuator.
      */
     static boolean shouldBypassJwt(String path) {
         if (path.startsWith("/api/auth/")) {
@@ -104,7 +103,7 @@ public class JwtGatewayFilter implements GlobalFilter, Ordered {
         if (path.startsWith("/actuator/")) {
             return true;
         }
-        return "/api/users/health".equals(path)
+        return path.matches("/api/(users|destinations|itineraries|activities|bookings)/health")
                 || "/api/users/register".equals(path)
                 || "/api/users/login".equals(path);
     }
