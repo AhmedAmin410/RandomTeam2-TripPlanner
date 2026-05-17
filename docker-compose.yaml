@@ -247,7 +247,7 @@
   itinerary-service:
     build: ./itinerary-service
     ports:
-      - "8083:8083"
+      - "8083:8080"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://itinerary-postgres:5432/tripdb-itineraries
       SPRING_DATASOURCE_USERNAME: postgres
@@ -276,7 +276,7 @@
       rabbitmq:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8083/actuator/health || exit 1"]
+      test: [ "CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1" ]
       interval: 15s
       timeout: 10s
       retries: 10
@@ -360,15 +360,15 @@
       JWT_SECRET: 7Wl0A/qUHLdXuZKT3nra3mBBtOot+/SF/eLo0MTq5zQ=
     depends_on:
       user-service:
-        condition: service_healthy
+        condition: service_started
       destination-service:
-        condition: service_healthy
+        condition: service_started
       itinerary-service:
-        condition: service_healthy
+        condition: service_started
       activity-service:
-        condition: service_healthy
+        condition: service_started
       booking-service:
-        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
       interval: 15s

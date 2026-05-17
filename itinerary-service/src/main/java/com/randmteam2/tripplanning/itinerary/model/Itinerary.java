@@ -28,7 +28,7 @@ public class Itinerary {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private Status status;
+    private Status status = Status.DRAFT;
 
     private Double estimatedBudget;
 
@@ -55,7 +55,8 @@ public class Itinerary {
     }
 
     public enum Status {
-        DRAFT, PLANNED, IN_PROGRESS, COMPLETED, CANCELLED
+        DRAFT, PLANNED, IN_PROGRESS, COMPLETED, CANCELLED,
+        COMPLETING, PAYMENT_PENDING, PAID, PAYMENT_FAILED, REFUNDED
     }
 
     public Long getId() { return id; }
