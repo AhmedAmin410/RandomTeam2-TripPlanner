@@ -41,7 +41,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         AuthContext ctx = new AuthContext(request);
 
-        // Build the chain
         AuthHandler tokenExtractor = new TokenExtractionHandler();
         AuthHandler signatureValidator = new SignatureValidationHandler(jwtService);
         AuthHandler userLoader = new UserLoaderHandler();
@@ -53,8 +52,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         try {
             tokenExtractor.handle(ctx);
-
-            // All handlers passed Ã¢â‚¬â€ populate Spring Security context
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(
                             ctx.getEmail(),
@@ -69,6 +66,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             response.setStatus(e.getStatusCode());
             response.setContentType("application/json");
             response.getWriter().write("{\"error\": \"" + e.getMessage() + "\"}");
+            response.getWriter().flush();
         }
     }
 }

@@ -2,6 +2,10 @@ package com.randmteam2.tripplanning.itinerary.service;
 import com.randmteam2.tripplanning.itinerary.dto.ItineraryAnalyticsDashboardDTO;
 
 import com.randmteam2.tripplanning.itinerary.dto.*;
+import com.randmteam2.tripplanning.itinerary.feign.BookingServiceClient;
+import com.randmteam2.tripplanning.itinerary.feign.DestinationServiceClient;
+import com.randmteam2.tripplanning.itinerary.feign.UserServiceClient;
+import com.randmteam2.tripplanning.itinerary.messaging.ItineraryEventPublisher;
 import com.randmteam2.tripplanning.itinerary.model.Itinerary;
 import com.randmteam2.tripplanning.itinerary.model.ItineraryDay;
 import com.randmteam2.tripplanning.itinerary.mongo.ItineraryEventRepository;
@@ -16,24 +20,29 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 @Service
 public class ItineraryService {
+    private final ItineraryEventPublisher itineraryEventPublisher;
 
+    private final UserServiceClient userServiceClient;
+    private final DestinationServiceClient destinationServiceClient;
+    private final BookingServiceClient bookingServiceClient;
     private final ItineraryRepository itineraryRepository;
     private final ItineraryDayRepository itineraryDayRepository;
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
 
-    public ItineraryService(ItineraryRepository itineraryRepository,
+    public ItineraryService(ItineraryEventPublisher itineraryEventPublisher, ItineraryRepository itineraryRepository,
                             ItineraryDayRepository itineraryDayRepository,
-                            ItineraryEventRepository itineraryEventRepository) {
+                            ItineraryEventRepository itineraryEventRepository, UserServiceClient userServiceClient, DestinationServiceClient destinationServiceClient, BookingServiceClient bookingServiceClient) {
+        this.itineraryEventPublisher = itineraryEventPublisher;
         this.itineraryRepository = itineraryRepository;
         this.itineraryDayRepository = itineraryDayRepository;
+        this.userServiceClient = userServiceClient;
+        this.destinationServiceClient = destinationServiceClient;
+        this.bookingServiceClient = bookingServiceClient;
         register(new MongoEventLogger(itineraryEventRepository));
     }
 
@@ -50,6 +59,7 @@ public class ItineraryService {
             observer.onEvent(eventType, payload);
         }
     }
+
 
     private Map<String, Object> itineraryPayload(String action, Itinerary itinerary) {
         Map<String, Object> map = new HashMap<>();
@@ -70,6 +80,12 @@ public class ItineraryService {
         return itineraryRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Itinerary not found with id: " + id));
     }
+    private static final Set<Itinerary.Status> STATUS_COMPLETED_FAMILY = Set.of(
+            Itinerary.Status.COMPLETED,
+            Itinerary.Status.COMPLETING,
+            Itinerary.Status.PAYMENT_PENDING,
+            Itinerary.Status.PAID
+    );
 
     public List<Itinerary> getAll() {
         return itineraryRepository.findAll();
@@ -105,16 +121,58 @@ public class ItineraryService {
             throw new RuntimeException("Itinerary must be IN_PROGRESS to complete it");
         }
 
-        itinerary.setStatus(Itinerary.Status.COMPLETED);
-
-        if (itinerary.getEstimatedBudget() == null) {
-            Double total = itineraryRepository.sumConfirmedBookings(id);
-            itinerary.setEstimatedBudget(total);
+        // Feign pre-check 1: user must be ACTIVE
+        try {
+            UserDTO user = userServiceClient.getUser(itinerary.getUserId());
+            if (!"ACTIVE".equals(user.getStatus())) {
+                throw new RuntimeException("User is not active");
+            }
+        } catch (feign.FeignException.NotFound e) {
+            throw new RuntimeException("User not found");
         }
 
-        Itinerary saved = itineraryRepository.save(itinerary);
-        notifyObservers("ITINERARY_COMPLETED", itineraryPayload("ITINERARY_COMPLETED", saved));
-        return saved;
+        // Feign pre-check 2: destination must be ACTIVE
+        try {
+            DestinationDTO destination = destinationServiceClient.getDestination(itinerary.getDestinationId());
+            if (!"ACTIVE".equals(destination.getStatus())) {
+                throw new RuntimeException("Destination is not active");
+            }
+        } catch (feign.FeignException.NotFound e) {
+            throw new RuntimeException("Destination not found");
+        }
+
+        // Feign pre-check 3: must have at least 1 confirmed booking
+        BookingConfirmedSummaryDTO summary;
+        try {
+            summary = bookingServiceClient.getConfirmedSummary(id);
+        } catch (feign.FeignException e) {
+            throw new RuntimeException("Booking service unavailable");
+        }
+
+        if (summary.count() < 1) {
+            throw new RuntimeException("Itinerary has no CONFIRMED bookings");
+        }
+
+        // atomic UPDATE — only one concurrent caller wins
+        int updated = itineraryRepository.atomicTransition(
+                id, Itinerary.Status.COMPLETING, Itinerary.Status.IN_PROGRESS
+        );
+        if (updated == 0) {
+            throw new RuntimeException("Itinerary completion already in progress");
+        }
+
+        // save budget
+        itinerary.setEstimatedBudget(summary.totalRevenue());
+        itineraryRepository.save(itinerary);
+
+        notifyObservers("ITINERARY_COMPLETING", itineraryPayload("ITINERARY_COMPLETING", itinerary));
+        itineraryEventPublisher.publishItineraryCompleted(
+                itinerary.getId(),
+                itinerary.getUserId(),
+                itinerary.getDestinationId(),
+                summary.totalRevenue()
+        );
+        return itineraryRepository.findById(id).get();
     }
 
     @Transactional
@@ -127,14 +185,14 @@ public class ItineraryService {
             throw new RuntimeException("Itinerary must be DRAFT or PLANNED to cancel it");
         }
 
-        itinerary.setStatus(Itinerary.Status.CANCELLED);
-        itineraryRepository.cancelPendingBookings(id);
         Itinerary saved = itineraryRepository.save(itinerary);
         notifyObservers("ITINERARY_CANCELLED", itineraryPayload("ITINERARY_CANCELLED", saved));
+        itineraryEventPublisher.publishItineraryCancelled(
+                saved.getId(), saved.getUserId(), saved.getDestinationId(), "user_requested"
+        );
         return saved;
     }
-
-    @Transactional(noRollbackFor = RuntimeException.class)
+    @Transactional
     public Itinerary assignDestination(Long itineraryId, Long destinationId) {
         Itinerary itinerary = itineraryRepository.findById(itineraryId)
                 .orElseThrow(() -> new RuntimeException("Itinerary not found with id: " + itineraryId));
@@ -143,20 +201,24 @@ public class ItineraryService {
             throw new RuntimeException("Itinerary must be DRAFT to assign a destination");
         }
 
-        Integer exists = itineraryRepository.checkDestinationExists(destinationId);
-        if (exists == null || exists == 0) {
+        DestinationDTO destination;
+        try {
+            destination = destinationServiceClient.getDestination(destinationId);
+        } catch (feign.FeignException.NotFound e) {
             throw new RuntimeException("Destination not found with id: " + destinationId);
+        } catch (feign.FeignException e) {
+            throw new RuntimeException("Destination service unavailable");
         }
 
-        Integer active = itineraryRepository.checkDestinationActive(destinationId);
-        if (active == null || active == 0) {
-            throw new RuntimeException("Destination must be ACTIVE to assign it");
+        if (!"ACTIVE".equals(destination.getStatus())) {
+            throw new RuntimeException("Destination is not active");
         }
 
-        itinerary.setDestinationId(destinationId);
-        itinerary.setStatus(Itinerary.Status.PLANNED);
         Itinerary saved = itineraryRepository.save(itinerary);
         notifyObservers("DESTINATION_ASSIGNED", itineraryPayload("DESTINATION_ASSIGNED", saved));
+        itineraryEventPublisher.publishItineraryPlaced(
+                saved.getId(), saved.getUserId(), saved.getDestinationId()
+        );
         return saved;
     }
 
@@ -359,6 +421,95 @@ public class ItineraryService {
     }
 
 
+    public UserTripSummaryAggregateDTO getUserTripSummary(Long userId) {
+        List<Itinerary> all = itineraryRepository.findByUserId(userId);
 
+        long total = all.size();
+        long completed = all.stream()
+                .filter(i -> STATUS_COMPLETED_FAMILY.contains(i.getStatus()))
+                .count();
+        long cancelled = all.stream()
+                .filter(i -> i.getStatus() == Itinerary.Status.CANCELLED)
+                .count();
+        Double totalBudget = all.stream()
+                .filter(i -> STATUS_COMPLETED_FAMILY.contains(i.getStatus()))
+                .mapToDouble(i -> i.getEstimatedBudget() != null ? i.getEstimatedBudget() : 0.0)
+                .sum();
+        Double avgBudget = completed > 0 ? totalBudget / completed : 0.0;
 
+        return new UserTripSummaryAggregateDTO(total, completed, cancelled, totalBudget, avgBudget);
+    }
+    public int getUserActiveCount(Long userId) {
+        Set<Itinerary.Status> activeStatuses = Set.of(
+                Itinerary.Status.DRAFT,
+                Itinerary.Status.PLANNED,
+                Itinerary.Status.IN_PROGRESS,
+                Itinerary.Status.COMPLETING,
+                Itinerary.Status.PAYMENT_PENDING
+        );
+        return (int) itineraryRepository.findByUserId(userId).stream()
+                .filter(i -> activeStatuses.contains(i.getStatus()))
+                .count();
+    }
+
+    public long getUserCompletedCount(Long userId) {
+        return itineraryRepository.findByUserId(userId).stream()
+                .filter(i -> STATUS_COMPLETED_FAMILY.contains(i.getStatus()))
+                .count();
+    }
+
+    public int getDestinationActiveCount(Long destinationId) {
+        Set<Itinerary.Status> activeStatuses = Set.of(
+                Itinerary.Status.DRAFT,
+                Itinerary.Status.PLANNED,
+                Itinerary.Status.IN_PROGRESS,
+                Itinerary.Status.COMPLETING,
+                Itinerary.Status.PAYMENT_PENDING
+        );
+        return (int) itineraryRepository.findByDestinationId(destinationId).stream()
+                .filter(i -> activeStatuses.contains(i.getStatus()))
+                .count();
+    }
+
+    public DestinationBookingRevenueAggregateDTO getDestinationBookingRevenue(Long destinationId) {
+        try {
+            List<Itinerary> itineraries = itineraryRepository.findByDestinationId(destinationId);
+            List<Long> ids = itineraries.stream().map(Itinerary::getId).toList();
+            if (ids.isEmpty()) {
+                return new DestinationBookingRevenueAggregateDTO(0, 0.0, 0.0);
+            }
+            List<BookingAggregateDTO> bookings = bookingServiceClient.aggregateByItineraries(ids);
+            long totalBookings = bookings.stream()
+                    .mapToLong(b -> b.getTotalBookings() != null ? b.getTotalBookings() : 0L)
+                    .sum();
+            double totalRevenue = bookings.stream()
+                    .mapToDouble(b -> b.getTotalRevenue() != null ? b.getTotalRevenue() : 0.0)
+                    .sum();
+            double avg = totalBookings > 0 ? totalRevenue / totalBookings : 0.0;
+            return new DestinationBookingRevenueAggregateDTO(totalBookings, totalRevenue, avg);
+        } catch (Exception e) {
+            return new DestinationBookingRevenueAggregateDTO(0, 0.0, 0.0);
+        }
+    }
+
+    public DestinationDashboardAggregateDTO getDestinationDashboardAggregate(Long destinationId) {
+        List<Itinerary> itineraries = itineraryRepository.findByDestinationId(destinationId);
+        long total = itineraries.size();
+        long completed = itineraries.stream()
+                .filter(i -> STATUS_COMPLETED_FAMILY.contains(i.getStatus()))
+                .count();
+        long visitors = itineraries.stream()
+                .map(Itinerary::getUserId)
+                .distinct()
+                .count();
+        return new DestinationDashboardAggregateDTO(total, completed, visitors);
+    }
+
+    public List<ItinerarySummaryDTO> getBatch(List<Long> itineraryIds) {
+        return itineraryRepository.findAllById(itineraryIds).stream()
+                .map(i -> new ItinerarySummaryDTO(
+                        i.getId(), i.getDestinationId(), i.getUserId(), i.getStatus().name()
+                ))
+                .toList();
+    }
 }
