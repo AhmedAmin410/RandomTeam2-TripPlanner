@@ -1,9 +1,7 @@
 package com.randmteam2.tripplanning.itinerary.messaging;
 
-import com.randmteam2.tripplanning.itinerary.model.Itinerary;
 import com.randmteam2.tripplanning.itinerary.repository.ItineraryRepository;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.randmteam2.tripplanning.itinerary.model.Itinerary;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.cache.CacheManager;
 import org.springframework.stereotype.Component;
@@ -15,108 +13,122 @@ import java.util.Objects;
 @Component
 public class ItineraryEventConsumer {
 
-    private static final Logger log = LoggerFactory.getLogger(ItineraryEventConsumer.class);
-
     private final ItineraryRepository itineraryRepository;
     private final CacheManager cacheManager;
-    private final ItineraryEventPublisher eventPublisher;
+    private final ItineraryEventPublisher itineraryEventPublisher;
 
     public ItineraryEventConsumer(ItineraryRepository itineraryRepository,
                                   CacheManager cacheManager,
-                                  ItineraryEventPublisher eventPublisher) {
+                                  ItineraryEventPublisher itineraryEventPublisher) {
         this.itineraryRepository = itineraryRepository;
         this.cacheManager = cacheManager;
-        this.eventPublisher = eventPublisher;
+        this.itineraryEventPublisher = itineraryEventPublisher;
     }
 
-    // ── QUEUE 1: cache invalidation ──────────────────────────────────────────
+    // ── CACHE INVALIDATION CONSUMERS ─────────────────────────────────────
 
     @RabbitListener(queues = "itinerary.user-events-listener")
-    public void handleUserAndDestinationEvents(Map<String, Object> payload,
-                                               org.springframework.amqp.core.Message message) {
+    public void handleUserAndDestinationEvents(Map<String, Object> event) {
+        String type = (String) event.get("eventType");
+        if (type == null) return;
 
-        String routingKey = message.getMessageProperties().getReceivedRoutingKey();
-        log.info("Received event [{}]: {}", routingKey, payload);
-
-        switch (routingKey) {
-            case "user.registered" -> { /* no-op */ }
+        switch (type) {
+            case "user.registered" -> {
+                // no-op
+            }
             case "user.deactivated" -> {
-                evictCache("itinerary-service::S3-F1");
-                evictCache("itinerary-service::S3-F6");
+                evict("itinerary-service::S3-F1");
+                evict("itinerary-service::S3-F6");
             }
             case "destination.status-changed" -> {
-                evictCache("itinerary-service::S3-F1");
-                evictCache("itinerary-service::S3-F6");
+                evict("itinerary-service::S3-F1");
+                evict("itinerary-service::S3-F6");
             }
-            case "destination.rated" ->
-                    evictCache("itinerary-service::S3-F12");
+            case "destination.rated" -> {
+                evict("itinerary-service::S3-F12");
+            }
             case "activity.created", "activity.lifecycle-recorded", "activity.cancelled" -> {
-                Object itineraryId = payload.get("itineraryId");
-                if (itineraryId != null) evictCache("itinerary-service::S3-F9");
+                Object itineraryId = event.get("itineraryId");
+                if (itineraryId != null) {
+                    evictKey("itinerary-service::S3-F9", itineraryId.toString());
+                }
             }
-            default -> log.warn("Unhandled routing key: {}", routingKey);
         }
     }
 
-    // ── QUEUE 2: saga feedback (payment events) ───────────────────────────────
+    // ── SAGA FEEDBACK CONSUMERS ───────────────────────────────────────────
 
     @RabbitListener(queues = "itinerary.saga-feedback")
     @Transactional
-    public void handlePaymentEvents(Map<String, Object> payload,
-                                    org.springframework.amqp.core.Message message) {
+    public void handlePaymentEvents(Map<String, Object> event) {
+        String type = (String) event.get("eventType");
+        if (type == null) return;
 
-        String routingKey = message.getMessageProperties().getReceivedRoutingKey();
-        Long itineraryId = getLong(payload, "itineraryId");
-        log.info("Received saga event [{}] for itineraryId={}", routingKey, itineraryId);
+        Long itineraryId = getLong(event, "itineraryId");
+        if (itineraryId == null) return;
 
-        if (itineraryId == null) {
-            log.warn("Missing itineraryId in payload, skipping");
-            return;
-        }
-
-        switch (routingKey) {
-            case "payment.initiated" ->
-                    atomicTransition(itineraryId, Itinerary.Status.PAYMENT_PENDING, Itinerary.Status.COMPLETING);
-            case "payment.completed" ->
-                    atomicTransition(itineraryId, Itinerary.Status.PAID, Itinerary.Status.PAYMENT_PENDING);
+        switch (type) {
+            case "payment.initiated" -> {
+                int updated = itineraryRepository.atomicTransition(
+                        itineraryId,
+                        Itinerary.Status.PAYMENT_PENDING,
+                        Itinerary.Status.COMPLETING
+                );
+                // rowcount=0 means duplicate — silent no-op
+            }
+            case "payment.completed" -> {
+                itineraryRepository.atomicTransition(
+                        itineraryId,
+                        Itinerary.Status.PAID,
+                        Itinerary.Status.PAYMENT_PENDING
+                );
+            }
             case "payment.failed" -> {
-                int rows = atomicTransition(itineraryId, Itinerary.Status.PAYMENT_FAILED, Itinerary.Status.PAYMENT_PENDING);
-                if (rows == 1) {
-                    // compensation: publish itinerary.cancelled
-                    itineraryRepository.findById(itineraryId).ifPresent(it ->
-                            eventPublisher.publishItineraryCancelled(
-                                    it.getId(), it.getUserId(), it.getDestinationId(), "payment_failed")
+                int updated = itineraryRepository.atomicTransition(
+                        itineraryId,
+                        Itinerary.Status.PAYMENT_FAILED,
+                        Itinerary.Status.PAYMENT_PENDING
+                );
+                if (updated == 1) {
+                    // compensation — publish cancellation
+                    itineraryRepository.findById(itineraryId).ifPresent(itinerary ->
+                            itineraryEventPublisher.publishItineraryCancelled(
+                                    itineraryId,
+                                    itinerary.getUserId(),
+                                    itinerary.getDestinationId(),
+                                    "payment_failed"
+                            )
                     );
                 }
             }
-            case "payment.refunded" ->
-                    atomicTransition(itineraryId, Itinerary.Status.REFUNDED, Itinerary.Status.PAYMENT_FAILED);
-            default -> log.warn("Unhandled payment routing key: {}", routingKey);
+            case "payment.refunded" -> {
+                itineraryRepository.atomicTransition(
+                        itineraryId,
+                        Itinerary.Status.REFUNDED,
+                        Itinerary.Status.PAYMENT_FAILED
+                );
+            }
         }
     }
 
-    // ── helpers ───────────────────────────────────────────────────────────────
+    // ── HELPERS ───────────────────────────────────────────────────────────
 
-    private int atomicTransition(Long id, Itinerary.Status newStatus, Itinerary.Status expectedStatus) {
-        int rows = itineraryRepository.atomicTransition(id, newStatus, expectedStatus);
-        if (rows == 0) log.info("atomicTransition no-op: itinerary={} not in status {}", id, expectedStatus);
-        else log.info("atomicTransition: itinerary={} → {}", id, newStatus);
-        return rows;
+    private void evict(String cacheName) {
+        var cache = cacheManager.getCache(cacheName);
+        if (cache != null) cache.clear();
     }
 
-    private void evictCache(String cacheName) {
-        try {
-            var cache = cacheManager.getCache(cacheName);
-            if (cache != null) cache.clear();
-        } catch (Exception e) {
-            log.warn("Cache eviction failed for {}: {}", cacheName, e.getMessage());
-        }
+    private void evictKey(String cacheName, String key) {
+        var cache = cacheManager.getCache(cacheName);
+        if (cache != null) cache.evict(key);
     }
 
-    private Long getLong(Map<String, Object> payload, String key) {
-        Object val = payload.get(key);
+    private Long getLong(Map<String, Object> map, String key) {
+        Object val = map.get(key);
         if (val == null) return null;
-        if (val instanceof Number n) return n.longValue();
-        try { return Long.parseLong(val.toString()); } catch (Exception e) { return null; }
+        if (val instanceof Long l) return l;
+        if (val instanceof Integer i) return i.longValue();
+        if (val instanceof String s) return Long.parseLong(s);
+        return null;
     }
 }
