@@ -103,6 +103,7 @@ public class DestinationController {
         return ResponseEntity.ok(destinationService.updateDetails(id, details));
     }
 
+    /** S2-F3: Get Destination Booking Revenue Summary (M3: single Feign call to itinerary-service) */
     @GetMapping("/{id}/revenue")
     public ResponseEntity<DestinationRevenueDTO> getDestinationRevenue(
             @PathVariable Long id,
@@ -111,6 +112,7 @@ public class DestinationController {
         return ResponseEntity.ok(destinationService.getDestinationRevenueSummary(id, startDate, endDate));
     }
 
+    /** S2-F4: Update Destination Status (M3: INACTIVE guard via Feign active-count) */
     @PutMapping("/{id}/status")
     public ResponseEntity<Destination> updateStatus(@PathVariable Long id,
                                                     @RequestBody DestinationStatusRequest body) {
