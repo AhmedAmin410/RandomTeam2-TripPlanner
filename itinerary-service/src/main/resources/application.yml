@@ -1,6 +1,13 @@
 spring:
+  autoconfigure:
+    exclude: org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
+  main:
+    allow-bean-definition-overriding: true
+    cloud:
+      compatibility-verifier:
+        enabled: false
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/tripplanningdb}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5435/tripdb-itineraries}
     username: ${SPRING_DATASOURCE_USERNAME:postgres}
     password: ${SPRING_DATASOURCE_PASSWORD:postgres}
   jpa:
@@ -21,17 +28,6 @@ spring:
       uri: ${SPRING_DATA_NEO4J_URI:bolt://localhost:7687}
       username: ${SPRING_DATA_NEO4J_USERNAME:neo4j}
       password: ${SPRING_DATA_NEO4J_PASSWORD:neo4jpass}
-  cache:
-    type: redis
-    redis:
-      time-to-live: 600000
-
-server:
-  port: 8083
-
-jwt:
-  secret: ${JWT_SECRET:dGhpcyBpcyBhIHNlY3VyZSByYW5kb20ga2V5IGZvciBqd3Q=}
-  expiration: ${JWT_EXPIRATION_MS:86400000}
   rabbitmq:
     host: ${SPRING_RABBITMQ_HOST:localhost}
     port: 5672
@@ -45,6 +41,17 @@ jwt:
           enabled: true
           initial-interval: 1000
           max-attempts: 3
+  cache:
+    type: redis
+    redis:
+      time-to-live: 600000
+
+server:
+  port: 8080
+
+jwt:
+  secret: ${JWT_SECRET:dGhpcyBpcyBhIHNlY3VyZSByYW5kb20ga2V5IGZvciBqd3Q=}
+  expiration: ${JWT_EXPIRATION_MS:86400000}
 
 feign:
   user-service:
@@ -53,3 +60,7 @@ feign:
     url: ${FEIGN_DESTINATION_SERVICE_URL:http://localhost:8082}
   booking-service:
     url: ${FEIGN_BOOKING_SERVICE_URL:http://localhost:8085}
+loki:
+   image: grafana/loki:2.9.0
+   ports:
+        - "3100:3100"
