@@ -24,6 +24,14 @@ public interface ItineraryServiceClient {
     @GetMapping("/api/itineraries/{itineraryId}")
     ItineraryDTO getItinerary(@PathVariable Long itineraryId);
 
+    /**
+     * S2-F12 (M3): Fetches aggregated itinerary stats for a destination.
+     * Endpoint exposed by itinerary-service:
+     *   GET /api/itineraries/destination/{destinationId}/dashboard-aggregate
+     *
+     * Returns totalItineraries, completedItineraries (STATUS_COMPLETED_FAMILY),
+     * and totalVisitors (distinct userId).
+     */
     @GetMapping("/api/itineraries/destination/{destinationId}/dashboard-aggregate")
     DestinationDashboardAggregateDTO getDestinationDashboardAggregate(@PathVariable Long destinationId);
 }
