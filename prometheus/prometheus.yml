@@ -1,0 +1,15 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: "user-service"
+    metrics_path: "/actuator/prometheus"
+    bearer_token: "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0dXNlcjEwQGV4YW1wbGUuY29tIiwidWlkIjoyLCJyb2xlIjoiVFJBVkVMRVIiLCJpYXQiOjE3NzkwNDMwNDIsImV4cCI6MTc3OTEyOTQ0Mn0.4DZVpQeKHX3swOgTTMgD5L4c8qhZ_U3YT9E0fEPzO0M"
+    static_configs:
+      - targets: ["user-service:8080"]
+
+  - job_name: "itinerary-service"
+    metrics_path: "/actuator/prometheus"
+    bearer_token: "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0dXNlcjEwQGV4YW1wbGUuY29tIiwidWlkIjoyLCJyb2xlIjoiVFJBVkVMRVIiLCJpYXQiOjE3NzkwNDMwNDIsImV4cCI6MTc3OTEyOTQ0Mn0.4DZVpQeKHX3swOgTTMgD5L4c8qhZ_U3YT9E0fEPzO0M"
+    static_configs:
+      - targets: ["itinerary-service:8080"]
