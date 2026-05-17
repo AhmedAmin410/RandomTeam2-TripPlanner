@@ -142,5 +142,14 @@ public interface ItineraryRepository extends JpaRepository<Itinerary, Long> {
     Object[] findDestinationDetails(@Param("destId") Long destId);
 
 
+    List<Itinerary> findByUserId(Long userId);
 
+    @Modifying
+    @Query("UPDATE Itinerary i SET i.status = :newStatus WHERE i.id = :id AND i.status = :expectedStatus")
+    int atomicTransition(@Param("id") Long id,
+                         @Param("newStatus") Itinerary.Status newStatus,
+                         @Param("expectedStatus") Itinerary.Status expectedStatus);
+
+
+    List<Itinerary> findByDestinationId(Long destinationId);
 }
