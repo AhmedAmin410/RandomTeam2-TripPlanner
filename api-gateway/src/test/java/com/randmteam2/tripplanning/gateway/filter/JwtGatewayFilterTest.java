@@ -14,6 +14,10 @@ class JwtGatewayFilterTest {
         assertTrue(JwtGatewayFilter.shouldBypassJwt("/api/users/register"));
         assertTrue(JwtGatewayFilter.shouldBypassJwt("/api/users/login"));
         assertTrue(JwtGatewayFilter.shouldBypassJwt("/api/users/health"));
+        assertTrue(JwtGatewayFilter.shouldBypassJwt("/api/destinations/health"));
+        assertTrue(JwtGatewayFilter.shouldBypassJwt("/api/itineraries/health"));
+        assertTrue(JwtGatewayFilter.shouldBypassJwt("/api/activities/health"));
+        assertTrue(JwtGatewayFilter.shouldBypassJwt("/api/bookings/health"));
         assertTrue(JwtGatewayFilter.shouldBypassJwt("/actuator/health"));
         assertTrue(JwtGatewayFilter.shouldBypassJwt("/actuator/health/liveness"));
         assertTrue(JwtGatewayFilter.shouldBypassJwt("/actuator/prometheus"));
