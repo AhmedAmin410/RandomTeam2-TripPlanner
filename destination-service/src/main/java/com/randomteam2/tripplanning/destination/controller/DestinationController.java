@@ -172,4 +172,5 @@ public class DestinationController {
     public ResponseEntity<DestinationDashboardDTO> getDestinationDashboard(@PathVariable Long id) {
         return ResponseEntity.ok(destinationService.getDestinationDashboard(id));
     }
+
 }
