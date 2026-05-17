@@ -468,10 +468,9 @@ public class DestinationService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Itinerary does not reference this destination");
         }
         String status = itinerary.status() != null ? itinerary.status().trim().toUpperCase() : "";
-        if (!"COMPLETED".equals(status) && !"COMPLETING".equals(status)
-                && !"PAYMENT_PENDING".equals(status) && !"PAID".equals(status)) {
+        if (!"COMPLETED".equals(status) && !"PAID".equals(status)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Itinerary must be in a completed state (COMPLETED, COMPLETING, PAYMENT_PENDING, or PAID) to rate this destination");
+                    "Itinerary must be in a completed state (COMPLETED or PAID) to rate this destination");
         }
         int priorCount = destination.getTotalRatings() != null ? destination.getTotalRatings() : 0;
         double priorAvg = destination.getRating() != null ? destination.getRating() : 0.0;

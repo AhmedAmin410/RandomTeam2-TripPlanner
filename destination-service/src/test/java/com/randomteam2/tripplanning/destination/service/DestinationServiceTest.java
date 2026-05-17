@@ -489,6 +489,7 @@ class DestinationServiceTest {
         assertThat(updated.getStatus()).isEqualTo(Destination.Status.INACTIVE);
         verify(cacheInvalidationService).evictDestinationCaches(3L);
         verify(mongoEventLogger).onEvent(eq("STATUS_CHANGED"), any());
+        verify(destinationEventPublisher).publishStatusChanged(any());
     }
 
     @Test
@@ -500,6 +501,49 @@ class DestinationServiceTest {
         assertThat(updated.getStatus()).isEqualTo(Destination.Status.SEASONAL);
         verify(itineraryServiceClient, never()).getDestinationActiveItineraryCount(anyLong());
         verify(mongoEventLogger).onEvent(eq("STATUS_CHANGED"), any());
+        verify(destinationEventPublisher).publishStatusChanged(any());
+    }
+
+    /**
+     * S2-F4 full scenario (spec steps 2-6):
+     *
+     * Step 2-3: INACTIVE with Feign returning active-count=1 → 400
+     * Step 4-5: INACTIVE after itinerary cancelled (Feign returns 0) → 200 + event published
+     * Step 6:   ACTIVE with no Feign call → 200 + event published
+     */
+    @Test
+    void updateStatus_s2f4_fullScenario() {
+        // Setup: destination ID=1, status=ACTIVE
+        Destination dest = newDestination(1L);
+        dest.setStatus(Destination.Status.ACTIVE);
+
+        // --- Step 2-3: PUT INACTIVE while itinerary is PLANNED (active-count=1) → 400 ---
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(dest));
+        when(itineraryServiceClient.getDestinationActiveItineraryCount(1L)).thenReturn(1);
+
+        assertThatThrownBy(() -> destinationService.updateStatus(1L, "INACTIVE"))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+        verify(destinationRepository, never()).save(any());
+
+        // --- Step 4-5: PUT INACTIVE after itinerary cancelled (active-count=0) → 200 + event ---
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(dest));
+        when(itineraryServiceClient.getDestinationActiveItineraryCount(1L)).thenReturn(0);
+        when(destinationRepository.save(any(Destination.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Destination afterInactive = destinationService.updateStatus(1L, "INACTIVE");
+        assertThat(afterInactive.getStatus()).isEqualTo(Destination.Status.INACTIVE);
+        verify(destinationEventPublisher, times(1)).publishStatusChanged(any());
+
+        // --- Step 6: PUT ACTIVE → no Feign call, 200 + event ---
+        dest.setStatus(Destination.Status.INACTIVE);
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(dest));
+
+        Destination afterActive = destinationService.updateStatus(1L, "ACTIVE");
+        assertThat(afterActive.getStatus()).isEqualTo(Destination.Status.ACTIVE);
+        // Feign should only have been called for the INACTIVE transitions, never for ACTIVE
+        verify(itineraryServiceClient, times(2)).getDestinationActiveItineraryCount(1L);
+        verify(destinationEventPublisher, times(2)).publishStatusChanged(any());
     }
 
     // =========================================================================
@@ -725,6 +769,129 @@ class DestinationServiceTest {
         Destination updated = destinationService.rateAfterVisit(1L, req);
         assertThat(updated.getRating()).isEqualTo(4.0);
         assertThat(updated.getTotalRatings()).isEqualTo(2);
+        verify(destinationEventPublisher).publishRated(any());
+    }
+
+    @Test
+    void rateAfterVisit_completingStatus_throws400() {
+        // COMPLETING is no longer an accepted status in M3 (only COMPLETED and PAID)
+        Destination d = newDestination(1L);
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(d));
+        when(itineraryServiceClient.getItinerary(10L))
+                .thenReturn(new ItineraryDTO(10L, 1L, 1L, "COMPLETING"));
+        DestinationRateRequest req = new DestinationRateRequest();
+        req.setItineraryId(10L);
+        req.setRating(4);
+        assertThatThrownBy(() -> destinationService.rateAfterVisit(1L, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+    }
+
+    @Test
+    void rateAfterVisit_paymentPendingStatus_throws400() {
+        // PAYMENT_PENDING is no longer an accepted status in M3 (only COMPLETED and PAID)
+        Destination d = newDestination(1L);
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(d));
+        when(itineraryServiceClient.getItinerary(10L))
+                .thenReturn(new ItineraryDTO(10L, 1L, 1L, "PAYMENT_PENDING"));
+        DestinationRateRequest req = new DestinationRateRequest();
+        req.setItineraryId(10L);
+        req.setRating(4);
+        assertThatThrownBy(() -> destinationService.rateAfterVisit(1L, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+    }
+
+    /**
+     * S2-F7 full scenario (spec steps 2-8):
+     *
+     * Step 2-3: Rate dest=1, itinerary=10 (COMPLETED), rating=5 → 200, rating=5.0, totalRatings=1, event published
+     * Step 4:   Rate dest=1, itinerary=11 (COMPLETED), rating=3 → rating=4.0, totalRatings=2, event published
+     * Step 5:   Itinerary=99 not found → 404
+     * Step 6:   Itinerary=10 status=PLANNED → 400
+     * Step 7:   rating=6 → 400 (out of range)
+     * Step 8:   Itinerary references destinationId=2, rating dest=1 → 400
+     */
+    @Test
+    void rateAfterVisit_s2f7_fullScenario() {
+        // --- Step 2-3: first rating, COMPLETED itinerary ---
+        Destination dest = newDestination(1L);
+        dest.setRating(0.0);
+        dest.setTotalRatings(0);
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(dest));
+        when(itineraryServiceClient.getItinerary(10L))
+                .thenReturn(new ItineraryDTO(10L, 1L, 99L, "COMPLETED"));
+        when(destinationRepository.save(any(Destination.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        DestinationRateRequest req1 = new DestinationRateRequest();
+        req1.setItineraryId(10L);
+        req1.setRating(5);
+        Destination after1 = destinationService.rateAfterVisit(1L, req1);
+        assertThat(after1.getRating()).isEqualTo(5.0);
+        assertThat(after1.getTotalRatings()).isEqualTo(1);
+        verify(destinationEventPublisher, times(1)).publishRated(any());
+
+        // --- Step 4: second rating with different itinerary (ID=11), rating=3 → avg=4.0 ---
+        dest.setRating(5.0);
+        dest.setTotalRatings(1);
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(dest));
+        when(itineraryServiceClient.getItinerary(11L))
+                .thenReturn(new ItineraryDTO(11L, 1L, 100L, "COMPLETED"));
+
+        DestinationRateRequest req2 = new DestinationRateRequest();
+        req2.setItineraryId(11L);
+        req2.setRating(3);
+        Destination after2 = destinationService.rateAfterVisit(1L, req2);
+        assertThat(after2.getRating()).isEqualTo(4.0);
+        assertThat(after2.getTotalRatings()).isEqualTo(2);
+        verify(destinationEventPublisher, times(2)).publishRated(any());
+
+        // --- Step 5: itinerary=99 not found → 404 ---
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(dest));
+        when(itineraryServiceClient.getItinerary(99L)).thenThrow(feignNotFound());
+
+        DestinationRateRequest req3 = new DestinationRateRequest();
+        req3.setItineraryId(99L);
+        req3.setRating(4);
+        assertThatThrownBy(() -> destinationService.rateAfterVisit(1L, req3))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(404));
+
+        // --- Step 6: itinerary=10 now PLANNED → 400 ---
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(dest));
+        when(itineraryServiceClient.getItinerary(10L))
+                .thenReturn(new ItineraryDTO(10L, 1L, 99L, "PLANNED"));
+
+        DestinationRateRequest req4 = new DestinationRateRequest();
+        req4.setItineraryId(10L);
+        req4.setRating(4);
+        assertThatThrownBy(() -> destinationService.rateAfterVisit(1L, req4))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+
+        // --- Step 7: rating=6 out of range → 400 ---
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(dest));
+        DestinationRateRequest req5 = new DestinationRateRequest();
+        req5.setItineraryId(10L);
+        req5.setRating(6);
+        assertThatThrownBy(() -> destinationService.rateAfterVisit(1L, req5))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+
+        // --- Step 8: itinerary references destinationId=2, caller is rating dest=1 → 400 ---
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(dest));
+        when(itineraryServiceClient.getItinerary(10L))
+                .thenReturn(new ItineraryDTO(10L, 2L, 99L, "COMPLETED"));
+
+        DestinationRateRequest req6 = new DestinationRateRequest();
+        req6.setItineraryId(10L);
+        req6.setRating(4);
+        assertThatThrownBy(() -> destinationService.rateAfterVisit(1L, req6))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+
+        // publishRated must still be exactly 2 (no extra calls from rejected steps)
+        verify(destinationEventPublisher, times(2)).publishRated(any());
     }
 
     @Test
