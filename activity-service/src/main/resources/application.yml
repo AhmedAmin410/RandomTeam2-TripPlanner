@@ -2,7 +2,7 @@ spring:
   main:
     allow-bean-definition-overriding: true
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/tripplanningdb}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://activity-postgres:5432/tripdb-activities}
     username: ${SPRING_DATASOURCE_USERNAME:postgres}
     password: ${SPRING_DATASOURCE_PASSWORD:postgres}
   jpa:
@@ -34,18 +34,11 @@ spring:
     connection:
       init-query-timeout: 60s
       connect-timeout: 60s
-
-server:
-  port: 8084
-
-jwt:
-  secret: ${JWT_SECRET:dGhpcyBpcyBhIHNlY3VyZSByYW5kb20ga2V5IGZvciBqd3Q=}
-  expiration: ${JWT_EXPIRATION_MS:86400000}
   rabbitmq:
     host: ${SPRING_RABBITMQ_HOST:localhost}
-    port: 5672
-    username: guest
-    password: guest
+    port: ${SPRING_RABBITMQ_PORT:5672}
+    username: ${SPRING_RABBITMQ_USERNAME:guest}
+    password: ${SPRING_RABBITMQ_PASSWORD:guest}
     listener:
       simple:
         acknowledge-mode: auto
@@ -55,6 +48,23 @@ jwt:
           initial-interval: 1000
           max-attempts: 3
 
+server:
+  port: 8084
+
+jwt:
+  secret: ${JWT_SECRET:dGhpcyBpcyBhIHNlY3VyZSByYW5kb20ga2V5IGZvciBqd3Q=}
+  expiration: ${JWT_EXPIRATION_MS:86400000}
+
 feign:
   itinerary-service:
     url: ${FEIGN_ITINERARY_SERVICE_URL:http://localhost:8083}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: prometheus,health,info
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
