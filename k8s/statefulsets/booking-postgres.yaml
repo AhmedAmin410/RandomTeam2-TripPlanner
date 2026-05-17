@@ -1,0 +1,212 @@
+---
+# Kubernetes manifest for PostgreSQL 17 StatefulSet with proper database isolation
+# Provides secure credential management, headless service for discovery,
+# and persistent storage for high-availability replicas
+
+# Secret for PostgreSQL credentials
+apiVersion: v1
+kind: Secret
+metadata:
+  name: booking-postgres-secret
+  namespace: default
+type: Opaque
+stringData:
+  POSTGRES_DB: tripdb-bookings
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: postgres-secure-password-change-in-prod
+
+---
+# Headless Service for StatefulSet discovery (clusterIP: None)
+# Enables stable network identity for each pod in the StatefulSet
+apiVersion: v1
+kind: Service
+metadata:
+  name: booking-postgres-service
+  namespace: default
+  labels:
+    app: booking-postgres
+spec:
+  clusterIP: None  # Headless service for StatefulSet discovery
+  selector:
+    app: booking-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+      protocol: TCP
+      name: postgresql
+
+---
+# StatefulSet for PostgreSQL 17 with persistent storage
+# Maintains stable pod identities and persistent data across replicas
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: booking-postgres
+  namespace: default
+  labels:
+    app: booking-postgres
+    version: "17"
+spec:
+  serviceName: booking-postgres-service  # Links to headless service
+  replicas: 1  # Can be scaled to 3+ for high availability
+  selector:
+    matchLabels:
+      app: booking-postgres
+  template:
+    metadata:
+      labels:
+        app: booking-postgres
+        version: "17"
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+      - name: postgresql
+        image: postgres:17-alpine
+        ports:
+        - containerPort: 5432
+          name: postgresql
+          protocol: TCP
+
+        # Environment variables from Secret
+        envFrom:
+        - secretRef:
+            name: booking-postgres-secret
+
+        # Environment variables for PostgreSQL configuration
+        env:
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        - name: POSTGRES_INITDB_ARGS
+          value: "-c max_connections=200 -c shared_buffers=256MB -c work_mem=16MB"
+
+        # Resource limits for container isolation
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+
+        # Liveness probe: Checks if PostgreSQL is responding
+        # Uses pg_isready to verify database availability
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U postgres -d tripdb-bookings
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        # Readiness probe: Checks if PostgreSQL is ready to accept connections
+        # Uses pg_isready for connection verification
+        readinessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - pg_isready -U postgres -d tripdb-bookings
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 2
+
+        # Volume mounts for persistent data
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+          subPath: pgdata
+        - name: postgres-config
+          mountPath: /etc/postgresql
+        - name: postgres-scripts
+          mountPath: /docker-entrypoint-initdb.d
+
+      # Volumes
+      volumes:
+      - name: postgres-config
+        configMap:
+          name: postgres-config
+          defaultMode: 0644
+          optional: true
+      - name: postgres-scripts
+        configMap:
+          name: postgres-init-scripts
+          defaultMode: 0755
+          optional: true
+
+  # PersistentVolumeClaim template for each replica
+  # Ensures each pod in the StatefulSet has its own 10Gi storage
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-storage
+      labels:
+        app: booking-postgres
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      storageClassName: standard  # Use 'fast', 'nfs', etc. based on your cluster
+      resources:
+        requests:
+          storage: 10Gi
+
+---
+# Example ConfigMap for PostgreSQL configuration (optional)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-config
+  namespace: default
+  labels:
+    app: booking-postgres
+data:
+  postgresql.conf: |
+    # PostgreSQL Configuration for booking-service
+    # Performance tuning for booking database
+    max_connections = 200
+    shared_buffers = 256MB
+    effective_cache_size = 1GB
+    maintenance_work_mem = 64MB
+    checkpoint_completion_target = 0.9
+    wal_buffers = 16MB
+    default_statistics_target = 100
+    random_page_cost = 1.1
+    effective_io_concurrency = 200
+    work_mem = 16MB
+    min_wal_size = 1GB
+    max_wal_size = 4GB
+    max_worker_processes = 4
+    max_parallel_workers_per_gather = 2
+    max_parallel_workers = 4
+    max_parallel_maintenance_workers = 2
+    
+    # Logging configuration
+    log_statement = 'all'
+    log_duration = true
+    log_min_duration_statement = 1000
+    log_connections = true
+    log_disconnections = true
+    log_lock_waits = true
+
+---
+# ConfigMap for initialization scripts (optional)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init-scripts
+  namespace: default
+  labels:
+    app: booking-postgres
+data:
+  01-init-extensions.sql: |
+    -- Enable required PostgreSQL extensions
+    CREATE EXTENSION IF NOT EXISTS uuid-ossp;
+    CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+    
+    -- Create initial database schema
+    CREATE SCHEMA IF NOT EXISTS bookings;
+    GRANT USAGE ON SCHEMA bookings TO postgres;
+    GRANT CREATE ON SCHEMA bookings TO postgres;
+

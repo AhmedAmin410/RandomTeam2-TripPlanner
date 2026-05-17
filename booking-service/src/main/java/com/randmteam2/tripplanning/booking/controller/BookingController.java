@@ -117,9 +117,9 @@ public class BookingController {
         return ResponseEntity.ok(bookingService.aggregateByItineraries(request));
     }
 
-    @GetMapping("/itinerary/{itineraryId}/confirmed-summary")
-    public ResponseEntity<ConfirmedSummaryDTO> getConfirmedSummary(@PathVariable Long itineraryId) {
-        return ResponseEntity.ok(bookingService.getConfirmedSummary(itineraryId));
+    @GetMapping("/itinerary/{id}/confirmed-summary")
+    public ResponseEntity<ConfirmedSummaryDTO> getConfirmedSummary(@PathVariable Long id) {
+        return ResponseEntity.ok(bookingService.getConfirmedSummary(id));
     }
 
     // ── S5-F4 ─────────────────────────────────────────────────────────────

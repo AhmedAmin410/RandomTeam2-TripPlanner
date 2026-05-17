@@ -13,7 +13,14 @@ import java.util.List;
 @Repository
 public interface BookingRepository extends JpaRepository<Booking, Long> {
 
+    List<Booking> findByUserIdAndStatus(Long userId, com.randmteam2.tripplanning.booking.model.BookingStatus status);
+
     List<Booking> findByItineraryIdAndStatus(Long itineraryId, com.randmteam2.tripplanning.booking.model.BookingStatus status);
+
+    // S5-READ-DB: Standard Spring Data queries for confirmed bookings isolation
+    List<Booking> findByUserIdAndStatusOrderByCreatedAtDesc(Long userId, com.randmteam2.tripplanning.booking.model.BookingStatus status);
+
+    List<Booking> findByItineraryIdAndStatusOrderByCreatedAtDesc(Long itineraryId, com.randmteam2.tripplanning.booking.model.BookingStatus status);
 
     long countByItineraryIdAndStatus(Long itineraryId, com.randmteam2.tripplanning.booking.model.BookingStatus status);
 
@@ -143,7 +150,6 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
         ORDER BY c.current_uses DESC
         LIMIT :limit
         """, nativeQuery = true)
-
     List<Object[]> getTopUsedCoupons(@Param("limit") int limit);
 
 }

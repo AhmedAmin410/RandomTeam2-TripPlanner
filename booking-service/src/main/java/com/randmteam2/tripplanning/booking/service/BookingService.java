@@ -1,11 +1,9 @@
 package com.randmteam2.tripplanning.booking.service;
 
 import com.randmteam2.tripplanning.booking.dto.*;
-import com.randmteam2.tripplanning.booking.feign.UserServiceClient;
-import com.randmteam2.tripplanning.booking.feign.ItineraryServiceClient;
+import com.randmteam2.tripplanning.booking.feign.BookingFeignClients;
 import com.randmteam2.tripplanning.booking.model.*;
 import com.randmteam2.tripplanning.booking.repository.*;
-import feign.FeignException;
 import org.springframework.http.HttpStatus;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
@@ -35,8 +33,9 @@ public class BookingService {
     private final PaymentAuditEventRepository auditRepository;
     private final BookingEventPublisher eventPublisher;
     private final BookingCacheInvalidationService cacheInvalidationService;
-    private final UserServiceClient userServiceClient;
-    private final ItineraryServiceClient itineraryServiceClient;
+    private final BookingFeignClients.UserServiceSafeClient userServiceSafeClient;
+    private final BookingFeignClients.ItineraryServiceSafeClient itineraryServiceSafeClient;
+    private final BookingFeignClients.DestinationServiceSafeClient destinationServiceSafeClient;
 
     public BookingService(BookingRepository bookingRepository,
                           CouponRepository couponRepository,
@@ -44,16 +43,18 @@ public class BookingService {
                           PaymentAuditEventRepository auditRepository,
                           BookingEventPublisher eventPublisher,
                           BookingCacheInvalidationService cacheInvalidationService,
-                          UserServiceClient userServiceClient,
-                          ItineraryServiceClient itineraryServiceClient) {
+                          BookingFeignClients.UserServiceSafeClient userServiceSafeClient,
+                          BookingFeignClients.ItineraryServiceSafeClient itineraryServiceSafeClient,
+                          BookingFeignClients.DestinationServiceSafeClient destinationServiceSafeClient) {
         this.bookingRepository = bookingRepository;
         this.couponRepository = couponRepository;
         this.bookingCouponRepository = bookingCouponRepository;
         this.auditRepository = auditRepository;
         this.eventPublisher = eventPublisher;
         this.cacheInvalidationService = cacheInvalidationService;
-        this.userServiceClient = userServiceClient;
-        this.itineraryServiceClient = itineraryServiceClient;
+        this.userServiceSafeClient = userServiceSafeClient;
+        this.itineraryServiceSafeClient = itineraryServiceSafeClient;
+        this.destinationServiceSafeClient = destinationServiceSafeClient;
     }
 
     // ── CRUD ──────────────────────────────────────────────────────────────
@@ -122,26 +123,31 @@ public class BookingService {
         return saved;
     }
 
-    // ── S5-F3 ─────────────────────────────────────────────────────────────
+    // ── S5-F3 S5-READ-DB: Compute aggregations in Java, no cross-service SQL ──
     @Cacheable(value = "booking-service", key = "'S5-F3::' + #userId")
     public UserBookingSummaryDTO getUserBookingSummary(Long userId) {
-        try {
-            userServiceClient.getUser(userId);
-        } catch (FeignException.NotFound e) {
+        // Verify user exists via safe feign wrapper
+        if (userServiceSafeClient.getUser(userId).isEmpty()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
         }
-        List<Object[]> results = bookingRepository.getUserBookingSummary(userId);
+
+        // Fetch confirmed bookings for this user from local database only
+        List<Booking> confirmedBookings = bookingRepository.findByUserIdAndStatus(userId, BookingStatus.CONFIRMED);
+
+        // Compute aggregations entirely in Java
         Map<String, Double> typeBreakdown = new HashMap<>();
         int totalBookings = 0;
-        double totalAmount = 0;
-        for (Object[] row : results) {
-            String type = (String) row[0];
-            int count = ((Number) row[1]).intValue();
-            double amount = ((Number) row[2]).doubleValue();
-            typeBreakdown.put(type, amount);
-            totalBookings += count;
-            totalAmount += amount;
+        double totalAmount = 0.0;
+
+        for (Booking booking : confirmedBookings) {
+            totalBookings++;
+            totalAmount += booking.getAmount();
+
+            String typeKey = booking.getType() != null ? booking.getType().name() : "UNKNOWN";
+            double currentAmount = typeBreakdown.getOrDefault(typeKey, 0.0);
+            typeBreakdown.put(typeKey, currentAmount + booking.getAmount());
         }
+
         return UserBookingSummaryDTO.builder()
                 .userId(userId)
                 .totalBookings(totalBookings)
@@ -157,9 +163,8 @@ public class BookingService {
         if (start.isAfter(end)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate must be before endDate");
         }
-        try {
-            userServiceClient.getUser(userId);
-        } catch (FeignException.NotFound e) {
+        // Verify user exists via safe feign wrapper
+        if (userServiceSafeClient.getUser(userId).isEmpty()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
         }
         Double totalAmount = bookingRepository.sumConfirmedAmountByUserAndDateRange(userId, start, end);
@@ -198,19 +203,19 @@ public class BookingService {
         return new ConfirmedSummaryDTO(count, totalRevenue != null ? totalRevenue : 0.0);
     }
 
-    // ── S5-F4 ─────────────────────────────────────────────────────────────
+    // ── S5-F4 S5-READ-DB: Use safe feign wrapper, isolated booking creation ──
     @Transactional
     public Booking createBookingForItinerary(Long itineraryId,
                                              Map<String, Object> body,
                                              boolean simulateFailure) {
-        Map<String, Object> itinerary;
-        try {
-            itinerary = itineraryServiceClient.getItinerary(itineraryId);
-        } catch (FeignException.NotFound e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Itinerary not found");
-        }
+        // Fetch itinerary safely with fallback
+        Object itinerary = itineraryServiceSafeClient.getItinerary(itineraryId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Itinerary not found"));
 
-        String itineraryStatus = (String) itinerary.get("status");
+        // Type-safe extraction of itinerary status
+        @SuppressWarnings("unchecked")
+        Map<String, Object> itineraryMap = (Map<String, Object>) itinerary;
+        String itineraryStatus = (String) itineraryMap.get("status");
         if (!"PLANNED".equals(itineraryStatus) && !"IN_PROGRESS".equals(itineraryStatus)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Itinerary must be PLANNED or IN_PROGRESS");
@@ -223,10 +228,10 @@ public class BookingService {
         booking.setType(BookingType.valueOf((String) body.get("type")));
 
         double surcharge = 0.0;
-        Object destinationIdRaw = itinerary.get("destinationId");
+        Object destinationIdRaw = itineraryMap.get("destinationId");
         if (destinationIdRaw != null) {
             Long destinationId = ((Number) destinationIdRaw).longValue();
-            int activeCount = itineraryServiceClient.getDestinationActiveCount(destinationId);
+            int activeCount = itineraryServiceSafeClient.getDestinationActiveCount(destinationId);
             double multiplier = activeCount <= 5 ? 1.0 : activeCount <= 15 ? 1.3 : 1.6;
             surcharge = multiplier == 1.0 ? 0.0 : booking.getAmount() * (multiplier - 1) / multiplier;
         }
@@ -434,7 +439,7 @@ public class BookingService {
         return dtos;
     }
 
-    // ── S5-F12 ────────────────────────────────────────────────────────────
+    // ── S5-F12 S5-READ-DB: Atomic conditional state updates for idempotency ──
     @Transactional
     public Booking processRefundCancellation(Long bookingId, RefundCancellationRequest request) {
         Booking booking = getBookingById(bookingId);
@@ -444,14 +449,14 @@ public class BookingService {
                     "Only CONFIRMED bookings can be refunded");
         }
 
-        Map<String, Object> itinerary;
-        try {
-            itinerary = itineraryServiceClient.getItinerary(booking.getItineraryId());
-        } catch (FeignException.NotFound e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Linked itinerary not found");
-        }
+        // Fetch itinerary safely
+        Object itinerary = itineraryServiceSafeClient.getItinerary(booking.getItineraryId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Linked itinerary not found"));
 
-        Object startDateRaw = itinerary.get("startDate");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> itineraryMap = (Map<String, Object>) itinerary;
+
+        Object startDateRaw = itineraryMap.get("startDate");
         LocalDate startDate;
         if (startDateRaw instanceof String s) {
             startDate = LocalDate.parse(s.length() > 10 ? s.substring(0, 10) : s);
@@ -465,7 +470,7 @@ public class BookingService {
             startDate = LocalDate.now().plusDays(30);
         }
 
-        String itiStatus = (String) itinerary.get("status");
+        String itiStatus = (String) itineraryMap.get("status");
         boolean itineraryStarted = "IN_PROGRESS".equals(itiStatus) || "COMPLETED".equals(itiStatus);
 
         RefundStrategySelector selector = new RefundStrategySelector();
@@ -483,7 +488,8 @@ public class BookingService {
                     "trip already started or completed");
         }
 
-        // Atomic UPDATE guard — prevents concurrent double-refund
+        // S5-READ-DB: Atomic UPDATE guard with conditional state check
+        // This enforces idempotency: only 1 row can transition from CONFIRMED to CANCELLED
         int updated = bookingRepository.transitionBookingStatus(
                 bookingId, BookingStatus.CONFIRMED, BookingStatus.CANCELLED);
         if (updated == 0) {
