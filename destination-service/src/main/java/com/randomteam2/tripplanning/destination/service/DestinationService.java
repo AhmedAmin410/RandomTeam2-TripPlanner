@@ -705,39 +705,51 @@ public class DestinationService {
         notifyObservers("INDEXED", payload);
     }
 
+
     /**
      * S2-F12: Get Destination Analytics Dashboard.
-     * Logs DASHBOARD_VIEWED on every invocation (even cache hits) – logging is outside cache.
+     *
+     * M3 change: the itinerary aggregation (totalItineraries, completedItineraries,
+     * totalVisitors) is obtained via a single Feign call to itinerary-service at
+     * GET /api/itineraries/destination/{destinationId}/dashboard-aggregate
+     * instead of querying the shared database directly.
+     *
+     * Observer contract (M2 preserved): DASHBOARD_VIEWED is fired on every
+     * invocation, including cache hits. The observer notify happens before the
+     * cache check so it can never be skipped.
+     *
+     * Cache: 10-minute TTL, keyed by destinationId.
      */
     public DestinationDashboardDTO getDestinationDashboard(Long destinationId) {
+        // 1. Validate destination exists — 404 if not found
         Destination destination = destinationRepository.findById(destinationId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Destination not found"));
 
-        // Always log DASHBOARD_VIEWED (outside cache check)
-        Map<String, Object> viewPayload = destinationPayload(destination);
-        viewPayload.put("dashboardParams", Map.of("destinationId", destinationId));
-        notifyObservers("DASHBOARD_VIEWED", viewPayload);
+        // 2. Always fire DASHBOARD_VIEWED regardless of cache state
+        Map<String, Object> eventPayload = destinationPayload(destination);
+        eventPayload.put("dashboardParams", Map.of("destinationId", destinationId));
+        notifyObservers("DASHBOARD_VIEWED", eventPayload);
 
+        // 3. Return cached response if present
         String cacheKey = "destination-service::S2-F12::" + destinationId;
         try {
             Object cached = redisTemplate.opsForValue().get(cacheKey);
-            if (cached instanceof DestinationDashboardDTO dto) {
-                return dto;
+            if (cached instanceof DestinationDashboardDTO hit) {
+                return hit;
             }
         } catch (Exception e) {
-            logger.warn("Redis read failed for S2-F12", e);
+            logger.warn("Redis read failed for S2-F12 key {}", cacheKey, e);
         }
 
+        // 4. Fetch itinerary aggregates from itinerary-service via Feign (M3)
         DestinationDashboardAggregateDTO aggregate =
                 itineraryServiceClient.getDestinationDashboardAggregate(destinationId);
 
-        long totalItineraries = aggregate != null && aggregate.totalItineraries() != null
-                ? aggregate.totalItineraries() : 0L;
-        long completedItineraries = aggregate != null && aggregate.completedItineraries() != null
-                ? aggregate.completedItineraries() : 0L;
-        long totalVisitors = aggregate != null && aggregate.totalVisitors() != null
-                ? aggregate.totalVisitors() : 0L;
+        long totalItineraries     = aggregate != null && aggregate.totalItineraries()     != null ? aggregate.totalItineraries()     : 0L;
+        long completedItineraries = aggregate != null && aggregate.completedItineraries() != null ? aggregate.completedItineraries() : 0L;
+        long totalVisitors        = aggregate != null && aggregate.totalVisitors()        != null ? aggregate.totalVisitors()        : 0L;
 
+        // 5. Build response — ratings come from the local Destination row (unchanged from M2)
         DestinationDashboardDTO dto = DestinationDashboardDTO.builder()
                 .destinationId(destination.getId())
                 .name(destination.getName())
@@ -748,11 +760,13 @@ public class DestinationService {
                 .averageRating(destination.getRating() != null ? destination.getRating() : 0.0)
                 .build();
 
+        // 6. Cache for 10 minutes
         try {
             redisTemplate.opsForValue().set(cacheKey, dto, 10, TimeUnit.MINUTES);
         } catch (Exception e) {
-            logger.warn("Redis write failed for S2-F12", e);
+            logger.warn("Redis write failed for S2-F12 key {}", cacheKey, e);
         }
+
         return dto;
     }
 
