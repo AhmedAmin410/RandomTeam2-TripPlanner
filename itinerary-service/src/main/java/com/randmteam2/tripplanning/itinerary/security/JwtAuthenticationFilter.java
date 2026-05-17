@@ -26,7 +26,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getServletPath();
         return "/api/itineraries/health".equals(path)
-                || path.startsWith("/actuator");
+                || path.startsWith("/actuator")
+                // Internal Feign endpoints called by user-service without a gateway JWT
+                || path.matches("/api/itineraries/user/[^/]+/summary")
+                || path.matches("/api/itineraries/user/[^/]+/active-count")
+                || path.matches("/api/itineraries/user/[^/]+/completed-count");
     }
 
     @Override
