@@ -432,15 +432,18 @@ class DestinationServiceTest {
     // =========================================================================
 
     @Test
-    void updateStatus_notFound_throws404() {
-        when(destinationRepository.findById(9L)).thenReturn(Optional.empty());
-        assertThatThrownBy(() -> destinationService.updateStatus(9L, "ACTIVE"))
+    void updateStatus_blankStatus_throws400() {
+        // Input guard fires before any repository or Feign call
+        assertThatThrownBy(() -> destinationService.updateStatus(1L, "   "))
                 .isInstanceOf(ResponseStatusException.class)
-                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(404));
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+        verify(destinationRepository, never()).findById(any());
+        verify(itineraryServiceClient, never()).getDestinationActiveItineraryCount(anyLong());
     }
 
     @Test
     void updateStatus_invalidStatus_throws400() {
+        // Unknown status string rejected before hitting the DB
         assertThatThrownBy(() -> destinationService.updateStatus(1L, "RETIRED"))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
@@ -448,30 +451,56 @@ class DestinationServiceTest {
     }
 
     @Test
-    void updateStatus_blankStatus_throws400() {
-        assertThatThrownBy(() -> destinationService.updateStatus(1L, "   "))
+    void updateStatus_destinationNotFound_throws404() {
+        when(destinationRepository.findById(9L)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> destinationService.updateStatus(9L, "ACTIVE"))
                 .isInstanceOf(ResponseStatusException.class)
-                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(404));
     }
 
     @Test
     void updateStatus_inactiveWithActiveItineraries_throws400() {
+        // M3: Feign returns active-count > 0 → 400, nothing saved
         Destination dest = newDestination(1L);
+        dest.setStatus(Destination.Status.ACTIVE);
         when(destinationRepository.findById(1L)).thenReturn(Optional.of(dest));
         when(itineraryServiceClient.getDestinationActiveItineraryCount(1L)).thenReturn(1);
+
         assertThatThrownBy(() -> destinationService.updateStatus(1L, "INACTIVE"))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
         verify(destinationRepository, never()).save(any());
+        verify(destinationEventPublisher, never()).publishStatusChanged(any());
     }
 
     @Test
-    void updateStatus_active_noItineraryCheck_saves() {
+    void updateStatus_inactiveWhenNoActiveItineraries_savesAndPublishesEvent() {
+        // M3: Feign returns 0 → allowed; status persisted, event published
+        Destination dest = newDestination(3L);
+        dest.setStatus(Destination.Status.ACTIVE);
+        when(destinationRepository.findById(3L)).thenReturn(Optional.of(dest));
+        when(itineraryServiceClient.getDestinationActiveItineraryCount(3L)).thenReturn(0);
+        when(destinationRepository.save(any(Destination.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        Destination updated = destinationService.updateStatus(3L, "INACTIVE");
+
+        assertThat(updated.getStatus()).isEqualTo(Destination.Status.INACTIVE);
+        verify(itineraryServiceClient).getDestinationActiveItineraryCount(3L);
+        verify(cacheInvalidationService).evictDestinationCaches(3L);
+        verify(mongoEventLogger).onEvent(eq("STATUS_CHANGED"), any());
+        verify(destinationEventPublisher).publishStatusChanged(any());
+    }
+
+    @Test
+    void updateStatus_toActive_noFeignCall_savesAndPublishesEvent() {
+        // ACTIVE transition: Feign must never be called — no guard needed
         Destination dest = newDestination(2L);
         dest.setStatus(Destination.Status.INACTIVE);
         when(destinationRepository.findById(2L)).thenReturn(Optional.of(dest));
         when(destinationRepository.save(any(Destination.class))).thenAnswer(inv -> inv.getArgument(0));
+
         Destination updated = destinationService.updateStatus(2L, "ACTIVE");
+
         assertThat(updated.getStatus()).isEqualTo(Destination.Status.ACTIVE);
         verify(itineraryServiceClient, never()).getDestinationActiveItineraryCount(anyLong());
         verify(cacheInvalidationService).evictDestinationCaches(2L);
@@ -480,44 +509,47 @@ class DestinationServiceTest {
     }
 
     @Test
-    void updateStatus_inactiveWhenNoActiveItineraries_saves() {
-        Destination dest = newDestination(3L);
-        when(destinationRepository.findById(3L)).thenReturn(Optional.of(dest));
-        when(itineraryServiceClient.getDestinationActiveItineraryCount(3L)).thenReturn(0);
-        when(destinationRepository.save(any(Destination.class))).thenAnswer(inv -> inv.getArgument(0));
-        Destination updated = destinationService.updateStatus(3L, "inactive");
-        assertThat(updated.getStatus()).isEqualTo(Destination.Status.INACTIVE);
-        verify(cacheInvalidationService).evictDestinationCaches(3L);
-        verify(mongoEventLogger).onEvent(eq("STATUS_CHANGED"), any());
-        verify(destinationEventPublisher).publishStatusChanged(any());
-    }
-
-    @Test
-    void updateStatus_seasonal_noItineraryCheck_saves() {
+    void updateStatus_toSeasonal_noFeignCall_savesAndPublishesEvent() {
+        // SEASONAL transition: same as ACTIVE — Feign guard skipped
         Destination dest = newDestination(4L);
         when(destinationRepository.findById(4L)).thenReturn(Optional.of(dest));
         when(destinationRepository.save(any(Destination.class))).thenAnswer(i -> i.getArgument(0));
+
         Destination updated = destinationService.updateStatus(4L, "SEASONAL");
+
         assertThat(updated.getStatus()).isEqualTo(Destination.Status.SEASONAL);
         verify(itineraryServiceClient, never()).getDestinationActiveItineraryCount(anyLong());
         verify(mongoEventLogger).onEvent(eq("STATUS_CHANGED"), any());
         verify(destinationEventPublisher).publishStatusChanged(any());
     }
 
+    @Test
+    void updateStatus_statusIsCaseInsensitive() {
+        // "inactive" lowercase must be treated identically to "INACTIVE"
+        Destination dest = newDestination(5L);
+        when(destinationRepository.findById(5L)).thenReturn(Optional.of(dest));
+        when(itineraryServiceClient.getDestinationActiveItineraryCount(5L)).thenReturn(0);
+        when(destinationRepository.save(any(Destination.class))).thenAnswer(i -> i.getArgument(0));
+
+        Destination updated = destinationService.updateStatus(5L, "inactive");
+
+        assertThat(updated.getStatus()).isEqualTo(Destination.Status.INACTIVE);
+    }
+
     /**
-     * S2-F4 full scenario (spec steps 2-6):
+     * S2-F4 full scenario (spec steps 2–6):
      *
-     * Step 2-3: INACTIVE with Feign returning active-count=1 → 400
-     * Step 4-5: INACTIVE after itinerary cancelled (Feign returns 0) → 200 + event published
-     * Step 6:   ACTIVE with no Feign call → 200 + event published
+     * Setup  : destination ID=1 ACTIVE, itinerary ID=10 destinationId=1 status=PLANNED.
+     * Step 2-3: PUT INACTIVE → Feign active-count=1 → 400, nothing saved.
+     * Step 4-5: Cancel itinerary → Feign active-count=0 → 200, status=INACTIVE, event published.
+     * Step 6  : PUT ACTIVE → no Feign call → 200, status=ACTIVE, event published.
      */
     @Test
     void updateStatus_s2f4_fullScenario() {
-        // Setup: destination ID=1, status=ACTIVE
         Destination dest = newDestination(1L);
         dest.setStatus(Destination.Status.ACTIVE);
 
-        // --- Step 2-3: PUT INACTIVE while itinerary is PLANNED (active-count=1) → 400 ---
+        // --- Step 2-3: INACTIVE blocked (active-count=1) ---
         when(destinationRepository.findById(1L)).thenReturn(Optional.of(dest));
         when(itineraryServiceClient.getDestinationActiveItineraryCount(1L)).thenReturn(1);
 
@@ -525,9 +557,9 @@ class DestinationServiceTest {
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
         verify(destinationRepository, never()).save(any());
+        verify(destinationEventPublisher, never()).publishStatusChanged(any());
 
-        // --- Step 4-5: PUT INACTIVE after itinerary cancelled (active-count=0) → 200 + event ---
-        when(destinationRepository.findById(1L)).thenReturn(Optional.of(dest));
+        // --- Step 4-5: itinerary cancelled → active-count=0 → INACTIVE allowed ---
         when(itineraryServiceClient.getDestinationActiveItineraryCount(1L)).thenReturn(0);
         when(destinationRepository.save(any(Destination.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -535,17 +567,15 @@ class DestinationServiceTest {
         assertThat(afterInactive.getStatus()).isEqualTo(Destination.Status.INACTIVE);
         verify(destinationEventPublisher, times(1)).publishStatusChanged(any());
 
-        // --- Step 6: PUT ACTIVE → no Feign call, 200 + event ---
+        // --- Step 6: PUT ACTIVE → no Feign call → 200, event published ---
         dest.setStatus(Destination.Status.INACTIVE);
-        when(destinationRepository.findById(1L)).thenReturn(Optional.of(dest));
 
         Destination afterActive = destinationService.updateStatus(1L, "ACTIVE");
         assertThat(afterActive.getStatus()).isEqualTo(Destination.Status.ACTIVE);
-        // Feign should only have been called for the INACTIVE transitions, never for ACTIVE
+        // Feign called exactly twice: steps 2-3 and 4-5 (never for ACTIVE)
         verify(itineraryServiceClient, times(2)).getDestinationActiveItineraryCount(1L);
         verify(destinationEventPublisher, times(2)).publishStatusChanged(any());
     }
-
     // =========================================================================
     // S2-F5: Search By Details
     // =========================================================================
@@ -978,7 +1008,44 @@ class DestinationServiceTest {
     }
 
     @Test
+    void verifyReview_userNotFound_throws403() {
+        // Feign 404 on user-service must surface as 403 — do not leak user existence
+        Destination d1 = newDestination(1L);
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(d1));
+        DestinationReview review = new DestinationReview();
+        review.setId(10L);
+        review.setDestination(d1);
+        review.setVisitDate(LocalDate.now().minusDays(1));
+        when(destinationReviewRepository.findById(10L)).thenReturn(Optional.of(review));
+        when(userServiceClient.getUser(999L)).thenThrow(feignNotFound());
+        VerifyDestinationReviewRequest req = new VerifyDestinationReviewRequest();
+        req.setVerifiedBy(999L);
+        assertThatThrownBy(() -> destinationService.verifyDestinationReview(1L, 10L, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(403));
+    }
+
+    @Test
+    void verifyReview_travelerRole_throws403() {
+        // spec step 4: role=TRAVELER → 403
+        Destination d1 = newDestination(1L);
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(d1));
+        DestinationReview review = new DestinationReview();
+        review.setId(10L);
+        review.setDestination(d1);
+        review.setVisitDate(LocalDate.now().minusDays(1));
+        when(destinationReviewRepository.findById(10L)).thenReturn(Optional.of(review));
+        when(userServiceClient.getUser(1L)).thenReturn(new UserDTO(1L, "TRAVELER"));
+        VerifyDestinationReviewRequest req = new VerifyDestinationReviewRequest();
+        req.setVerifiedBy(1L);
+        assertThatThrownBy(() -> destinationService.verifyDestinationReview(1L, 10L, req))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(403));
+    }
+
+    @Test
     void verifyReview_futureVisit_throws400() {
+        // spec: visitDate check fires BEFORE Feign call — no downstream hop wasted
         Destination d1 = newDestination(1L);
         when(destinationRepository.findById(1L)).thenReturn(Optional.of(d1));
         DestinationReview review = new DestinationReview();
@@ -991,6 +1058,8 @@ class DestinationServiceTest {
         assertThatThrownBy(() -> destinationService.verifyDestinationReview(1L, 10L, req))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+        // Feign must never be called — visitDate guard fires first
+        verify(userServiceClient, never()).getUser(any());
     }
 
     @Test
@@ -1046,9 +1115,104 @@ class DestinationServiceTest {
         verify(mongoEventLogger).onEvent(eq("REVIEW_VERIFIED"), any());
     }
 
-    // =========================================================================
-    // S2-F9: Low Rated Reviews
-    // =========================================================================
+    /**
+     * S2-F8 full scenario (spec steps 2-7):
+     *
+     * Step 2-3: ADMIN user verifies review → 200, verified=true, metadata has verifiedAt + verifiedBy
+     * Step 4:   TRAVELER role → 403
+     * Step 5:   Non-existent user (Feign 404) → 403
+     * Step 6:   visitDate in future → 400, Feign never called
+     * Step 7:   Review belongs to different destination → 400
+     */
+    @Test
+    void verifyReview_s2f8_fullScenario() {
+        Destination dest1 = newDestination(1L);
+        Destination dest2 = newDestination(2L);
+
+        // Shared review setup helper
+        DestinationReview review5 = new DestinationReview();
+        review5.setId(5L);
+        review5.setType(ReviewType.VISITOR);
+        review5.setContent("Wonderful place");
+        review5.setRating(5);
+        review5.setDestination(dest1);
+        review5.setVisitDate(LocalDate.of(2026, 1, 15));
+        review5.setVerified(false);
+
+        // --- Step 2-3: ADMIN user → 200, verified=true, metadata populated ---
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(dest1));
+        when(destinationReviewRepository.findById(5L)).thenReturn(Optional.of(review5));
+        when(userServiceClient.getUser(3L)).thenReturn(new UserDTO(3L, "ADMIN"));
+        when(destinationReviewRepository.save(any(DestinationReview.class))).thenAnswer(i -> i.getArgument(0));
+        Destination withReviews = newDestination(1L);
+        withReviews.setDestinationReviews(List.of(review5));
+        when(destinationRepository.findByIdWithDestinationReviews(1L)).thenReturn(Optional.of(withReviews));
+
+        VerifyDestinationReviewRequest req1 = new VerifyDestinationReviewRequest();
+        req1.setVerifiedBy(3L);
+        destinationService.verifyDestinationReview(1L, 5L, req1);
+
+        ArgumentCaptor<DestinationReview> captor = ArgumentCaptor.forClass(DestinationReview.class);
+        verify(destinationReviewRepository).save(captor.capture());
+        assertThat(captor.getValue().getVerified()).isTrue();
+        assertThat(captor.getValue().getMetadata()).containsKey("verifiedAt");
+        assertThat(captor.getValue().getMetadata().get("verifiedBy")).isEqualTo(3L);
+
+        // --- Step 4: TRAVELER role → 403 ---
+        review5.setVerified(false);
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(dest1));
+        when(destinationReviewRepository.findById(5L)).thenReturn(Optional.of(review5));
+        when(userServiceClient.getUser(1L)).thenReturn(new UserDTO(1L, "TRAVELER"));
+
+        VerifyDestinationReviewRequest req2 = new VerifyDestinationReviewRequest();
+        req2.setVerifiedBy(1L);
+        assertThatThrownBy(() -> destinationService.verifyDestinationReview(1L, 5L, req2))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(403));
+
+        // --- Step 5: non-existent user (Feign 404) → 403 ---
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(dest1));
+        when(destinationReviewRepository.findById(5L)).thenReturn(Optional.of(review5));
+        when(userServiceClient.getUser(999L)).thenThrow(feignNotFound());
+
+        VerifyDestinationReviewRequest req3 = new VerifyDestinationReviewRequest();
+        req3.setVerifiedBy(999L);
+        assertThatThrownBy(() -> destinationService.verifyDestinationReview(1L, 5L, req3))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(403));
+
+        // --- Step 6: visitDate in future → 400, Feign must NOT be called ---
+        DestinationReview futureReview = new DestinationReview();
+        futureReview.setId(5L);
+        futureReview.setDestination(dest1);
+        futureReview.setVisitDate(LocalDate.now().plusDays(10));
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(dest1));
+        when(destinationReviewRepository.findById(5L)).thenReturn(Optional.of(futureReview));
+
+        VerifyDestinationReviewRequest req4 = new VerifyDestinationReviewRequest();
+        req4.setVerifiedBy(3L);
+        assertThatThrownBy(() -> destinationService.verifyDestinationReview(1L, 5L, req4))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+        // visitDate guard fires before Feign — user 3 must only have been fetched in step 2-3 above
+        verify(userServiceClient, times(1)).getUser(3L);
+
+        // --- Step 7: review belongs to dest2 but caller is verifying dest1 → 400 ---
+        DestinationReview wrongDestReview = new DestinationReview();
+        wrongDestReview.setId(5L);
+        wrongDestReview.setDestination(dest2);
+        wrongDestReview.setVisitDate(LocalDate.now().minusDays(1));
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(dest1));
+        when(destinationReviewRepository.findById(5L)).thenReturn(Optional.of(wrongDestReview));
+
+        VerifyDestinationReviewRequest req5 = new VerifyDestinationReviewRequest();
+        req5.setVerifiedBy(3L);
+        assertThatThrownBy(() -> destinationService.verifyDestinationReview(1L, 5L, req5))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+        // wrong-destination check fires before Feign too
+        verify(userServiceClient, times(1)).getUser(3L);
+    }
 
     @Test
     void lowRatedReviews_negativeMax_throws400() {
@@ -1324,6 +1488,66 @@ class DestinationServiceTest {
         destinationService.getDestinationDashboard(1L);
         // DASHBOARD_VIEWED must be fired on every invocation, even if response was cached
         verify(mongoEventLogger, times(2)).onEvent(eq("DASHBOARD_VIEWED"), any());
+    }
+
+    @Test
+    void dashboard_delegatesToFeignForAggregation() {
+        // Verify the aggregation comes from Feign (itinerary-service), not a local DB query
+        Destination dest = newDestination(5L);
+        when(destinationRepository.findById(5L)).thenReturn(Optional.of(dest));
+        when(itineraryServiceClient.getDestinationDashboardAggregate(5L))
+                .thenReturn(new DestinationDashboardAggregateDTO(5L, 3L, 3L));
+
+        destinationService.getDestinationDashboard(5L);
+
+        verify(itineraryServiceClient).getDestinationDashboardAggregate(5L);
+    }
+
+    /**
+     * S2-F12 full scenario (spec steps 2-5):
+     *
+     * Step 2-3: GET /api/destinations/5/dashboard → Feign returns (5, 3, 3) →
+     *           totalItineraries=5, completedItineraries=3, totalVisitors=3, totalRatings=2, averageRating=4.9
+     * Step 4:   DASHBOARD_VIEWED logged on every call including cache hits
+     * Step 5:   GET /api/destinations/999/dashboard → 404
+     */
+    @Test
+    void dashboard_s2f12_fullScenario() {
+        // Step 2-3: destination "Luxor" ID=5, rating=4.9, totalRatings=2
+        // itinerary-postgres: 5 itineraries (3 PAID → completedItineraries=3, 3 distinct users → totalVisitors=3)
+        Destination luxor = newDestination(5L);
+        luxor.setName("Luxor");
+        luxor.setRating(4.9);
+        luxor.setTotalRatings(2);
+        when(destinationRepository.findById(5L)).thenReturn(Optional.of(luxor));
+        when(itineraryServiceClient.getDestinationDashboardAggregate(5L))
+                .thenReturn(new DestinationDashboardAggregateDTO(5L, 3L, 3L));
+
+        DestinationDashboardDTO dto = destinationService.getDestinationDashboard(5L);
+
+        assertThat(dto.getDestinationId()).isEqualTo(5L);
+        assertThat(dto.getName()).isEqualTo("Luxor");
+        assertThat(dto.getTotalItineraries()).isEqualTo(5L);
+        assertThat(dto.getCompletedItineraries()).isEqualTo(3L);
+        assertThat(dto.getTotalVisitors()).isEqualTo(3L);
+        assertThat(dto.getTotalRatings()).isEqualTo(2);
+        assertThat(dto.getAverageRating()).isEqualTo(4.9);
+        // Feign was used for the aggregation — not a DB query
+        verify(itineraryServiceClient).getDestinationDashboardAggregate(5L);
+        // Step 4: DASHBOARD_VIEWED logged (first call)
+        verify(mongoEventLogger, times(1)).onEvent(eq("DASHBOARD_VIEWED"), any());
+
+        // Step 4: second call (simulating cache hit) still logs DASHBOARD_VIEWED
+        destinationService.getDestinationDashboard(5L);
+        verify(mongoEventLogger, times(2)).onEvent(eq("DASHBOARD_VIEWED"), any());
+
+        // Step 5: dest=999 → 404
+        when(destinationRepository.findById(999L)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> destinationService.getDestinationDashboard(999L))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(404));
+        // 404 path must not reach Feign
+        verify(itineraryServiceClient, never()).getDestinationDashboardAggregate(999L);
     }
 
     // =========================================================================

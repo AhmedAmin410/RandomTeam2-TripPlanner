@@ -349,6 +349,7 @@ public class DestinationService {
 
     @Transactional
     public Destination updateStatus(Long id, String statusRaw) {
+        // 1. Validate input — must be non-blank and a known status value
         if (statusRaw == null || statusRaw.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "status is required");
         }
@@ -358,28 +359,44 @@ public class DestinationService {
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid status");
         }
+
+        // 2. Fetch the destination — 404 if absent
         Destination destination = destinationRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Destination not found"));
+
+        // 3. INACTIVE guard — M3: replace direct SQL count with Feign call to itinerary-service.
+        //    The count covers DRAFT, PLANNED, IN_PROGRESS plus the M3 saga states
+        //    COMPLETING and PAYMENT_PENDING, so a destination cannot be deactivated while
+        //    any trip referencing it is mid-saga.
+        //    ACTIVE and SEASONAL transitions skip this check entirely (same as M1).
         if (newStatus == Destination.Status.INACTIVE) {
             Integer activeCount = itineraryServiceClient.getDestinationActiveItineraryCount(id);
             if (activeCount != null && activeCount > 0) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Active itineraries still reference this destination");
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Cannot mark destination INACTIVE: " + activeCount + " active itinerary/itineraries still reference it");
             }
         }
+
+        // 4. Apply the status change and persist
         Destination.Status oldStatus = destination.getStatus();
         destination.setStatus(newStatus);
-        Destination savedDestination = destinationRepository.save(destination);
-        elasticsearchIndexService.indexDestination(savedDestination, "auto_crud_update");
-        cacheInvalidationService.evictDestinationCaches(savedDestination.getId());
-        Map<String, Object> payload = destinationPayload(savedDestination);
+        Destination saved = destinationRepository.save(destination);
+
+        // 5. Side-effects: Elasticsearch re-index, cache eviction, observer log
+        elasticsearchIndexService.indexDestination(saved, "auto_crud_update");
+        cacheInvalidationService.evictDestinationCaches(saved.getId());
+        Map<String, Object> payload = destinationPayload(saved);
         payload.put("oldStatus", oldStatus != null ? oldStatus.name() : null);
         payload.put("newStatus", newStatus.name());
         notifyObservers("STATUS_CHANGED", payload);
+
+        // 6. Publish destination.status-changed to destination.events exchange
         destinationEventPublisher.publishStatusChanged(new StatusChangedEvent(
                 id,
                 oldStatus != null ? oldStatus.name() : null,
                 newStatus.name()));
-        return savedDestination;
+
+        return saved;
     }
 
     @Transactional(readOnly = true)
