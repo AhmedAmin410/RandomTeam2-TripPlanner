@@ -1,7 +1,8 @@
 package com.randmteam2.tripplanning.itinerary.service;
-import com.randmteam2.tripplanning.itinerary.dto.ItineraryAnalyticsDashboardDTO;
 
 import com.randmteam2.tripplanning.itinerary.dto.*;
+import com.randmteam2.tripplanning.itinerary.dto.ItineraryAnalyticsDashboardDTO;
+import com.randmteam2.tripplanning.itinerary.events.ItineraryRabbitEventPublisher;
 import com.randmteam2.tripplanning.itinerary.model.Itinerary;
 import com.randmteam2.tripplanning.itinerary.model.ItineraryDay;
 import com.randmteam2.tripplanning.itinerary.mongo.ItineraryEventRepository;
@@ -9,9 +10,6 @@ import com.randmteam2.tripplanning.itinerary.observer.EntityObserver;
 import com.randmteam2.tripplanning.itinerary.observer.MongoEventLogger;
 import com.randmteam2.tripplanning.itinerary.repository.ItineraryDayRepository;
 import com.randmteam2.tripplanning.itinerary.repository.ItineraryRepository;
-import org.neo4j.driver.Session;
-import org.neo4j.driver.Values;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,22 +25,30 @@ public class ItineraryService {
 
     private final ItineraryRepository itineraryRepository;
     private final ItineraryDayRepository itineraryDayRepository;
+    private final ItineraryRabbitEventPublisher rabbitEventPublisher;
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
 
     public ItineraryService(ItineraryRepository itineraryRepository,
                             ItineraryDayRepository itineraryDayRepository,
-                            ItineraryEventRepository itineraryEventRepository) {
+                            ItineraryEventRepository itineraryEventRepository,
+                            ItineraryRabbitEventPublisher rabbitEventPublisher) {
         this.itineraryRepository = itineraryRepository;
         this.itineraryDayRepository = itineraryDayRepository;
+        this.rabbitEventPublisher = rabbitEventPublisher;
         register(new MongoEventLogger(itineraryEventRepository));
     }
 
-    public void register(EntityObserver observer) { observers.add(observer); }
-    public void unregister(EntityObserver observer) { observers.remove(observer); }
+    public void register(EntityObserver observer) {
+        observers.add(observer);
+    }
+
+    public void unregister(EntityObserver observer) {
+        observers.remove(observer);
+    }
+
     /**
      * MOD-IT1: Observer retrofit on M1 itinerary write endpoints.
-     * Called after every state-changing operation (create, update, delete,
-     * cancel, complete, assignDestination, addDays) to log events to MongoDB
+     * Called after every state-changing operation to log events to MongoDB
      * via the registered EntityObserver chain.
      */
     private void notifyObservers(String eventType, Object payload) {
@@ -77,6 +83,7 @@ public class ItineraryService {
 
     public Itinerary update(Long id, Itinerary updated) {
         Itinerary existing = getById(id);
+
         existing.setUserId(updated.getUserId());
         existing.setDestinationId(updated.getDestinationId());
         existing.setTitle(updated.getTitle());
@@ -85,14 +92,19 @@ public class ItineraryService {
         existing.setMetadata(updated.getMetadata());
         existing.setStartDate(updated.getStartDate());
         existing.setEndDate(updated.getEndDate());
+
         Itinerary saved = itineraryRepository.save(existing);
+
         notifyObservers("ITINERARY_UPDATED", itineraryPayload("ITINERARY_UPDATED", saved));
+
         return saved;
     }
 
     public void delete(Long id) {
         Itinerary itinerary = getById(id);
+
         itineraryRepository.deleteById(id);
+
         notifyObservers("ITINERARY_DELETED", itineraryPayload("ITINERARY_DELETED", itinerary));
     }
 
@@ -113,7 +125,16 @@ public class ItineraryService {
         }
 
         Itinerary saved = itineraryRepository.save(itinerary);
+
         notifyObservers("ITINERARY_COMPLETED", itineraryPayload("ITINERARY_COMPLETED", saved));
+
+        /*
+         * Requirement 2 / S1-EVENTS:
+         * Publish itinerary.completed to RabbitMQ.
+         * user-service will consume this event and invalidate S1-F3 cache.
+         */
+        rabbitEventPublisher.publishItineraryCompleted(saved);
+
         return saved;
     }
 
@@ -128,9 +149,20 @@ public class ItineraryService {
         }
 
         itinerary.setStatus(Itinerary.Status.CANCELLED);
+
         itineraryRepository.cancelPendingBookings(id);
+
         Itinerary saved = itineraryRepository.save(itinerary);
+
         notifyObservers("ITINERARY_CANCELLED", itineraryPayload("ITINERARY_CANCELLED", saved));
+
+        /*
+         * Requirement 2 / S1-EVENTS:
+         * Publish itinerary.cancelled to RabbitMQ.
+         * user-service will consume this event and invalidate S1-F3 cache.
+         */
+        rabbitEventPublisher.publishItineraryCancelled(saved);
+
         return saved;
     }
 
@@ -144,19 +176,24 @@ public class ItineraryService {
         }
 
         Integer exists = itineraryRepository.checkDestinationExists(destinationId);
+
         if (exists == null || exists == 0) {
             throw new RuntimeException("Destination not found with id: " + destinationId);
         }
 
         Integer active = itineraryRepository.checkDestinationActive(destinationId);
+
         if (active == null || active == 0) {
             throw new RuntimeException("Destination must be ACTIVE to assign it");
         }
 
         itinerary.setDestinationId(destinationId);
         itinerary.setStatus(Itinerary.Status.PLANNED);
+
         Itinerary saved = itineraryRepository.save(itinerary);
+
         notifyObservers("DESTINATION_ASSIGNED", itineraryPayload("DESTINATION_ASSIGNED", saved));
+
         return saved;
     }
 
@@ -179,8 +216,10 @@ public class ItineraryService {
         int maxOrder = itineraryRepository.getMaxDayOrder(itineraryId);
 
         List<ItineraryDay> newDays = new ArrayList<>();
+
         for (ItineraryDayRequest req : dayRequests) {
             maxOrder++;
+
             ItineraryDay day = new ItineraryDay();
             day.setDayOrder(maxOrder);
             day.setDate(req.date());
@@ -189,6 +228,7 @@ public class ItineraryService {
             day.setMetadata(req.metadata());
             day.setStatus(ItineraryDay.Status.PLANNED);
             day.setItinerary(itinerary);
+
             newDays.add(day);
         }
 
@@ -196,8 +236,11 @@ public class ItineraryService {
 
         Itinerary result = itineraryRepository.findById(itineraryId)
                 .orElseThrow(() -> new RuntimeException("Itinerary not found with id: " + itineraryId));
+
         result.setItineraryDays(itineraryDayRepository.findByItineraryIdOrderByDayOrder(itineraryId));
+
         notifyObservers("DAYS_ADDED", itineraryPayload("DAYS_ADDED", result));
+
         return result;
     }
 
@@ -235,7 +278,9 @@ public class ItineraryService {
         double activities = 100.0 * request.numberOfDays();
 
         Integer activeCount = itineraryRepository.countActiveItinerariesForDestination(request.destinationId());
+
         double seasonMultiplier;
+
         if (activeCount <= 5) {
             seasonMultiplier = 1.0;
         } else if (activeCount <= 15) {
@@ -259,13 +304,16 @@ public class ItineraryService {
         if (key == null || key.isBlank() || value == null || value.isBlank()) {
             throw new IllegalArgumentException("key and value must not be blank");
         }
+
         return itineraryRepository.filterByMetadata(key, value);
     }
 
     public ItineraryAnalyticsDTO getAnalytics(LocalDate startDate, LocalDate endDate) {
         try {
             Object[] result = itineraryRepository.getAnalytics(startDate, endDate);
+
             Object[] row;
+
             if (result.length > 0 && result[0] instanceof Object[]) {
                 row = (Object[]) result[0];
             } else {
@@ -287,6 +335,7 @@ public class ItineraryService {
                     .averageBudget(avgBudget)
                     .completionRate(completionRate)
                     .build();
+
         } catch (Exception e) {
             return ItineraryAnalyticsDTO.builder()
                     .totalItineraries(0L)
@@ -298,19 +347,24 @@ public class ItineraryService {
                     .build();
         }
     }
+
     public ItineraryAnalyticsDashboardDTO getAnalyticsDashboard(LocalDate startDate, LocalDate endDate) {
 
-        // Log ANALYTICS_VIEWED on every call (even cache hits) Ã¢â‚¬â€ outside try block
+        /*
+         * Log ANALYTICS_VIEWED on every call.
+         */
         Map<String, Object> eventPayload = new HashMap<>();
         eventPayload.put("itineraryId", 0L);
         eventPayload.put("startDate", startDate.toString());
         eventPayload.put("endDate", endDate.toString());
+
         notifyObservers("ANALYTICS_VIEWED", eventPayload);
 
         try {
             Object[] result = itineraryRepository.getDashboardAnalytics(startDate, endDate);
 
             Object[] row;
+
             if (result.length > 0 && result[0] instanceof Object[]) {
                 row = (Object[]) result[0];
             } else {
@@ -329,11 +383,26 @@ public class ItineraryService {
             double completionRate = total > 0 ? (double) completed / total : 0.0;
 
             Map<String, Long> byStatus = new HashMap<>();
-            if (completed > 0) byStatus.put("COMPLETED", completed);
-            if (cancelled > 0) byStatus.put("CANCELLED", cancelled);
-            if (planned > 0) byStatus.put("PLANNED", planned);
-            if (draft > 0) byStatus.put("DRAFT", draft);
-            if (inProgress > 0) byStatus.put("IN_PROGRESS", inProgress);
+
+            if (completed > 0) {
+                byStatus.put("COMPLETED", completed);
+            }
+
+            if (cancelled > 0) {
+                byStatus.put("CANCELLED", cancelled);
+            }
+
+            if (planned > 0) {
+                byStatus.put("PLANNED", planned);
+            }
+
+            if (draft > 0) {
+                byStatus.put("DRAFT", draft);
+            }
+
+            if (inProgress > 0) {
+                byStatus.put("IN_PROGRESS", inProgress);
+            }
 
             return ItineraryAnalyticsDashboardDTO.builder()
                     .totalItineraries(total)
@@ -353,12 +422,62 @@ public class ItineraryService {
                     .build();
         }
     }
+
     public List<ItineraryDay> getDays(Long itineraryId) {
         getById(itineraryId);
+
         return itineraryDayRepository.findByItineraryIdOrderByDayOrder(itineraryId);
     }
 
+    /*
+     * Requirement 2 / S1-EVENTS:
+     * This method is called by ItineraryRabbitEventListener when itinerary-service
+     * receives user.registered from RabbitMQ.
+     *
+     * In this project, there is no extra itinerary record required at registration time,
+     * so we only log the event. This still proves that itinerary-service consumed
+     * the user.registered event.
+     */
+    public void handleUserRegistered(Long userId) {
+        System.out.println("[Saga] user.registered received in itinerary-service. userId=" + userId);
+    }
 
+    /*
+     * Requirement 2 / S1-EVENTS:
+     * This method is called by ItineraryRabbitEventListener when itinerary-service
+     * receives user.deactivated from RabbitMQ.
+     *
+     * It cancels DRAFT and PLANNED itineraries for the deactivated user,
+     * then publishes itinerary.cancelled so user-service can invalidate S1-F3 cache.
+     */
+    @Transactional
+    public void handleUserDeactivated(Long userId) {
+        if (userId == null) {
+            System.out.println("[Saga] user.deactivated received without userId. Skipping.");
+            return;
+        }
 
+        List<Itinerary> affectedItineraries = itineraryRepository.findByUserIdAndStatusIn(
+                userId,
+                List.of(Itinerary.Status.DRAFT, Itinerary.Status.PLANNED)
+        );
 
+        for (Itinerary itinerary : affectedItineraries) {
+            itinerary.setStatus(Itinerary.Status.CANCELLED);
+
+            Itinerary saved = itineraryRepository.save(itinerary);
+
+            notifyObservers(
+                    "ITINERARY_CANCELLED_BY_USER_DEACTIVATION",
+                    itineraryPayload("ITINERARY_CANCELLED_BY_USER_DEACTIVATION", saved)
+            );
+
+            rabbitEventPublisher.publishItineraryCancelled(saved);
+        }
+
+        System.out.println("[Saga] user.deactivated processed. Cancelled "
+                + affectedItineraries.size()
+                + " DRAFT/PLANNED itineraries for userId="
+                + userId);
+    }
 }

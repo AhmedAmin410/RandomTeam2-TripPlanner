@@ -3,13 +3,56 @@ services:
     image: postgres:16
     container_name: tripplanning-db
     ports:
-      - "5432:5432"
+      - "5433:5432"
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: tripplanningdb
     volumes:
       - pgdata:/var/lib/postgresql/data
+
+  mongodb:
+    image: mongo:7
+    container_name: tripplanning-mongo
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: rootpass
+    volumes:
+      - mongodata:/data/db
+
+  redis:
+    image: redis:7
+    container_name: tripplanning-redis
+    command: redis-server --requirepass redispass
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+
+  neo4j:
+    image: neo4j:5
+    container_name: tripplanning-neo4j
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      NEO4J_AUTH: neo4j/neo4jpass
+    volumes:
+      - neo4jdata:/data
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: tripplanning-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmqdata:/var/lib/rabbitmq
 
   user-service:
     build: ./user-service
@@ -19,8 +62,25 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tripplanningdb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
+
+      SPRING_DATA_MONGODB_URI: mongodb://root:rootpass@mongodb:27017/tripplanningmongo?authSource=admin
+
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_PASSWORD: redispass
+
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: guest
+      RABBITMQ_PASSWORD: guest
+
+      JWT_SECRET: dGhpcyBpcyBhIHNlY3VyZSByYW5kb20ga2V5IGZvciBqd3Q=
+      JWT_EXPIRATION_MS: 86400000
     depends_on:
       - postgres
+      - mongodb
+      - redis
+      - rabbitmq
 
   destination-service:
     build: ./destination-service
@@ -41,8 +101,30 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/tripplanningdb
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
+
+      SPRING_DATA_MONGODB_URI: mongodb://root:rootpass@mongodb:27017/tripplanningmongo?authSource=admin
+
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_PASSWORD: redispass
+
+      SPRING_DATA_NEO4J_URI: bolt://neo4j:7687
+      SPRING_DATA_NEO4J_USERNAME: neo4j
+      SPRING_DATA_NEO4J_PASSWORD: neo4jpass
+
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: guest
+      RABBITMQ_PASSWORD: guest
+
+      JWT_SECRET: dGhpcyBpcyBhIHNlY3VyZSByYW5kb20ga2V5IGZvciBqd3Q=
+      JWT_EXPIRATION_MS: 86400000
     depends_on:
       - postgres
+      - mongodb
+      - redis
+      - neo4j
+      - rabbitmq
 
   activity-service:
     build: ./activity-service
@@ -66,5 +148,31 @@ services:
     depends_on:
       - postgres
 
+  prometheus:
+    image: prom/prometheus
+    container_name: tripplanning-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    depends_on:
+      - user-service
+      - itinerary-service
+
+  grafana:
+    image: grafana/grafana
+    container_name: tripplanning-grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    volumes:
+      - grafanadata:/var/lib/grafana
+
 volumes:
   pgdata:
+  mongodata:
+  redisdata:
+  neo4jdata:
+  rabbitmqdata:
+  grafanadata:

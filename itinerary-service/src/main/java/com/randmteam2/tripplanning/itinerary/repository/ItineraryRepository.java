@@ -13,23 +13,31 @@ import java.util.List;
 
 @Repository
 public interface ItineraryRepository extends JpaRepository<Itinerary, Long> {
+
+    /*
+     * Requirement 2 / S1-EVENTS:
+     * Used by itinerary-service when it receives user.deactivated event.
+     * It finds all DRAFT/PLANNED itineraries for that user so they can be cancelled.
+     */
+    List<Itinerary> findByUserIdAndStatusIn(Long userId, List<Itinerary.Status> statuses);
+
     @Query(value = """
         SELECT COALESCE(SUM(b.amount), 0)
         FROM bookings b
-        WHERE b.itinerary_id = :itineraryId
+        WHERE b.itin_id = :itineraryId
         AND b.status = 'CONFIRMED'
         """, nativeQuery = true)
     Double sumConfirmedBookings(@Param("itineraryId") Long itineraryId);
+
     @Modifying
     @Transactional
     @Query(value = """
         UPDATE bookings
         SET status = 'CANCELLED'
-        WHERE itinerary_id = :itineraryId
+        WHERE itin_id = :itineraryId
         AND status = 'PENDING'
         """, nativeQuery = true)
     void cancelPendingBookings(@Param("itineraryId") Long itineraryId);
-
 
     @Query(value = """
         SELECT COUNT(*) FROM destinations
@@ -44,14 +52,12 @@ public interface ItineraryRepository extends JpaRepository<Itinerary, Long> {
         """, nativeQuery = true)
     Integer checkDestinationExists(@Param("destinationId") Long destinationId);
 
-
     @Query(value = """
         SELECT COALESCE(MAX(day_order), 0)
         FROM itinerary_days
         WHERE itinerary_id = :itineraryId
         """, nativeQuery = true)
     Integer getMaxDayOrder(@Param("itineraryId") Long itineraryId);
-
 
     @Query(value = """
         SELECT * FROM itineraries
@@ -83,64 +89,60 @@ public interface ItineraryRepository extends JpaRepository<Itinerary, Long> {
     );
 
     @Query(value = """
-    SELECT COUNT(*) as total,
-        SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) as completed,
-        SUM(CASE WHEN status = 'CANCELLED' THEN 1 ELSE 0 END) as cancelled,
-        COALESCE(SUM(estimated_budget), 0) as totalBudget,
-        COALESCE(AVG(CASE WHEN status = 'COMPLETED' THEN estimated_budget END), 0) as avgBudget
-    FROM itineraries
-    WHERE start_date >= :startDate
-    AND start_date <= :endDate
-    """, nativeQuery = true)
+        SELECT COUNT(*) as total,
+            SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) as completed,
+            SUM(CASE WHEN status = 'CANCELLED' THEN 1 ELSE 0 END) as cancelled,
+            COALESCE(SUM(estimated_budget), 0) as totalBudget,
+            COALESCE(AVG(CASE WHEN status = 'COMPLETED' THEN estimated_budget END), 0) as avgBudget
+        FROM itineraries
+        WHERE start_date >= :startDate
+        AND start_date <= :endDate
+        """, nativeQuery = true)
     Object[] getAnalytics(
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate
     );
 
     @Query(value = """
-    SELECT COUNT(*) > 0 FROM users WHERE email = :email
-    """, nativeQuery = true)
+        SELECT COUNT(*) > 0 FROM users WHERE email = :email
+        """, nativeQuery = true)
     boolean existsByUserEmail(@Param("email") String email);
 
     @Query(value = """
-    SELECT
-        COUNT(*) as total,
-        COALESCE(SUM(estimated_budget), 0) as totalBudget,
-        COALESCE(AVG(estimated_budget), 0) as avgBudget,
-        SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) as completed,
-        SUM(CASE WHEN status = 'CANCELLED' THEN 1 ELSE 0 END) as cancelled,
-        SUM(CASE WHEN status = 'PLANNED' THEN 1 ELSE 0 END) as planned,
-        SUM(CASE WHEN status = 'DRAFT' THEN 1 ELSE 0 END) as draft,
-        SUM(CASE WHEN status = 'IN_PROGRESS' THEN 1 ELSE 0 END) as inProgress
-    FROM itineraries
-    WHERE start_date >= :startDate
-    AND start_date <= :endDate
-    """, nativeQuery = true)
+        SELECT
+            COUNT(*) as total,
+            COALESCE(SUM(estimated_budget), 0) as totalBudget,
+            COALESCE(AVG(estimated_budget), 0) as avgBudget,
+            SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) as completed,
+            SUM(CASE WHEN status = 'CANCELLED' THEN 1 ELSE 0 END) as cancelled,
+            SUM(CASE WHEN status = 'PLANNED' THEN 1 ELSE 0 END) as planned,
+            SUM(CASE WHEN status = 'DRAFT' THEN 1 ELSE 0 END) as draft,
+            SUM(CASE WHEN status = 'IN_PROGRESS' THEN 1 ELSE 0 END) as inProgress
+        FROM itineraries
+        WHERE start_date >= :startDate
+        AND start_date <= :endDate
+        """, nativeQuery = true)
     Object[] getDashboardAnalytics(
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate
     );
 
     @Query(value = """
-    SELECT u.id as userId, u.name as userName
-    FROM users u
-    WHERE u.id = :userId
-    """, nativeQuery = true)
+        SELECT u.id as userId, u.name as userName
+        FROM users u
+        WHERE u.id = :userId
+        """, nativeQuery = true)
     Object[] getUserById(@Param("userId") Long userId);
 
     @Query(value = """
-    SELECT d.id as destinationId, d.name as destinationName,
-           d.country as country, d.category as category
-    FROM destinations d
-    WHERE d.id = :destinationId
-    """, nativeQuery = true)
+        SELECT d.id as destinationId, d.name as destinationName,
+               d.country as country, d.category as category
+        FROM destinations d
+        WHERE d.id = :destinationId
+        """, nativeQuery = true)
     Object[] getDestinationById(@Param("destinationId") Long destinationId);
-
 
     // S3-F12: Fetch destination details by id for enrichment
     @Query(value = "SELECT id, name, country, category FROM destinations WHERE id = :destId", nativeQuery = true)
     Object[] findDestinationDetails(@Param("destId") Long destId);
-
-
-
 }
