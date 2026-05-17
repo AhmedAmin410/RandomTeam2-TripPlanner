@@ -24,6 +24,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/bookings/health").permitAll()
                         .requestMatchers("/actuator/**").permitAll()
+                        .requestMatchers("/api/bookings/user/*/total").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
