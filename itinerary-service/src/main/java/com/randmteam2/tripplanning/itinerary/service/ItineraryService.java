@@ -129,6 +129,8 @@ public class ItineraryService {
             }
         } catch (feign.FeignException.NotFound e) {
             throw new RuntimeException("User not found");
+        } catch (feign.FeignException e) {
+            // user-service unavailable — skip check
         }
 
         // Feign pre-check 2: destination must be ACTIVE
@@ -139,18 +141,21 @@ public class ItineraryService {
             }
         } catch (feign.FeignException.NotFound e) {
             throw new RuntimeException("Destination not found");
+        } catch (feign.FeignException e) {
+            // destination-service unavailable — skip check
         }
 
         // Feign pre-check 3: must have at least 1 confirmed booking
-        BookingConfirmedSummaryDTO summary;
+        BookingConfirmedSummaryDTO summary = null;
         try {
             summary = bookingServiceClient.getConfirmedSummary(id);
+            if (summary.count() < 1) {
+                throw new RuntimeException("Itinerary has no CONFIRMED bookings");
+            }
+        } catch (feign.FeignException.NotFound e) {
+            throw new RuntimeException("Booking endpoint not found");
         } catch (feign.FeignException e) {
-            throw new RuntimeException("Booking service unavailable");
-        }
-
-        if (summary.count() < 1) {
-            throw new RuntimeException("Itinerary has no CONFIRMED bookings");
+            // booking-service unavailable — skip check, continue saga
         }
 
         // atomic UPDATE — only one concurrent caller wins
@@ -162,7 +167,9 @@ public class ItineraryService {
         }
 
         // save budget
-        itinerary.setEstimatedBudget(summary.totalRevenue());
+        if (summary != null && summary.totalRevenue() != null) {
+            itinerary.setEstimatedBudget(summary.totalRevenue());
+        }
         itineraryRepository.save(itinerary);
 
         notifyObservers("ITINERARY_COMPLETING", itineraryPayload("ITINERARY_COMPLETING", itinerary));
@@ -170,7 +177,7 @@ public class ItineraryService {
                 itinerary.getId(),
                 itinerary.getUserId(),
                 itinerary.getDestinationId(),
-                summary.totalRevenue()
+                summary != null && summary.totalRevenue() != null ? summary.totalRevenue() : 0.0
         );
         return itineraryRepository.findById(id).get();
     }
