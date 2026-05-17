@@ -293,8 +293,26 @@ public class DestinationService {
 
     // ─── M1 Features ─────────────────────────────────────────────────────────
 
+    /**
+     * S2-F3: Get Destination Booking Revenue Summary.
+     *
+     * M3 change: the M1 implementation joined destinations, itineraries, and bookings
+     * across all three databases in a single native SQL query. That cross-database JOIN is
+     * replaced here with a single Feign call to itinerary-service, which encapsulates the
+     * chain (itinerary-service → booking-service) and returns the pre-aggregated result.
+     * destination-service never opens a JDBC connection to itinerary-postgres or
+     * booking-postgres.
+     *
+     * The returned aggregate is then mapped to DestinationRevenueDTO via the
+     * ObjectArrayDtoAdapter (M2 Builder contract preserved).
+     *
+     * Cache: 10-minute TTL, keyed by destinationId + date range.
+     */
     @Transactional(readOnly = true)
-    public DestinationRevenueDTO getDestinationRevenueSummary(Long destinationId, LocalDate startDate, LocalDate endDate) {
+    public DestinationRevenueDTO getDestinationRevenueSummary(Long destinationId,
+                                                              LocalDate startDate,
+                                                              LocalDate endDate) {
+        // 1. Validate date parameters
         if (startDate == null || endDate == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate and endDate are required");
         }
@@ -302,29 +320,36 @@ public class DestinationService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "endDate must not be before startDate");
         }
 
+        // 2. Return cached result if present
         String cacheKey = "destination-service::S2-F3::" + destinationId + "::" + startDate + "::" + endDate;
         try {
             Object cached = redisTemplate.opsForValue().get(cacheKey);
-            if (cached instanceof DestinationRevenueDTO dto) {
-                return dto;
+            if (cached instanceof DestinationRevenueDTO hit) {
+                return hit;
             }
         } catch (Exception e) {
-            logger.warn("Redis read failed", e);
+            logger.warn("Redis read failed for S2-F3 key {}", cacheKey, e);
         }
 
+        // 3. Validate destination exists — 404 if not found
         Destination destination = destinationRepository.findById(destinationId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Destination not found"));
 
+        // 4. Single Feign call to itinerary-service (M3 — replaces 3-table JOIN)
         DestinationBookingRevenueAggregateDTO aggregate = itineraryServiceClient.getDestinationBookingRevenue(
                 destinationId, startDate.toString(), endDate.toString());
+
+        // 5. Adapt aggregate + local destination fields into the response DTO
         DestinationRevenueDTO dto = objectArrayDtoAdapter.adaptRevenue(
                 destination.getId(), destination.getName(), aggregate);
 
+        // 6. Cache for 10 minutes
         try {
             redisTemplate.opsForValue().set(cacheKey, dto, 10, TimeUnit.MINUTES);
         } catch (Exception e) {
-            logger.warn("Redis write failed", e);
+            logger.warn("Redis write failed for S2-F3 key {}", cacheKey, e);
         }
+
         return dto;
     }
 
@@ -347,12 +372,30 @@ public class DestinationService {
         return savedDestination;
     }
 
+    /**
+     * S2-F4: Update Destination Status.
+     *
+     * M3 change: the M1 INACTIVE guard used a direct SQL COUNT on the shared database
+     * (SELECT COUNT(*) FROM itineraries WHERE destination_id = ? AND status IN ('DRAFT','PLANNED','IN_PROGRESS')).
+     * That is replaced with a single Feign call to itinerary-service at
+     * GET /api/itineraries/destination/{destinationId}/active-count which counts over the
+     * expanded M3 active set: DRAFT, PLANNED, IN_PROGRESS, COMPLETING, PAYMENT_PENDING.
+     * The saga states (COMPLETING, PAYMENT_PENDING) are included so a destination cannot
+     * be deactivated while any trip referencing it is mid-saga.
+     *
+     * For ACTIVE or SEASONAL transitions the Feign call is skipped entirely (same as M1).
+     *
+     * After every successful status change a destination.status-changed event is published
+     * to the destination.events RabbitMQ exchange.
+     */
     @Transactional
     public Destination updateStatus(Long id, String statusRaw) {
-        // 1. Validate input — must be non-blank and a known status value
+        // 1. Reject blank or null input
         if (statusRaw == null || statusRaw.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "status is required");
         }
+
+        // 2. Parse to enum — reject unknown values with 400
         final Destination.Status newStatus;
         try {
             newStatus = Destination.Status.valueOf(statusRaw.trim().toUpperCase());
@@ -360,29 +403,27 @@ public class DestinationService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid status");
         }
 
-        // 2. Fetch the destination — 404 if absent
+        // 3. Fetch destination — 404 if absent
         Destination destination = destinationRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Destination not found"));
 
-        // 3. INACTIVE guard — M3: replace direct SQL count with Feign call to itinerary-service.
-        //    The count covers DRAFT, PLANNED, IN_PROGRESS plus the M3 saga states
-        //    COMPLETING and PAYMENT_PENDING, so a destination cannot be deactivated while
-        //    any trip referencing it is mid-saga.
-        //    ACTIVE and SEASONAL transitions skip this check entirely (same as M1).
+        // 4. INACTIVE guard (M3): single Feign call replaces the M1 direct SQL COUNT.
+        //    ACTIVE and SEASONAL transitions skip this block entirely.
         if (newStatus == Destination.Status.INACTIVE) {
             Integer activeCount = itineraryServiceClient.getDestinationActiveItineraryCount(id);
             if (activeCount != null && activeCount > 0) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Cannot mark destination INACTIVE: " + activeCount + " active itinerary/itineraries still reference it");
+                        "Cannot mark destination INACTIVE: " + activeCount +
+                                " active itinerary/itineraries still reference it");
             }
         }
 
-        // 4. Apply the status change and persist
+        // 5. Apply change and persist
         Destination.Status oldStatus = destination.getStatus();
         destination.setStatus(newStatus);
         Destination saved = destinationRepository.save(destination);
 
-        // 5. Side-effects: Elasticsearch re-index, cache eviction, observer log
+        // 6. Side-effects: Elasticsearch re-index, cache eviction, observer log
         elasticsearchIndexService.indexDestination(saved, "auto_crud_update");
         cacheInvalidationService.evictDestinationCaches(saved.getId());
         Map<String, Object> payload = destinationPayload(saved);
@@ -390,7 +431,7 @@ public class DestinationService {
         payload.put("newStatus", newStatus.name());
         notifyObservers("STATUS_CHANGED", payload);
 
-        // 6. Publish destination.status-changed to destination.events exchange
+        // 7. Publish destination.status-changed event to destination.events exchange
         destinationEventPublisher.publishStatusChanged(new StatusChangedEvent(
                 id,
                 oldStatus != null ? oldStatus.name() : null,
