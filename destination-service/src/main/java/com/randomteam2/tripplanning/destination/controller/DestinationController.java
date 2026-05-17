@@ -42,8 +42,8 @@ public class DestinationController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Destination> getDestinationById(@PathVariable Long id) {
-        return ResponseEntity.ok(destinationService.getDestinationById(id));
+    public ResponseEntity<DestinationDTO> getDestinationById(@PathVariable Long id) {
+        return ResponseEntity.ok(destinationService.getDestinationDTOById(id));
     }
 
     @PutMapping("/{id}")

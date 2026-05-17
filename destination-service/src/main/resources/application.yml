@@ -2,7 +2,7 @@ spring:
   application:
     name: destination-service
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/tripplanningdb}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://destination-postgres:5432/tripdb-destinations}
     username: ${SPRING_DATASOURCE_USERNAME:postgres}
     password: ${SPRING_DATASOURCE_PASSWORD:postgres}
   jpa:
