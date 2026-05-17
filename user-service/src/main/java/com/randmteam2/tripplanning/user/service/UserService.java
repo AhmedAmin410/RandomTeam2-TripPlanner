@@ -82,6 +82,13 @@ public class UserService {
         User saved = userRepository.save(user);
         eventPublisher.notifyObservers("USER_CREATED", Map.of("userId", saved.getId(), "email", saved.getEmail()));
         cacheInvalidationService.evictUserReadCaches();
+        try {
+            rabbitTemplate.convertAndSend("user.events", "user.registered",
+                    Map.of("userId", saved.getId(), "email", saved.getEmail(), "role", saved.getRole().name()));
+            log.info("Published user.registered for userId={}", saved.getId());
+        } catch (Exception e) {
+            log.warn("Failed to publish user.registered for userId={}: {}", saved.getId(), e.getMessage());
+        }
         return saved;
     }
 
