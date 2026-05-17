@@ -5,6 +5,9 @@ package com.randmteam2.tripplanning.activity.controller;
 import com.randmteam2.tripplanning.activity.dto.*;
 import com.randmteam2.tripplanning.activity.model.Activity;
 import com.randmteam2.tripplanning.activity.service.ActivityService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.time.Instant;
@@ -14,6 +17,8 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api/activities")
 public class ActivityController {
+
+    private static final Logger log = LoggerFactory.getLogger(ActivityController.class);
 
     private final ActivityService activityService;
 
@@ -67,7 +72,18 @@ public class ActivityController {
     @PostMapping("/itinerary/{itineraryId}")
     public ResponseEntity<Activity> createForItinerary(@PathVariable Long itineraryId,
                                                        @RequestBody Activity activity) {
-        return ResponseEntity.status(201).body(activityService.createForItinerary(itineraryId, activity));
+        log.info("Received POST /api/activities/itinerary/{}", itineraryId);
+        Activity created = activityService.createForItinerary(itineraryId, activity);
+        log.info("Returning 201 for POST /api/activities/itinerary/{}", itineraryId);
+        return ResponseEntity.status(201).body(created);
+    }
+
+    @PostMapping("/batch")
+    public ResponseEntity<Map<String, Object>> batchCreate(@RequestBody BatchActivityRequest request) {
+        log.info("Received POST /api/activities/batch for itinerary {}", request.getItineraryId());
+        List<Activity> created = activityService.batchCreate(request.getItineraryId(), request.getActivities());
+        log.info("Returning 201 for POST /api/activities/batch, count={}", created.size());
+        return ResponseEntity.status(201).body(Map.of("count", created.size(), "activities", created));
     }
 
 
