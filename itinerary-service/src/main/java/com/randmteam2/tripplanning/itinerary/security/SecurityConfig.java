@@ -27,6 +27,10 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/itineraries/health").permitAll()
                         .requestMatchers("/actuator/**").permitAll()
+                        // Internal Feign endpoints — called service-to-service without gateway JWT
+                        .requestMatchers("/api/itineraries/user/*/summary").permitAll()
+                        .requestMatchers("/api/itineraries/user/*/active-count").permitAll()
+                        .requestMatchers("/api/itineraries/user/*/completed-count").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter,

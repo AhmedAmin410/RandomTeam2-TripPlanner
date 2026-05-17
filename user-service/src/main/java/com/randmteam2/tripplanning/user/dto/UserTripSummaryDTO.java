@@ -1,6 +1,8 @@
 package com.randmteam2.tripplanning.user.dto;
 
-// Response shape returned to callers — exposes both M2 (totalItineraries) and M3 (totalTrips) field names
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class UserTripSummaryDTO {
 
     private Long userId;
