@@ -172,6 +172,31 @@ public class DestinationService {
         return destination;
     }
 
+    /**
+     * Returns the clean DestinationDTO used by GET /api/destinations/{id}.
+     * Called by S3 and S5 via Feign — returns exactly:
+     * id, name, country, category, status, rating, totalRatings, details.
+     */
+    @Transactional(readOnly = true)
+    public DestinationDTO getDestinationDTOById(Long id) {
+        Destination destination = getDestinationById(id);
+        return toDTO(destination);
+    }
+
+    private DestinationDTO toDTO(Destination d) {
+        return new DestinationDTO(
+                d.getId(),
+                d.getName(),
+                d.getCountry(),
+                d.getCategory() != null ? d.getCategory().name() : null,
+                d.getStatus() != null ? d.getStatus().name() : null,
+                d.getRating(),
+                d.getTotalRatings(),
+                d.getDetails()
+        );
+    }
+
+
     @Transactional
     public Destination updateDestination(Long id, Destination updated) {
         Destination existing = destinationRepository.findById(id)
@@ -443,8 +468,10 @@ public class DestinationService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Itinerary does not reference this destination");
         }
         String status = itinerary.status() != null ? itinerary.status().trim().toUpperCase() : "";
-        if (!"COMPLETED".equals(status) && !"PAID".equals(status)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Itinerary must be COMPLETED to rate this destination");
+        if (!"COMPLETED".equals(status) && !"COMPLETING".equals(status)
+                && !"PAYMENT_PENDING".equals(status) && !"PAID".equals(status)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Itinerary must be in a completed state (COMPLETED, COMPLETING, PAYMENT_PENDING, or PAID) to rate this destination");
         }
         int priorCount = destination.getTotalRatings() != null ? destination.getTotalRatings() : 0;
         double priorAvg = destination.getRating() != null ? destination.getRating() : 0.0;
@@ -462,9 +489,8 @@ public class DestinationService {
         destinationEventPublisher.publishRated(new DestinationRatedEvent(
                 destinationId,
                 request.getItineraryId(),
-                ratingValue,
-                itinerary.userId(),
-                LocalDateTime.now()));
+                (double) ratingValue,
+                itinerary.userId()));
         return savedDestination;
     }
 

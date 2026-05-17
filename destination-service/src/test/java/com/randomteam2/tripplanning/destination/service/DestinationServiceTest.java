@@ -197,6 +197,180 @@ class DestinationServiceTest {
         assertThat(dto.getAverageBookingAmount()).isEqualTo(0.0);
     }
 
+    /**
+     * Spec test scenario (verbatim):
+     * Destination ID=1 ("Dahab", category=ADVENTURE).
+     * 5 CONFIRMED bookings with amounts 200, 300, 400, 500, 600 → totalRevenue=2000, average=400.
+     * Expects: totalBookings=5, totalRevenue=2000.00, averageBookingAmount=400.00.
+     * Verifies: exactly one Feign call to itinerary-service; no JDBC to itinerary/booking DBs.
+     */
+    @Test
+    void revenueSummary_specScenario_dahab5Bookings_returns2000Revenue() {
+        // setup: Destination ID=1 "Dahab" ADVENTURE
+        Destination destination = newDestination(1L);
+        destination.setName("Dahab");
+        LocalDate start = LocalDate.of(2026, 3, 1);
+        LocalDate end   = LocalDate.of(2026, 3, 31);
+
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(destination));
+
+        // itinerary-service returns aggregate of 5 bookings totalling 2000 (200+300+400+500+600)
+        DestinationBookingRevenueAggregateDTO aggregate = new DestinationBookingRevenueAggregateDTO(
+                5L, new BigDecimal("2000.00"), new BigDecimal("400.00"));
+        when(itineraryServiceClient.getDestinationBookingRevenue(1L, "2026-03-01", "2026-03-31"))
+                .thenReturn(aggregate);
+
+        when(objectArrayDtoAdapter.adaptRevenue(1L, "Dahab", aggregate))
+                .thenReturn(DestinationRevenueDTO.builder()
+                        .destinationId(1L).name("Dahab")
+                        .totalBookings(5L).totalRevenue(2000.00).averageBookingAmount(400.00)
+                        .build());
+
+        // action
+        DestinationRevenueDTO dto = destinationService.getDestinationRevenueSummary(1L, start, end);
+
+        // expect: 200 — totalBookings=5, totalRevenue=2000.00, averageBookingAmount=400.00
+        assertThat(dto.getDestinationId()).isEqualTo(1L);
+        assertThat(dto.getName()).isEqualTo("Dahab");
+        assertThat(dto.getTotalBookings()).isEqualTo(5L);
+        assertThat(dto.getTotalRevenue()).isEqualTo(2000.00);
+        assertThat(dto.getAverageBookingAmount()).isEqualTo(400.00);
+
+        // verify: exactly ONE Feign call to itinerary-service — no direct DB access to itinerary/booking DBs
+        verify(itineraryServiceClient, times(1))
+                .getDestinationBookingRevenue(1L, "2026-03-01", "2026-03-31");
+        verify(destinationRepository, times(1)).findById(1L);
+    }
+
+    /**
+     * Verifies LocalDate is serialised to "yyyy-MM-dd" strings before being passed to Feign.
+     * Catches any date-formatting regression (e.g. toString() vs DateTimeFormatter).
+     */
+    @Test
+    void revenueSummary_dateParamsFormattedAsIso_yyyy_MM_dd() {
+        Destination destination = newDestination(5L);
+        destination.setName("Luxor");
+        LocalDate start = LocalDate.of(2026, 1, 5);   // single-digit day & month
+        LocalDate end   = LocalDate.of(2026, 12, 9);
+
+        when(destinationRepository.findById(5L)).thenReturn(Optional.of(destination));
+
+        DestinationBookingRevenueAggregateDTO aggregate =
+                new DestinationBookingRevenueAggregateDTO(2L, BigDecimal.valueOf(800), BigDecimal.valueOf(400));
+        when(itineraryServiceClient.getDestinationBookingRevenue(5L, "2026-01-05", "2026-12-09"))
+                .thenReturn(aggregate);
+        when(objectArrayDtoAdapter.adaptRevenue(5L, "Luxor", aggregate))
+                .thenReturn(DestinationRevenueDTO.builder()
+                        .destinationId(5L).name("Luxor")
+                        .totalBookings(2L).totalRevenue(800.0).averageBookingAmount(400.0)
+                        .build());
+
+        DestinationRevenueDTO dto = destinationService.getDestinationRevenueSummary(5L, start, end);
+
+        assertThat(dto.getTotalBookings()).isEqualTo(2L);
+        // The critical assertion: verify the exact string format passed to Feign
+        verify(itineraryServiceClient).getDestinationBookingRevenue(5L, "2026-01-05", "2026-12-09");
+    }
+
+    /** Null startDate must throw 400 before any repository or Feign call. */
+    @Test
+    void revenueSummary_nullStartDate_throws400() {
+        assertThatThrownBy(() -> destinationService.getDestinationRevenueSummary(1L, null, LocalDate.of(2026, 3, 31)))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+        verify(destinationRepository, never()).findById(any());
+        verify(itineraryServiceClient, never()).getDestinationBookingRevenue(any(), any(), any());
+    }
+
+    /** Null endDate must throw 400 before any repository or Feign call. */
+    @Test
+    void revenueSummary_nullEndDate_throws400() {
+        assertThatThrownBy(() -> destinationService.getDestinationRevenueSummary(1L, LocalDate.of(2026, 3, 1), null))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(ex -> assertThat(((ResponseStatusException) ex).getStatusCode().value()).isEqualTo(400));
+        verify(destinationRepository, never()).findById(any());
+        verify(itineraryServiceClient, never()).getDestinationBookingRevenue(any(), any(), any());
+    }
+
+    /** Same-day range (startDate == endDate) is valid — Feign is still called. */
+    @Test
+    void revenueSummary_sameDayRange_isValid() {
+        Destination destination = newDestination(3L);
+        destination.setName("Sharm");
+        LocalDate sameDay = LocalDate.of(2026, 6, 15);
+
+        when(destinationRepository.findById(3L)).thenReturn(Optional.of(destination));
+
+        DestinationBookingRevenueAggregateDTO aggregate =
+                new DestinationBookingRevenueAggregateDTO(1L, BigDecimal.valueOf(500), BigDecimal.valueOf(500));
+        when(itineraryServiceClient.getDestinationBookingRevenue(3L, "2026-06-15", "2026-06-15"))
+                .thenReturn(aggregate);
+        when(objectArrayDtoAdapter.adaptRevenue(3L, "Sharm", aggregate))
+                .thenReturn(DestinationRevenueDTO.builder()
+                        .destinationId(3L).name("Sharm")
+                        .totalBookings(1L).totalRevenue(500.0).averageBookingAmount(500.0)
+                        .build());
+
+        DestinationRevenueDTO dto = destinationService.getDestinationRevenueSummary(3L, sameDay, sameDay);
+        assertThat(dto.getTotalBookings()).isEqualTo(1L);
+        verify(itineraryServiceClient, times(1)).getDestinationBookingRevenue(3L, "2026-06-15", "2026-06-15");
+    }
+
+    /**
+     * When itinerary-service is down, FeignException must propagate — the service
+     * must NOT swallow it silently and return null/empty (per spec §2.4 error-handling rule:
+     * non-404 Feign failures throw ServiceUnavailableException / let the exception propagate).
+     */
+    @Test
+    void revenueSummary_feignServiceDown_propagatesException() {
+        Destination destination = newDestination(1L);
+        destination.setName("Dahab");
+        LocalDate start = LocalDate.of(2026, 3, 1);
+        LocalDate end   = LocalDate.of(2026, 3, 31);
+
+        when(destinationRepository.findById(1L)).thenReturn(Optional.of(destination));
+
+        feign.FeignException.ServiceUnavailable feignEx =
+                new feign.FeignException.ServiceUnavailable(
+                        "itinerary-service down",
+                        feign.Request.create(feign.Request.HttpMethod.GET,
+                                "/api/itineraries/destination/1/booking-revenue",
+                                Map.of(), null, null, null),
+                        null, null);
+        when(itineraryServiceClient.getDestinationBookingRevenue(1L, "2026-03-01", "2026-03-31"))
+                .thenThrow(feignEx);
+
+        assertThatThrownBy(() -> destinationService.getDestinationRevenueSummary(1L, start, end))
+                .isInstanceOf(Exception.class);   // FeignException or wrapped ServiceUnavailableException
+    }
+
+    /**
+     * Cache hit path: a second call with the same params must NOT issue a second Feign call.
+     * The Redis mock returns a cached DestinationRevenueDTO on the second invocation.
+     */
+    @Test
+    void revenueSummary_cacheHit_skipsFeignCall() {
+        LocalDate start = LocalDate.of(2026, 3, 1);
+        LocalDate end   = LocalDate.of(2026, 3, 31);
+        String cacheKey = "destination-service::S2-F3::1::" + start + "::" + end;
+
+        DestinationRevenueDTO cached = DestinationRevenueDTO.builder()
+                .destinationId(1L).name("Dahab")
+                .totalBookings(5L).totalRevenue(2000.0).averageBookingAmount(400.0)
+                .build();
+
+        // Redis returns the cached DTO on the first get()
+        when(valueOperations.get(cacheKey)).thenReturn(cached);
+
+        DestinationRevenueDTO dto = destinationService.getDestinationRevenueSummary(1L, start, end);
+
+        assertThat(dto.getTotalBookings()).isEqualTo(5L);
+        assertThat(dto.getTotalRevenue()).isEqualTo(2000.0);
+        // No Feign call and no DB call — served entirely from cache
+        verify(itineraryServiceClient, never()).getDestinationBookingRevenue(any(), any(), any());
+        verify(destinationRepository, never()).findById(any());
+    }
+
     // =========================================================================
     // S2-F2: Update Details
     // =========================================================================
