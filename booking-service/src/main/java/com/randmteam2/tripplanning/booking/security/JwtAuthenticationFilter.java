@@ -20,7 +20,7 @@ import java.util.List;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     @Autowired private JwtService jwtService;
-    @Autowired @Lazy private UserDetailsService userDetailsService;
+    
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
@@ -39,7 +39,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         AuthHandler head = new TokenExtractionHandler();
         head.setNext(new SignatureValidationHandler(jwtService))
-                .setNext(new UserLoaderHandler(userDetailsService))
+                .setNext(new UserLoaderHandler())
                 .setNext(new RoleAuthorizationHandler(null));
 
         AuthContext ctx = new AuthContext(request);

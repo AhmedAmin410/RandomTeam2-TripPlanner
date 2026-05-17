@@ -1,3 +1,4 @@
+import java.io.Serializable;
 package com.randmteam2.tripplanning.contracts.dto;
 public record UserTripSummaryAggregateDTO(
     Long totalTrips,
@@ -5,4 +6,4 @@ public record UserTripSummaryAggregateDTO(
     Long cancelledTrips,
     Double totalBudget,
     Double averageBudget
-) {}
+) implements Serializable {}

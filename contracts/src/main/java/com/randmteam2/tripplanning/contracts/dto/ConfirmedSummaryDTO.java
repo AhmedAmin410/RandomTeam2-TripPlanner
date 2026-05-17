@@ -1,2 +1,3 @@
 package com.randmteam2.tripplanning.contracts.dto;
-public record ConfirmedSummaryDTO(Long count, Double totalRevenue) {}
+import java.io.Serializable;
+public record ConfirmedSummaryDTO(Long count, Double totalRevenue) implements Serializable {}

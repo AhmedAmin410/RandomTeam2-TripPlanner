@@ -1,20 +1,13 @@
 package com.randmteam2.tripplanning.booking.security;
 
-import org.springframework.security.core.userdetails.UserDetailsService;
-
 public class UserLoaderHandler extends AuthHandler {
-    private final UserDetailsService userDetailsService;
-
-    public UserLoaderHandler(UserDetailsService userDetailsService) {
-        this.userDetailsService = userDetailsService;
-    }
-
     @Override
     public void handle(AuthContext ctx) throws AuthException {
-        try {
-            userDetailsService.loadUserByUsername(ctx.claims.getSubject());
-        } catch (Exception e) {
-            throw new AuthException(401, "User not found");
+        // In M3 each service has its own DB - users live in user-service
+        // JWT signature already validated by SignatureValidationHandler
+        // No cross-service DB lookup needed here
+        if (ctx.claims == null || ctx.claims.getSubject() == null) {
+            throw new AuthException(401, "Invalid token claims");
         }
         proceed(ctx);
     }
