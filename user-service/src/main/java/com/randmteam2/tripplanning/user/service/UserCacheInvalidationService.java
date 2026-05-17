@@ -19,6 +19,14 @@ public class UserCacheInvalidationService {
         this.redisTemplate = redisTemplate;
     }
 
+    // Invalidates S1-F3 (trip summary for specific user) and all S1-F9 (travel-style) caches
+    public void evictItineraryCaches(Long userId) {
+        evictPatterns(
+                cacheKey("S1-F3::" + userId + "*"),
+                cacheKey("S1-F9::*")
+        );
+    }
+
     public void evictUserReadCaches() {
         evictPatterns(
                 cacheKey("user::*"),
