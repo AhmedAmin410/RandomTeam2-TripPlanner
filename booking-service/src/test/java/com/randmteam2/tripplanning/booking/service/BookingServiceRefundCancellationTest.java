@@ -1,8 +1,7 @@
 package com.randmteam2.tripplanning.booking.service;
 
 import com.randmteam2.tripplanning.booking.dto.RefundCancellationRequest;
-import com.randmteam2.tripplanning.booking.feign.ItineraryServiceClient;
-import com.randmteam2.tripplanning.booking.feign.UserServiceClient;
+import com.randmteam2.tripplanning.booking.feign.BookingFeignClients;
 import com.randmteam2.tripplanning.booking.model.Booking;
 import com.randmteam2.tripplanning.booking.model.BookingStatus;
 import com.randmteam2.tripplanning.booking.model.BookingType;
@@ -36,29 +35,31 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class BookingServiceRefundCancellationTest {
 
-    @Mock private BookingRepository bookingRepository;
-    @Mock private CouponRepository couponRepository;
-    @Mock private BookingCouponRepository bookingCouponRepository;
-    @Mock private PaymentAuditEventRepository auditRepository;
-    @Mock private BookingEventPublisher eventPublisher;
-    @Mock private BookingCacheInvalidationService cacheInvalidationService;
-    @Mock private UserServiceClient userServiceClient;
-    @Mock private ItineraryServiceClient itineraryServiceClient;
+     @Mock private BookingRepository bookingRepository;
+     @Mock private CouponRepository couponRepository;
+     @Mock private BookingCouponRepository bookingCouponRepository;
+     @Mock private PaymentAuditEventRepository auditRepository;
+     @Mock private BookingEventPublisher eventPublisher;
+     @Mock private BookingCacheInvalidationService cacheInvalidationService;
+     @Mock private BookingFeignClients.UserServiceSafeClient userServiceSafeClient;
+     @Mock private BookingFeignClients.ItineraryServiceSafeClient itineraryServiceSafeClient;
+     @Mock private BookingFeignClients.DestinationServiceSafeClient destinationServiceSafeClient;
 
-    private BookingService bookingService;
+     private BookingService bookingService;
 
-    @BeforeEach
-    void setUp() {
-        bookingService = new BookingService(
-                bookingRepository,
-                couponRepository,
-                bookingCouponRepository,
-                auditRepository,
-                eventPublisher,
-                cacheInvalidationService,
-                userServiceClient,
-                itineraryServiceClient
-        );
+     @BeforeEach
+     void setUp() {
+         bookingService = new BookingService(
+                 bookingRepository,
+                 couponRepository,
+                 bookingCouponRepository,
+                 auditRepository,
+                 eventPublisher,
+                 cacheInvalidationService,
+                 userServiceSafeClient,
+                 itineraryServiceSafeClient,
+                 destinationServiceSafeClient
+         );
     }
 
     @Test
@@ -67,13 +68,13 @@ class BookingServiceRefundCancellationTest {
         RefundCancellationRequest request = new RefundCancellationRequest();
         request.setReason("User changed travel dates");
 
-        when(bookingRepository.findById(10L)).thenReturn(Optional.of(booking));
-        when(itineraryServiceClient.getItinerary(99L)).thenReturn(Map.of(
-                "status", "PLANNED",
-                "startDate", LocalDate.now().plusDays(10).toString()
-        ));
-        when(bookingRepository.transitionBookingStatus(10L, BookingStatus.CONFIRMED, BookingStatus.CANCELLED))
-                .thenReturn(1);
+         when(bookingRepository.findById(10L)).thenReturn(Optional.of(booking));
+         when(itineraryServiceSafeClient.getItinerary(99L)).thenReturn(Optional.of(Map.of(
+                 "status", "PLANNED",
+                 "startDate", LocalDate.now().plusDays(10).toString()
+         )));
+         when(bookingRepository.transitionBookingStatus(10L, BookingStatus.CONFIRMED, BookingStatus.CANCELLED))
+                 .thenReturn(1);
         when(bookingRepository.save(any(Booking.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         Booking saved = bookingService.processRefundCancellation(10L, request);
@@ -107,11 +108,11 @@ class BookingServiceRefundCancellationTest {
         RefundCancellationRequest request = new RefundCancellationRequest();
         request.setReason("Too late");
 
-        when(bookingRepository.findById(10L)).thenReturn(Optional.of(booking));
-        when(itineraryServiceClient.getItinerary(99L)).thenReturn(Map.of(
-                "status", "IN_PROGRESS",
-                "startDate", LocalDate.now().plusDays(5).toString()
-        ));
+         when(bookingRepository.findById(10L)).thenReturn(Optional.of(booking));
+         when(itineraryServiceSafeClient.getItinerary(99L)).thenReturn(Optional.of(Map.of(
+                 "status", "IN_PROGRESS",
+                 "startDate", LocalDate.now().plusDays(5).toString()
+         )));
 
         assertThatThrownBy(() -> bookingService.processRefundCancellation(10L, request))
                 .isInstanceOf(ResponseStatusException.class)
@@ -142,10 +143,10 @@ class BookingServiceRefundCancellationTest {
         assertThatThrownBy(() -> bookingService.processRefundCancellation(10L, new RefundCancellationRequest()))
                 .isInstanceOf(ResponseStatusException.class)
                 .extracting(ex -> ((ResponseStatusException) ex).getStatusCode())
-                .isEqualTo(HttpStatus.BAD_REQUEST);
+                 .isEqualTo(HttpStatus.BAD_REQUEST);
 
-        verify(itineraryServiceClient, never()).getItinerary(any());
-        verify(bookingRepository, never()).save(any(Booking.class));
+         verify(itineraryServiceSafeClient, never()).getItinerary(any());
+         verify(bookingRepository, never()).save(any(Booking.class));
         verify(auditRepository, never()).save(any(PaymentAuditEvent.class));
         verify(cacheInvalidationService, never()).evictRefundRelatedCaches();
     }

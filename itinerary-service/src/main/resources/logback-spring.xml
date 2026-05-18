@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <appender name="LOKI" class="com.github.loki4j.logback.Loki4jAppender">
+        <http>
+            <url>http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push</url>
+        </http>
+        <format>
+            <label>
+                <pattern>app=tripplanning,service=itinerary-service,level=%level,env=k8s</pattern>
+            </label>
+            <message>
+                <pattern>
+                    {
+                    "timestamp": "%d{yyyy-MM-dd'T'HH:mm:ss.SSSZ}",
+                    "level": "%level",
+                    "service": "itinerary-service",
+                    "thread": "%thread",
+                    "logger": "%logger{36}",
+                    "correlationId": "%X{correlationId:-}",
+                    "userId": "%X{userId:-}",
+                    "destinationId": "%X{destinationId:-}",
+                    "itineraryId": "%X{itineraryId:-}",
+                    "activityId": "%X{activityId:-}",
+                    "bookingId": "%X{bookingId:-}",
+                    "settlementId": "%X{settlementId:-}",
+                    "routingKey": "%X{routingKey:-}",
+                    "message": "%message",
+                    "stack_trace": "%exception{full}"
+                    }
+                </pattern>
+            </message>
+            <sortByTime>true</sortByTime>
+        </format>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="LOKI"/>
+    </root>
+
+    <logger name="com.randmteam2.tripplanning.itinerary" level="DEBUG"/>
+    <logger name="org.springframework" level="INFO"/>
+    <logger name="org.springframework.web" level="DEBUG"/>
+    <logger name="org.springframework.data" level="INFO"/>
+    <logger name="org.hibernate" level="INFO"/>
+    <logger name="org.hibernate.SQL" level="DEBUG"/>
+    <logger name="com.randmteam2.tripplanning.itinerary.feign" level="DEBUG"/>
+    <logger name="feign" level="DEBUG"/>
+
+</configuration>

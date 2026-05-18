@@ -9,12 +9,17 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 
 import java.util.List;
+import java.util.Map;
 
 @FeignClient(name = "booking-service", url = "${feign.booking-service.url}")
 public interface BookingServiceClient {
-    @GetMapping("/api/bookings/itinerary/{id}/confirmed-count")
+
+    @GetMapping("/api/bookings/itinerary/{id}/confirmed-summary")
     BookingConfirmedSummaryDTO getConfirmedSummary(@PathVariable Long id);
 
+    /**
+     * Body: { "itineraryIds": [...], "startDate": "...", "endDate": "...", "status": "CONFIRMED" }
+     */
     @PostMapping("/api/bookings/aggregate-by-itineraries")
-    List<BookingAggregateDTO> aggregateByItineraries(@RequestBody List<Long> itineraryIds);
+    BookingAggregateDTO aggregateByItineraries(@RequestBody Map<String, Object> request);
 }
