@@ -95,6 +95,7 @@ public class JwtGatewayFilter implements GlobalFilter, Ordered {
 
     /**
      * /api/auth/**, public registration/login, all service /api/{wildcard}/health probes, and actuator.
+     * /api/auth/**, public registration/login, all service /api/*/health probes, and actuator.
      */
     static boolean shouldBypassJwt(String path) {
         if (path.startsWith("/api/auth/")) {
