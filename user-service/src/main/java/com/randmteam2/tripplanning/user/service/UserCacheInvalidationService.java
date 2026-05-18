@@ -11,7 +11,7 @@ import java.util.List;
 @Service
 public class UserCacheInvalidationService {
 
-    private static final String CACHE_PREFIX = "user-service::";
+    private static final String CACHE_PREFIX = "";
 
     private final RedisTemplate<String, Object> redisTemplate;
 
