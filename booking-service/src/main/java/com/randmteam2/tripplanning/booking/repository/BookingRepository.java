@@ -1,6 +1,7 @@
 package com.randmteam2.tripplanning.booking.repository;
 
 import com.randmteam2.tripplanning.booking.model.Booking;
+import com.randmteam2.tripplanning.booking.model.BookingStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -13,16 +14,16 @@ import java.util.List;
 @Repository
 public interface BookingRepository extends JpaRepository<Booking, Long> {
 
-    List<Booking> findByUserIdAndStatus(Long userId, com.randmteam2.tripplanning.booking.model.BookingStatus status);
+    List<Booking> findByUserIdAndStatus(Long userId, BookingStatus status);
 
-    List<Booking> findByItineraryIdAndStatus(Long itineraryId, com.randmteam2.tripplanning.booking.model.BookingStatus status);
+    List<Booking> findByItineraryIdAndStatus(Long itineraryId, BookingStatus status);
 
     // S5-READ-DB: Standard Spring Data queries for confirmed bookings isolation
-    List<Booking> findByUserIdAndStatusOrderByCreatedAtDesc(Long userId, com.randmteam2.tripplanning.booking.model.BookingStatus status);
+    List<Booking> findByUserIdAndStatusOrderByCreatedAtDesc(Long userId, BookingStatus status);
 
-    List<Booking> findByItineraryIdAndStatusOrderByCreatedAtDesc(Long itineraryId, com.randmteam2.tripplanning.booking.model.BookingStatus status);
+    List<Booking> findByItineraryIdAndStatusOrderByCreatedAtDesc(Long itineraryId, BookingStatus status);
 
-    long countByItineraryIdAndStatus(Long itineraryId, com.randmteam2.tripplanning.booking.model.BookingStatus status);
+    long countByItineraryIdAndStatus(Long itineraryId, BookingStatus status);
 
     @Query("""
         select coalesce(sum(b.amount), 0)
@@ -61,7 +62,7 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
           and b.createdAt between :startDate and :endDate
         """)
     Double sumAmountByItineraryIdsAndStatus(@Param("itineraryIds") List<Long> itineraryIds,
-                                            @Param("status") com.randmteam2.tripplanning.booking.model.BookingStatus status,
+                                            @Param("status") BookingStatus status,
                                             @Param("startDate") LocalDateTime startDate,
                                             @Param("endDate") LocalDateTime endDate);
 
@@ -73,7 +74,7 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
           and b.createdAt between :startDate and :endDate
         """)
     Long countByItineraryIdsAndStatus(@Param("itineraryIds") List<Long> itineraryIds,
-                                      @Param("status") com.randmteam2.tripplanning.booking.model.BookingStatus status,
+                                      @Param("status") BookingStatus status,
                                       @Param("startDate") LocalDateTime startDate,
                                       @Param("endDate") LocalDateTime endDate);
 
@@ -84,8 +85,8 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
         where b.id = :bookingId and b.status = :source
         """)
     int transitionBookingStatus(@Param("bookingId") Long bookingId,
-                                @Param("source") com.randmteam2.tripplanning.booking.model.BookingStatus source,
-                                @Param("target") com.randmteam2.tripplanning.booking.model.BookingStatus target);
+                                @Param("source") BookingStatus source,
+                                @Param("target") BookingStatus target);
 
     @Modifying
     @Query("""
@@ -94,8 +95,8 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
         where b.itineraryId = :itineraryId and b.status = :source
         """)
     int transitionBookingsForItinerary(@Param("itineraryId") Long itineraryId,
-                                       @Param("source") com.randmteam2.tripplanning.booking.model.BookingStatus source,
-                                       @Param("target") com.randmteam2.tripplanning.booking.model.BookingStatus target);
+                                       @Param("source") BookingStatus source,
+                                       @Param("target") BookingStatus target);
 
     // S5-F1
     @Query(value = """
@@ -108,15 +109,6 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
             @Param("status") String status,
             @Param("startDate") LocalDateTime startDate,
             @Param("endDate") LocalDateTime endDate);
-
-    // S5-F3
-    @Query(value = """
-        SELECT type, COUNT(*) as count, COALESCE(SUM(amount), 0) as total
-        FROM bookings
-        WHERE user_id = :userId AND status = 'CONFIRMED'
-        GROUP BY type
-        """, nativeQuery = true)
-    List<Object[]> getUserBookingSummary(@Param("userId") Long userId);
 
     // S5-F10 confirmed bookings in date range (local table only)
     @Query("""
@@ -151,5 +143,4 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
         LIMIT :limit
         """, nativeQuery = true)
     List<Object[]> getTopUsedCoupons(@Param("limit") int limit);
-
 }

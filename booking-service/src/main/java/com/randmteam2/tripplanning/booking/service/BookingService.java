@@ -14,9 +14,10 @@ import com.randmteam2.tripplanning.booking.mongo.PaymentAuditEventRepository;
 import com.randmteam2.tripplanning.booking.observer.BookingEvent;
 import com.randmteam2.tripplanning.booking.observer.BookingEventPublisher;
 import com.randmteam2.tripplanning.contracts.dto.ConfirmedSummaryDTO;
-import com.randmteam2.tripplanning.contracts.dto.ItineraryBookingAggregateDTO;
+import com.randmteam2.tripplanning.contracts.dto.ItineraryAggregateDTO;
 import com.randmteam2.tripplanning.contracts.dto.UserBookingTotalDTO;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -167,19 +168,20 @@ public class BookingService {
         if (userServiceSafeClient.getUser(userId).isEmpty()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
         }
-        Double totalAmount = bookingRepository.sumConfirmedAmountByUserAndDateRange(userId, start, end);
-        Long tripCount = bookingRepository.countConfirmedTripsByUserAndDateRange(userId, start, end);
-        return new UserBookingTotalDTO(
-                userId,
-                totalAmount != null ? totalAmount : 0.0,
-                tripCount != null ? tripCount : 0L);
+        Double totalAmountRaw = bookingRepository.sumConfirmedAmountByUserAndDateRange(userId, start, end);
+        Long tripCountRaw = bookingRepository.countConfirmedTripsByUserAndDateRange(userId, start, end);
+
+        BigDecimal totalAmount = BigDecimal.valueOf(totalAmountRaw != null ? totalAmountRaw : 0.0);
+        Integer tripCount = Integer.valueOf(tripCountRaw != null ? tripCountRaw.intValue() : 0);
+
+        return new UserBookingTotalDTO(userId, totalAmount, tripCount);
     }
 
     @Cacheable(value = "booking-service", key = "'S5-SYNC-AGGREGATE::' + #request")
-    public ItineraryBookingAggregateDTO aggregateByItineraries(Map<String, Object> request) {
+    public ItineraryAggregateDTO aggregateByItineraries(Map<String, Object> request) {
         List<Long> itineraryIds = extractItineraryIds(request.get("itineraryIds"));
         if (itineraryIds.isEmpty()) {
-            return new ItineraryBookingAggregateDTO(0L, 0.0);
+            return new ItineraryAggregateDTO(0, BigDecimal.ZERO);
         }
 
         BookingStatus status = parseBookingStatus(String.valueOf(request.getOrDefault("status", "CONFIRMED")));
@@ -189,11 +191,13 @@ public class BookingService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate must be before endDate");
         }
 
-        Long totalBookings = bookingRepository.countByItineraryIdsAndStatus(itineraryIds, status, start, end);
-        Double totalRevenue = bookingRepository.sumAmountByItineraryIdsAndStatus(itineraryIds, status, start, end);
-        return new ItineraryBookingAggregateDTO(
-                totalBookings != null ? totalBookings : 0L,
-                totalRevenue != null ? totalRevenue : 0.0);
+        Long totalBookingsRaw = bookingRepository.countByItineraryIdsAndStatus(itineraryIds, status, start, end);
+        Double totalRevenueRaw = bookingRepository.sumAmountByItineraryIdsAndStatus(itineraryIds, status, start, end);
+
+        Integer totalBookings = Integer.valueOf(totalBookingsRaw != null ? totalBookingsRaw.intValue() : 0);
+        BigDecimal totalRevenue = BigDecimal.valueOf(totalRevenueRaw != null ? totalRevenueRaw : 0.0);
+
+        return new ItineraryAggregateDTO(totalBookings, totalRevenue);
     }
 
     @Cacheable(value = "booking-service", key = "'S5-SYNC-CONFIRMED-SUMMARY::' + #itineraryId")

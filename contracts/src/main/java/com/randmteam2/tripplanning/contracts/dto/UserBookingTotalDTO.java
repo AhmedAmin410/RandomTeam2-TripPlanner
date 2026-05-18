@@ -1,5 +1,5 @@
 package com.randmteam2.tripplanning.contracts.dto;
 
-import java.io.Serializable;
+import java.math.BigDecimal;
 
-public record UserBookingTotalDTO(Long userId, Double totalAmount, Long tripCount) implements Serializable {}
+public record UserBookingTotalDTO(Long userId, BigDecimal totalAmount, Integer tripCount) {}
