@@ -1,15 +1,11 @@
-<?xml version="1.0" encoding="UTF-8"?>
 <configuration>
 
-    <!-- Standard console appender for local debugging -->
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
         <encoder>
-            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+            <pattern>%d{ISO8601} [%thread] %-5level %logger{36} - %msg%n</pattern>
         </encoder>
     </appender>
 
-    <!-- Loki appender with LogstashEncoder for structured JSON logging -->
-    <!-- Outputs logs in JSON format for direct Loki ingestion and indexing -->
     <appender name="LOKI" class="com.github.loki4j.logback.Loki4jAppender">
         <http>
             <url>http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push</url>
@@ -18,52 +14,30 @@
             <label>
                 <pattern>app=tripplanning,service=booking-service,level=%level,env=k8s</pattern>
             </label>
-            <!-- JSON message format with embedded service field and stack_trace -->
             <message>
                 <pattern>
-                {
-                    "timestamp": "%d{yyyy-MM-dd'T'HH:mm:ss.SSSZ}",
-                    "level": "%level",
-                    "service": "booking-service",
-                    "thread": "%thread",
-                    "logger": "%logger",
-                    "correlationId": "%X{correlationId}",
-                    "bookingId": "%X{bookingId}",
-                    "settlementId": "%X{settlementId}",
-                    "itineraryId": "%X{itineraryId}",
-                    "userId": "%X{userId}",
-                    "routingKey": "%X{routingKey}",
-                    "message": "%message",
-                    "stack_trace": "%exception{full}"
-                }
+                    {
+                    "timestamp":     "%d{ISO8601}",
+                    "level":         "%level",
+                    "service":       "booking-service",
+                    "thread":        "%thread",
+                    "logger":        "%logger{36}",
+                    "correlationId": "%X{correlationId:-}",
+                    "bookingId":     "%X{bookingId:-}",
+                    "settlementId":  "%X{settlementId:-}",
+                    "itineraryId":   "%X{itineraryId:-}",
+                    "userId":        "%X{userId:-}",
+                    "routingKey":    "%X{routingKey:-}",
+                    "message":       "%msg"
+                    }
                 </pattern>
             </message>
-            <sortByTime>true</sortByTime>
         </format>
     </appender>
 
-    <!-- Root logger configuration -->
-    <!-- All logs are sent to both console and Loki -->
     <root level="INFO">
-        <appender-ref ref="CONSOLE"/>
-        <appender-ref ref="LOKI"/>
+        <appender-ref ref="CONSOLE" />
+        <appender-ref ref="LOKI"    />
     </root>
-
-    <!-- Application-specific logger levels -->
-    <logger name="com.randmteam2.tripplanning.booking" level="DEBUG"/>
-
-    <!-- Spring Framework loggers -->
-    <logger name="org.springframework" level="INFO"/>
-    <logger name="org.springframework.web" level="DEBUG"/>
-    <logger name="org.springframework.data" level="INFO"/>
-
-    <!-- Hibernate/JPA loggers -->
-    <logger name="org.hibernate" level="INFO"/>
-    <logger name="org.hibernate.SQL" level="DEBUG"/>
-    <logger name="org.hibernate.type.descriptor.sql.BasicBinder" level="TRACE"/>
-
-    <!-- Feign client logging -->
-    <logger name="com.randmteam2.tripplanning.booking.feign" level="DEBUG"/>
-    <logger name="feign" level="DEBUG"/>
 
 </configuration>

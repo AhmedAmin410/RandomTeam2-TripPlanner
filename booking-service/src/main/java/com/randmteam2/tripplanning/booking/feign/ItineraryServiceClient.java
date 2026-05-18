@@ -1,5 +1,8 @@
 package com.randmteam2.tripplanning.booking.feign;
 
+import com.randmteam2.tripplanning.contracts.dto.BatchItineraryRequest;
+import com.randmteam2.tripplanning.contracts.dto.ConfirmedSummaryDTO;
+import com.randmteam2.tripplanning.contracts.dto.ItinerarySummaryDTO;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -13,12 +16,22 @@ import java.util.Map;
         url = "${feign.itinerary-service.url}")
 public interface ItineraryServiceClient {
 
+    /**
+     * Used by S5-F4 (status validation) and S5-F12 (refund strategy input).
+     * Returns Map so we can safely read status, startDate, destinationId.
+     */
     @GetMapping("/api/itineraries/{itineraryId}")
     Map<String, Object> getItinerary(@PathVariable Long itineraryId);
 
+    /**
+     * Used by S5-F4 to compute seasonalSurcharge (M2 §4.6).
+     */
     @GetMapping("/api/itineraries/destination/{destinationId}/active-count")
-    int getDestinationActiveCount(@PathVariable Long destinationId);
+    int getDestinationActiveItineraryCount(@PathVariable Long destinationId);
 
+    /**
+     * Used by S5-F10 batch: maps itineraryId → destinationId.
+     */
     @PostMapping("/api/itineraries/batch")
-    List<Map<String, Object>> batchGetItineraries(@RequestBody Map<String, Object> request);
+    List<ItinerarySummaryDTO> batchGetItineraries(@RequestBody BatchItineraryRequest request);
 }
