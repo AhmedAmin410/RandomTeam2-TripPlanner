@@ -94,8 +94,7 @@ public class JwtGatewayFilter implements GlobalFilter, Ordered {
     }
 
     /**
-     * Bypasses JWT for: /api/auth/**, public registration/login,
-     * all service health probes (/api/{service}/health), and actuator.
+     * /api/auth/**, public registration/login, all service /api/*/health probes, and actuator.
      */
     static boolean shouldBypassJwt(String path) {
         if (path.startsWith("/api/auth/")) {

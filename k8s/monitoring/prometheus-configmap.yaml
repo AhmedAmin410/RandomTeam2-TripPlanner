@@ -17,6 +17,15 @@ data:
           - targets:
               - localhost:9090
 
+      - job_name: user-service
+        metrics_path: /actuator/prometheus
+        static_configs:
+          - targets:
+              - user-service:8080
+            labels:
+              service: user-service
+              milestone: s1
+
       - job_name: booking-service
         metrics_path: /actuator/prometheus
         static_configs:

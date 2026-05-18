@@ -35,9 +35,15 @@ public class DestinationController {
         return ResponseEntity.ok(destinationService.getAllDestinations());
     }
 
+    @PostMapping("/batch")
+    public ResponseEntity<List<DestinationSummaryDTO>> getDestinationsBatch(
+            @RequestBody DestinationBatchRequest request) {
+        return ResponseEntity.ok(destinationService.getDestinationsBatch(request));
+    }
+
     @GetMapping("/{id}")
-    public ResponseEntity<Destination> getDestinationById(@PathVariable Long id) {
-        return ResponseEntity.ok(destinationService.getDestinationById(id));
+    public ResponseEntity<DestinationDTO> getDestinationById(@PathVariable Long id) {
+        return ResponseEntity.ok(destinationService.getDestinationDTOById(id));
     }
 
     @PutMapping("/{id}")
@@ -97,6 +103,7 @@ public class DestinationController {
         return ResponseEntity.ok(destinationService.updateDetails(id, details));
     }
 
+    /** S2-F3: Get Destination Booking Revenue Summary (M3: single Feign call to itinerary-service) */
     @GetMapping("/{id}/revenue")
     public ResponseEntity<DestinationRevenueDTO> getDestinationRevenue(
             @PathVariable Long id,
@@ -105,6 +112,7 @@ public class DestinationController {
         return ResponseEntity.ok(destinationService.getDestinationRevenueSummary(id, startDate, endDate));
     }
 
+    /** S2-F4: Update Destination Status (M3: INACTIVE guard via Feign active-count) */
     @PutMapping("/{id}/status")
     public ResponseEntity<Destination> updateStatus(@PathVariable Long id,
                                                     @RequestBody DestinationStatusRequest body) {
@@ -166,4 +174,5 @@ public class DestinationController {
     public ResponseEntity<DestinationDashboardDTO> getDestinationDashboard(@PathVariable Long id) {
         return ResponseEntity.ok(destinationService.getDestinationDashboard(id));
     }
+
 }

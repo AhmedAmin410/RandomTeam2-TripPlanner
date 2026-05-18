@@ -1,0 +1,172 @@
+{
+  "title": "Trip Planning - Itinerary Service S3",
+  "uid": "itinerary-service-dashboard",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "15s",
+  "timezone": "browser",
+  "editable": true,
+  "tags": ["tripplanning", "itinerary-service", "s3"],
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Error Rate (errors/min)",
+      "description": "Count of ERROR-level log lines from itinerary-service per minute.",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "expr": "sum by (service) (count_over_time({app=\"tripplanning\", service=\"itinerary-service\", level=\"ERROR\"}[1m]))",
+          "legendFormat": "errors/min",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "red" },
+          "custom": { "lineWidth": 2 }
+        }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Saga State Transitions",
+      "description": "Log lines for itinerary saga state transitions (COMPLETING, PAYMENT_PENDING, PAID, etc.).",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({app=\"tripplanning\", service=\"itinerary-service\"} |= \"transitioning\" [5m]))",
+          "legendFormat": "saga transitions/5m",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "blue" },
+          "custom": { "lineWidth": 2 }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "title": "RabbitMQ Event Audit (Published vs Consumed)",
+      "description": "Itinerary events published and payment/activity events consumed.",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "expr": "sum(count_over_time({app=\"tripplanning\", service=\"itinerary-service\"} |= \"Published\" [5m]))",
+          "legendFormat": "Events published",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(count_over_time({app=\"tripplanning\", service=\"itinerary-service\"} |= \"Consuming\" [5m]))",
+          "legendFormat": "Events consumed",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "custom": { "lineWidth": 2 } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Events published" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Events consumed" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "purple" } }]
+          }
+        ]
+      }
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "Service Up (Prometheus)",
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "up{job=\"itinerary-service\"}",
+          "legendFormat": "itinerary-service",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 8 },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 5,
+      "title": "HTTP Request Rate",
+      "description": "Requests per second per endpoint for itinerary-service.",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (method, uri) (rate(http_server_requests_seconds_count{job=\"itinerary-service\"}[5m]))",
+          "legendFormat": "{{method}} {{uri}}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "HTTP Latency Percentiles (P50 / P95 / P99)",
+      "description": "Latency percentiles for itinerary-service. High P99 on complete/cancel may indicate slow Feign fan-out.",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le, uri) (rate(http_server_requests_seconds_bucket{job=\"itinerary-service\"}[5m])))",
+          "legendFormat": "P50 {{uri}}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, uri) (rate(http_server_requests_seconds_bucket{job=\"itinerary-service\"}[5m])))",
+          "legendFormat": "P95 {{uri}}",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, uri) (rate(http_server_requests_seconds_bucket{job=\"itinerary-service\"}[5m])))",
+          "legendFormat": "P99 {{uri}}",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "s" }
+      }
+    },
+    {
+      "id": 7,
+      "title": "JVM Heap Usage (MB)",
+      "description": "JVM heap used vs committed for itinerary-service.",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 24, "w": 24, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "targets": [
+        {
+          "expr": "jvm_memory_used_bytes{job=\"itinerary-service\", area=\"heap\"} / 1048576",
+          "legendFormat": "heap used (MB)",
+          "refId": "A"
+        },
+        {
+          "expr": "jvm_memory_committed_bytes{job=\"itinerary-service\", area=\"heap\"} / 1048576",
+          "legendFormat": "heap committed (MB)",
+          "refId": "B"
+        }
+      ]
+    }
+  ],
+  "templating": { "list": [] },
+  "annotations": { "list": [] }
+}

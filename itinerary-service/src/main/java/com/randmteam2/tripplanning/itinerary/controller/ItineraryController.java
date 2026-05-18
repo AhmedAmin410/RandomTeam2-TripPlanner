@@ -44,6 +44,10 @@ public class ItineraryController {
         return ResponseEntity.status(201).body(itineraryService.create(itinerary));
     }
 
+    @GetMapping("/user/{userId}/summary")
+    public ResponseEntity<UserTripSummaryAggregateDTO> getUserSummary(@PathVariable Long userId) {
+        return ResponseEntity.ok(itineraryService.getUserTripSummary(userId));
+    }
     @GetMapping("/{id}")
     public ResponseEntity<Itinerary> getById(@PathVariable Long id) {
         return ResponseEntity.ok(itineraryService.getById(id));
@@ -167,5 +171,38 @@ public class ItineraryController {
         }
     }
 
+
+    @GetMapping("/user/{userId}/active-count")
+    public ResponseEntity<Integer> getUserActiveCount(@PathVariable Long userId) {
+        return ResponseEntity.ok(itineraryService.getUserActiveCount(userId));
+    }
+
+    @GetMapping("/user/{userId}/completed-count")
+    public ResponseEntity<Long> getUserCompletedCount(@PathVariable Long userId) {
+        return ResponseEntity.ok(itineraryService.getUserCompletedCount(userId));
+    }
+
+    @GetMapping("/destination/{destinationId}/active-count")
+    public ResponseEntity<Integer> getDestinationActiveCount(@PathVariable Long destinationId) {
+        return ResponseEntity.ok(itineraryService.getDestinationActiveCount(destinationId));
+    }
+
+    @GetMapping("/destination/{destinationId}/booking-revenue")
+    public ResponseEntity<DestinationBookingRevenueAggregateDTO> getDestinationBookingRevenue(
+            @PathVariable Long destinationId) {
+        return ResponseEntity.ok(itineraryService.getDestinationBookingRevenue(destinationId));
+    }
+
+    @GetMapping("/destination/{destinationId}/dashboard-aggregate")
+    public ResponseEntity<DestinationDashboardAggregateDTO> getDestinationDashboardAggregate(
+            @PathVariable Long destinationId) {
+        return ResponseEntity.ok(itineraryService.getDestinationDashboardAggregate(destinationId));
+    }
+
+    @PostMapping("/batch")
+    public ResponseEntity<List<ItinerarySummaryDTO>> getBatch(
+            @RequestBody BatchItineraryRequest request) {
+        return ResponseEntity.ok(itineraryService.getBatch(request.getItineraryIds()));
+    }
 
 }
