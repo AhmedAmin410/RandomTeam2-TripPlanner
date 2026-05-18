@@ -1,6 +1,7 @@
 package com.randmteam2.tripplanning.booking.repository;
 
 import com.randmteam2.tripplanning.booking.model.Booking;
+import com.randmteam2.tripplanning.booking.model.BookingStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -146,4 +147,5 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
 
     List<Object[]> getTopUsedCoupons(@Param("limit") int limit);
 
+    List<Booking> findByUserIdAndStatus(Long userId, BookingStatus bookingStatus);
 }

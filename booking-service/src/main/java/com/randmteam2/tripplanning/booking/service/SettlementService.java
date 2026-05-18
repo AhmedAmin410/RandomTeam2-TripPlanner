@@ -47,23 +47,27 @@ public class SettlementService {
                              PaymentAuditEventRepository auditRepository,
                              PaymentEventPublisher paymentEventPublisher,
                              BookingCacheInvalidationService cacheInvalidationService) {
-        this.settlementRepository = settlementRepository;
-        this.bookingRepository = bookingRepository;
-        this.auditRepository = auditRepository;
-        this.paymentEventPublisher = paymentEventPublisher;
+        this.settlementRepository     = settlementRepository;
+        this.bookingRepository        = bookingRepository;
+        this.auditRepository          = auditRepository;
+        this.paymentEventPublisher    = paymentEventPublisher;
         this.cacheInvalidationService = cacheInvalidationService;
     }
 
+    // ── itinerary.completed consumer ──────────────────────────────────────
+
+    /**
+     * Idempotent via DB unique constraint on itinerary_id (§1.5).
+     * If the INSERT conflicts, the event is a duplicate — silently no-op.
+     */
     @Transactional
     public void handleItineraryCompleted(ItineraryCompletedEvent event) {
-        if (settlementRepository.findByItineraryId(event.itineraryId()).isPresent()) {
-            log.info("Settlement already exists for itinerary={}", event.itineraryId());
-            return;
-        }
+        log.info("Consuming itinerary.completed for itineraryId={}", event.itineraryId());
 
         BigDecimal amount = event.totalAmount() != null
                 ? event.totalAmount()
-                : BigDecimal.valueOf(bookingRepository.sumConfirmedAmountByItineraryId(event.itineraryId()));
+                : BigDecimal.valueOf(
+                bookingRepository.sumConfirmedAmountByItineraryId(event.itineraryId()));
 
         Settlement settlement = new Settlement();
         settlement.setItineraryId(event.itineraryId());
@@ -73,22 +77,34 @@ public class SettlementService {
 
         try {
             Settlement saved = settlementRepository.saveAndFlush(settlement);
+            // Publish payment.initiated carrying the real PG settlementId
             paymentEventPublisher.publish("payment.initiated",
                     new PaymentInitiatedEvent(saved.getId(), saved.getItineraryId(), saved.getAmount()));
             writeSettlementAudit(saved, "SETTLEMENT_PENDING", null);
-            log.info("Created pending settlement {} for itinerary={}", saved.getId(), saved.getItineraryId());
+            log.info("Created PENDING settlement {} for itineraryId={}", saved.getId(), event.itineraryId());
         } catch (DataIntegrityViolationException duplicate) {
-            log.info("Duplicate itinerary.completed ignored for itinerary={}", event.itineraryId());
+            // Duplicate itinerary.completed event — unique index on itinerary_id fires
+            log.info("Duplicate itinerary.completed ignored for itineraryId={}", event.itineraryId());
         }
     }
 
+    // ── itinerary.cancelled consumer ──────────────────────────────────────
+
+    /**
+     * Atomically cancel PENDING + refund CONFIRMED bookings.
+     * Idempotent: atomic UPDATE rowcount=0 means already cancelled — no further events.
+     */
     @Transactional
     public void handleItineraryCancelled(ItineraryCancelledEvent event) {
-        List<Booking> confirmedBookings = bookingRepository.findByItineraryIdAndStatus(
-                event.itineraryId(), BookingStatus.CONFIRMED);
+        log.info("Consuming itinerary.cancelled for itineraryId={}", event.itineraryId());
 
+        // Cancel PENDING bookings atomically
         bookingRepository.transitionBookingsForItinerary(
                 event.itineraryId(), BookingStatus.PENDING, BookingStatus.CANCELLED);
+
+        // Refund CONFIRMED bookings atomically, one by one
+        List<Booking> confirmedBookings = bookingRepository
+                .findByItineraryIdAndStatus(event.itineraryId(), BookingStatus.CONFIRMED);
 
         BigDecimal refundAmount = BigDecimal.ZERO;
         for (Booking booking : confirmedBookings) {
@@ -97,9 +113,15 @@ public class SettlementService {
             if (updated == 1) {
                 refundAmount = refundAmount.add(BigDecimal.valueOf(booking.getAmount()));
                 writeBookingRefundAudit(booking, event.reason());
+                // Publish one payment.refunded per booking that was actually transitioned
+                paymentEventPublisher.publish("payment.refunded",
+                        new PaymentRefundedEvent(null, event.itineraryId(),
+                                BigDecimal.valueOf(booking.getAmount())));
+                log.info("Refunded booking {} for itineraryId={}", booking.getId(), event.itineraryId());
             }
         }
 
+        // Transition settlement row to REFUNDED
         Settlement settlement = settlementRepository.findByItineraryId(event.itineraryId()).orElse(null);
         if (settlement != null && settlement.getStatus() != SettlementStatus.REFUNDED) {
             settlementRepository.finishSettlement(
@@ -110,45 +132,60 @@ public class SettlementService {
                     event.reason());
         }
 
-        if (settlement != null && refundAmount.compareTo(BigDecimal.ZERO) > 0) {
-            paymentEventPublisher.publish("payment.refunded",
-                    new PaymentRefundedEvent(settlement.getId(), event.itineraryId(), refundAmount));
-        }
         cacheInvalidationService.evictRefundRelatedCaches();
-        log.info("Processed itinerary.cancelled for itinerary={}, refundAmount={}",
+        log.info("Processed itinerary.cancelled for itineraryId={}, refundAmount={}",
                 event.itineraryId(), refundAmount);
     }
 
+    // ── POST /api/bookings/settlement/process ─────────────────────────────
+
+    /**
+     * Customer-initiated settlement. Uses SELECT FOR UPDATE as idempotency anchor.
+     * PENDING → PROCESSING → COMPLETED or FAILED.
+     */
     @Transactional
-    public SettlementResultDTO processSettlement(SettlementProcessRequest request, Long authenticatedUserId) {
+    public SettlementResultDTO processSettlement(SettlementProcessRequest request,
+                                                 Long authenticatedUserId) {
+        // (1) Lock the settlement row — 404 if saga hasn't run yet
         Settlement settlement = settlementRepository.lockByItineraryId(request.itineraryId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Saga has not yet completed for this itinerary; cannot settle"));
 
+        // (2) Inspect status
         if (settlement.getStatus() == SettlementStatus.PROCESSING) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Settlement already in flight");
         }
         if (settlement.getStatus() == SettlementStatus.COMPLETED) {
+            // Idempotent re-call — return prior result without re-publishing
             return toResult(settlement, null);
         }
-        if (settlement.getStatus() == SettlementStatus.FAILED || settlement.getStatus() == SettlementStatus.REFUNDED) {
+        if (settlement.getStatus() == SettlementStatus.FAILED
+                || settlement.getStatus() == SettlementStatus.REFUNDED) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Settlement is already terminal");
         }
 
+        // (3) Authorization — JWT uid must match body.userId and settlement.userId
         if (!settlement.getUserId().equals(request.userId())
                 || (authenticatedUserId != null && !authenticatedUserId.equals(request.userId()))) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User is not allowed to settle this itinerary");
-        }
-        if (request.amount() == null || request.amount().compareTo(settlement.getAmount()) != 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Settlement amount does not match saga amount");
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "User is not allowed to settle this itinerary");
         }
 
+        // Amount must match (replay-with-altered-amount protection)
+        if (request.amount() == null
+                || request.amount().compareTo(settlement.getAmount()) != 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Settlement amount does not match saga amount");
+        }
+
+        // (4) Atomic PENDING → PROCESSING
         int processing = settlementRepository.transitionStatus(
                 settlement.getId(), SettlementStatus.PENDING, SettlementStatus.PROCESSING);
         if (processing == 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Settlement already in flight");
         }
 
+        // (5) Run settlement
         if (Boolean.TRUE.equals(request.simulateFailure())) {
             String reason = "Settlement rejected by processor";
             settlementRepository.finishSettlement(
@@ -158,18 +195,25 @@ public class SettlementService {
             writeSettlementAudit(failed, "SETTLEMENT_FAILED", reason);
             paymentEventPublisher.publish("payment.failed",
                     new PaymentFailedEvent(failed.getId(), failed.getItineraryId(), reason));
+            log.info("Settlement {} FAILED for itineraryId={}", failed.getId(), failed.getItineraryId());
             return toResult(failed, reason);
         }
 
+        // (6) Success: PROCESSING → COMPLETED
         settlementRepository.finishSettlement(
                 settlement.getId(), SettlementStatus.PROCESSING, SettlementStatus.COMPLETED,
                 LocalDateTime.now(), null);
         Settlement completed = settlementRepository.findById(settlement.getId()).orElseThrow();
         writeSettlementAudit(completed, "SETTLEMENT_COMPLETED", null);
         paymentEventPublisher.publish("payment.completed",
-                new PaymentCompletedEvent(completed.getId(), completed.getItineraryId(), completed.getAmount()));
+                new PaymentCompletedEvent(
+                        completed.getId(), completed.getItineraryId(), completed.getAmount()));
+        log.info("Settlement {} COMPLETED for itineraryId={}", completed.getId(), completed.getItineraryId());
+
         return toResult(completed, null);
     }
+
+    // ── Private helpers ───────────────────────────────────────────────────
 
     private SettlementResultDTO toResult(Settlement settlement, String failureReason) {
         return new SettlementResultDTO(
@@ -181,33 +225,39 @@ public class SettlementService {
     }
 
     private void writeSettlementAudit(Settlement settlement, String action, String reason) {
-        PaymentAuditEvent audit = new PaymentAuditEvent();
-        audit.setSettlementId(settlement.getId());
-        audit.setItineraryId(settlement.getItineraryId());
-        audit.setAction(action);
-        audit.setTimestamp(LocalDateTime.now());
-        audit.setMethod("SETTLEMENT");
-        audit.setAmount(settlement.getAmount().doubleValue());
-        Map<String, Object> details = new HashMap<>();
-        details.put("status", settlement.getStatus().name());
-        if (reason != null) {
-            details.put("reason", reason);
+        try {
+            PaymentAuditEvent audit = new PaymentAuditEvent();
+            audit.setSettlementId(settlement.getId());
+            audit.setItineraryId(settlement.getItineraryId());
+            audit.setAction(action);
+            audit.setTimestamp(LocalDateTime.now());
+            audit.setMethod("SETTLEMENT");
+            audit.setAmount(settlement.getAmount().doubleValue());
+            Map<String, Object> details = new HashMap<>();
+            details.put("status", settlement.getStatus().name());
+            if (reason != null) details.put("reason", reason);
+            audit.setDetails(details);
+            auditRepository.save(audit);
+        } catch (Exception e) {
+            log.warn("MongoDB settlement audit write failed for action={}: {}", action, e.getMessage());
         }
-        audit.setDetails(details);
-        auditRepository.save(audit);
     }
 
     private void writeBookingRefundAudit(Booking booking, String reason) {
-        PaymentAuditEvent audit = new PaymentAuditEvent();
-        audit.setBookingId(booking.getId());
-        audit.setItineraryId(booking.getItineraryId());
-        audit.setAction("REFUNDED");
-        audit.setTimestamp(LocalDateTime.now());
-        audit.setMethod(booking.getType() != null ? booking.getType().name() : null);
-        audit.setAmount(booking.getAmount());
-        audit.setDetails(Map.of(
-                "status", BookingStatus.CANCELLED.name(),
-                "reason", reason != null ? reason : "itinerary_cancelled"));
-        auditRepository.save(audit);
+        try {
+            PaymentAuditEvent audit = new PaymentAuditEvent();
+            audit.setBookingId(booking.getId());
+            audit.setItineraryId(booking.getItineraryId());
+            audit.setAction("REFUNDED");
+            audit.setTimestamp(LocalDateTime.now());
+            audit.setMethod(booking.getType() != null ? booking.getType().name() : null);
+            audit.setAmount(booking.getAmount());
+            audit.setDetails(Map.of(
+                    "status", BookingStatus.CANCELLED.name(),
+                    "reason", reason != null ? reason : "itinerary_cancelled"));
+            auditRepository.save(audit);
+        } catch (Exception e) {
+            log.warn("MongoDB booking refund audit write failed: {}", e.getMessage());
+        }
     }
 }
