@@ -122,6 +122,13 @@ public class BookingController {
         return ResponseEntity.ok(bookingService.getConfirmedSummary(itineraryId));
     }
 
+    // ── S5 Saga: confirmed-count alias (itinerary-service saga pre-check) ──
+    @GetMapping("/itinerary/{itineraryId}/confirmed-count")
+    public ResponseEntity<Long> getConfirmedCount(@PathVariable Long itineraryId) {
+        ConfirmedSummaryDTO summary = bookingService.getConfirmedSummary(itineraryId);
+        return ResponseEntity.ok(summary.count());
+    }
+
     // ── S5-F4 ─────────────────────────────────────────────────────────────
     // ── S5-F4 ─────────────────────────────────────────────────────────────
     @PostMapping("/itinerary/{itineraryId}")

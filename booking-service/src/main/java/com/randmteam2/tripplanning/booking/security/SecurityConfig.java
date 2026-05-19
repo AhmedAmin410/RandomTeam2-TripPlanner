@@ -24,15 +24,17 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/bookings/health").permitAll()
                         .requestMatchers("/actuator/**").permitAll()
+                        // Inter-service Feign endpoints (called by user-service, itinerary-service)
                         .requestMatchers("/api/bookings/user/*/total").permitAll()
+                        .requestMatchers("/api/bookings/aggregate-by-itineraries").permitAll()
+                        .requestMatchers("/api/bookings/itinerary/*/confirmed-summary").permitAll()
+                        .requestMatchers("/api/bookings/itinerary/*/confirmed-count").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
                 .build();
     }
 
-    // Booking-service doesn't manage users — JWT is issued by user-service.
-    // This bean just satisfies Spring Security's autoconfiguration requirement.
     @Bean
     public UserDetailsService userDetailsService() {
         return username -> User.withUsername(username)

@@ -122,7 +122,12 @@ public class BookingService {
         details.put("cancelledAt", LocalDateTime.now().toString());
         booking.setBookingDetails(details);
         Booking saved = bookingRepository.save(booking);
-        writeAuditEvent(saved, "REFUNDED");
+
+        // Use Observer chain (M2 GoF pattern — all audit writes must go through Observer)
+        Map<String, Object> eventDetails = new HashMap<>();
+        eventDetails.put("status", saved.getStatus().name());
+        eventDetails.put("cancellationReason", reason != null ? reason : "");
+        eventPublisher.publish(new BookingEvent("REFUNDED", saved, eventDetails));
         cacheInvalidationService.evictBookingReadCaches();
         return saved;
     }
@@ -158,7 +163,7 @@ public class BookingService {
                 .build();
     }
 
-    // ── S5-F3 sync endpoints (called by other services) ───────────────────
+    // ── Inter-service sync endpoints (called by other services) ──────────
 
     @Cacheable(value = "booking-service",
             key = "'S5-SYNC-USER-TOTAL::' + #userId + '::' + #startDate + '::' + #endDate")
@@ -233,7 +238,17 @@ public class BookingService {
 
         Booking booking = new Booking();
         booking.setItineraryId(itineraryId);
-        booking.setUserId(((Number) body.getOrDefault("userId", 1)).longValue());
+
+        // Safely extract userId — may come from request body
+        Object userIdRaw = body.get("userId");
+        if (userIdRaw != null) {
+            booking.setUserId(((Number) userIdRaw).longValue());
+        } else {
+            // Fallback: extract from itinerary (itinerary-service returns userId)
+            Object itinUserId = itineraryMap.get("userId");
+            booking.setUserId(itinUserId != null ? ((Number) itinUserId).longValue() : 1L);
+        }
+
         booking.setAmount(((Number) body.get("amount")).doubleValue());
         booking.setType(BookingType.valueOf((String) body.get("type")));
 
@@ -255,7 +270,11 @@ public class BookingService {
         if (simulateFailure) {
             booking.setStatus(BookingStatus.FAILED);
             Booking saved = bookingRepository.save(booking);
-            writeAuditEvent(saved, "FAILED");
+            // Use Observer chain for FAILED event
+            Map<String, Object> failedDetails = new HashMap<>();
+            failedDetails.put("status", "FAILED");
+            failedDetails.put("simulateFailure", true);
+            eventPublisher.publish(new BookingEvent("FAILED", saved, failedDetails));
             cacheInvalidationService.evictBookingReadCaches();
             log.info("Booking {} saved with status=FAILED (simulateFailure)", saved.getId());
             return saved;
@@ -263,12 +282,20 @@ public class BookingService {
 
         booking.setStatus(BookingStatus.PENDING);
         Booking saved = bookingRepository.save(booking);
-        writeAuditEvent(saved, "CREATED");
+        // Use Observer chain for CREATED event
+        Map<String, Object> createdDetails = new HashMap<>();
+        createdDetails.put("status", "PENDING");
+        createdDetails.put("seasonalSurcharge", surcharge);
+        eventPublisher.publish(new BookingEvent("CREATED", saved, createdDetails));
         log.info("Booking {} saved with status=PENDING", saved.getId());
 
         saved.setStatus(BookingStatus.CONFIRMED);
         saved = bookingRepository.save(saved);
-        writeAuditEvent(saved, "COMPLETED");
+        // Use Observer chain for COMPLETED event
+        Map<String, Object> completedDetails = new HashMap<>();
+        completedDetails.put("status", "CONFIRMED");
+        completedDetails.put("seasonalSurcharge", surcharge);
+        eventPublisher.publish(new BookingEvent("COMPLETED", saved, completedDetails));
         cacheInvalidationService.evictBookingReadCaches();
         log.info("Booking {} saved with status=CONFIRMED", saved.getId());
 
@@ -384,13 +411,12 @@ public class BookingService {
         Booking saved = bookingRepository.save(booking);
 
         Map<String, Object> eventDetails = new HashMap<>();
-        eventDetails.put("status",             saved.getStatus().name());
-        eventDetails.put("retryAttempt",        attempt);
-        eventDetails.put("confirmationNumber",  details.get("confirmationNumber"));
+        eventDetails.put("status",            saved.getStatus().name());
+        eventDetails.put("retryAttempt",       attempt);
+        eventDetails.put("confirmationNumber", details.get("confirmationNumber"));
         eventPublisher.publish(new BookingEvent("RETRY_ATTEMPTED", saved, eventDetails));
         cacheInvalidationService.evictBookingReadCaches();
         log.info("Booking {} saved with status=CONFIRMED (retry attempt {})", saved.getId(), attempt);
-
         return saved;
     }
 
@@ -432,15 +458,15 @@ public class BookingService {
         List<Object[]> results = bookingRepository.getTopUsedCoupons(limit);
         List<CouponUsageDTO> dtos = new ArrayList<>();
         for (Object[] row : results) {
-            Long   couponId         = ((Number) row[0]).longValue();
-            String code             = (String) row[1];
-            String discountType     = (String) row[2];
-            double discountValue    = ((Number) row[3]).doubleValue();
-            long   timesUsed        = ((Number) row[4]).longValue();
+            Long   couponId           = ((Number) row[0]).longValue();
+            String code               = (String) row[1];
+            String discountType       = (String) row[2];
+            double discountValue      = ((Number) row[3]).doubleValue();
+            long   timesUsed          = ((Number) row[4]).longValue();
             double totalDiscountGiven = ((Number) row[5]).doubleValue();
-            boolean active          = (Boolean) row[6];
-            LocalDateTime expiryDate = ((java.sql.Timestamp) row[7]).toLocalDateTime();
-            boolean expired         = expiryDate.isBefore(LocalDateTime.now());
+            boolean active            = (Boolean) row[6];
+            LocalDateTime expiryDate  = ((java.sql.Timestamp) row[7]).toLocalDateTime();
+            boolean expired           = expiryDate.isBefore(LocalDateTime.now());
             dtos.add(CouponUsageDTO.builder()
                     .couponId(couponId)
                     .code(code)
@@ -487,7 +513,9 @@ public class BookingService {
         }
 
         String  itiStatus        = (String) itineraryMap.get("status");
-        boolean itineraryStarted = "IN_PROGRESS".equals(itiStatus) || "COMPLETED".equals(itiStatus);
+        boolean itineraryStarted = "IN_PROGRESS".equals(itiStatus) || "COMPLETED".equals(itiStatus)
+                || "COMPLETING".equals(itiStatus) || "PAYMENT_PENDING".equals(itiStatus)
+                || "PAID".equals(itiStatus);
 
         RefundStrategySelector selector = new RefundStrategySelector();
         RefundStrategy         strategy = selector.select(startDate, itineraryStarted);
@@ -495,17 +523,18 @@ public class BookingService {
 
         if (strategy instanceof NoRefundStrategy) {
             // Log REFUND_DENIED + invalidate caches BEFORE throwing 400 (M2 §10.5.3 step f)
-            writeAuditEventWithDetails(booking, "REFUND_DENIED", Map.of(
-                    "strategyName",    "NoRefundStrategy",
-                    "reason",          result.getReasonCode(),
-                    "itineraryStatus", itiStatus != null ? itiStatus : "UNKNOWN"
-            ));
+            Map<String, Object> denyDetails = new HashMap<>();
+            denyDetails.put("strategyName",    "NoRefundStrategy");
+            denyDetails.put("reason",          result.getReasonCode());
+            denyDetails.put("itineraryStatus", itiStatus != null ? itiStatus : "UNKNOWN");
+            // Use Observer chain for REFUND_DENIED
+            eventPublisher.publish(new BookingEvent("REFUND_DENIED", booking, denyDetails));
             cacheInvalidationService.evictRefundRelatedCaches();
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "trip already started or completed");
         }
 
-        // M3: Atomic conditional UPDATE — prevents double-refund under concurrent calls
+        // M3: Atomic conditional UPDATE — prevents double-refund under concurrent calls (M3 §7 S5-F12)
         int updated = bookingRepository.transitionBookingStatus(
                 bookingId, BookingStatus.CONFIRMED, BookingStatus.CANCELLED);
         if (updated == 0) {
@@ -525,13 +554,14 @@ public class BookingService {
         booking.setBookingDetails(details);
         Booking saved = bookingRepository.save(booking);
 
-        writeAuditEventWithDetails(saved, "REFUNDED", Map.of(
-                "strategyName",   strategy.getClass().getSimpleName(),
-                "tier",           result.getTier(),
-                "refundAmount",   result.getRefundAmount(),
-                "originalAmount", booking.getAmount(),
-                "reason",         request.getReason() != null ? request.getReason() : ""
-        ));
+        // Use Observer chain for REFUNDED event
+        Map<String, Object> refundedDetails = new HashMap<>();
+        refundedDetails.put("strategyName",   strategy.getClass().getSimpleName());
+        refundedDetails.put("tier",           result.getTier());
+        refundedDetails.put("refundAmount",   result.getRefundAmount());
+        refundedDetails.put("originalAmount", booking.getAmount());
+        refundedDetails.put("reason",         request.getReason() != null ? request.getReason() : "");
+        eventPublisher.publish(new BookingEvent("REFUNDED", saved, refundedDetails));
         cacheInvalidationService.evictRefundRelatedCaches();
         log.info("Booking {} saved with status=CANCELLED (refund tier={})",
                 saved.getId(), result.getTier());
@@ -540,37 +570,6 @@ public class BookingService {
     }
 
     // ── Private helpers ───────────────────────────────────────────────────
-
-    private void writeAuditEvent(Booking booking, String action) {
-        try {
-            PaymentAuditEvent ev = new PaymentAuditEvent();
-            ev.setBookingId(booking.getId());
-            ev.setAction(action);
-            ev.setTimestamp(LocalDateTime.now());
-            ev.setMethod(booking.getType() != null ? booking.getType().name() : null);
-            ev.setAmount(booking.getAmount());
-            ev.setDetails(Map.of("status", booking.getStatus().name()));
-            auditRepository.save(ev);
-        } catch (Exception e) {
-            log.warn("MongoDB audit write failed for action={}: {}", action, e.getMessage());
-        }
-    }
-
-    private void writeAuditEventWithDetails(Booking booking, String action,
-                                            Map<String, Object> details) {
-        try {
-            PaymentAuditEvent ev = new PaymentAuditEvent();
-            ev.setBookingId(booking.getId());
-            ev.setAction(action);
-            ev.setTimestamp(LocalDateTime.now());
-            ev.setMethod(booking.getType() != null ? booking.getType().name() : null);
-            ev.setAmount(booking.getAmount());
-            ev.setDetails(details);
-            auditRepository.save(ev);
-        } catch (Exception e) {
-            log.warn("MongoDB audit write failed for action={}: {}", action, e.getMessage());
-        }
-    }
 
     private LocalDateTime parseStart(String value) {
         if (value == null || value.isBlank()) return LocalDateTime.of(2000, 1, 1, 0, 0);

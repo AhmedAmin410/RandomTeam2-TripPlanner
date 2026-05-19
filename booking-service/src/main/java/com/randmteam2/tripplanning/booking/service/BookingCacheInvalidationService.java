@@ -19,6 +19,11 @@ public class BookingCacheInvalidationService {
         this.redisTemplate = redisTemplate;
     }
 
+    /**
+     * Evict all booking-related read caches on any write.
+     * Includes S5-F10 and S5-F11 because any booking status change
+     * affects revenue analytics and payment history (MS3 §7 cache rules).
+     */
     public void evictBookingReadCaches() {
         evictPatterns(
                 cacheKey("booking::*"),
@@ -26,10 +31,19 @@ public class BookingCacheInvalidationService {
                 cacheKey("S5-F3::*"),
                 cacheKey("S5-F6::*"),
                 cacheKey("S5-F8::*"),
-                cacheKey("S5-F9::*")
+                cacheKey("S5-F9::*"),
+                cacheKey("S5-F10::*"),
+                cacheKey("S5-F11::*"),
+                cacheKey("S5-SYNC-CONFIRMED-SUMMARY::*"),
+                cacheKey("S5-SYNC-USER-TOTAL::*"),
+                cacheKey("S5-SYNC-AGGREGATE::*")
         );
     }
 
+    /**
+     * Evict caches specifically for refund-related operations (S5-F2, S5-F12).
+     * Also used by itinerary.cancelled consumer.
+     */
     public void evictRefundRelatedCaches() {
         evictPatterns(
                 cacheKey("booking::*"),
@@ -39,7 +53,10 @@ public class BookingCacheInvalidationService {
                 cacheKey("S5-F8::*"),
                 cacheKey("S5-F9::*"),
                 cacheKey("S5-F10::*"),
-                cacheKey("S5-F11::*")
+                cacheKey("S5-F11::*"),
+                cacheKey("S5-SYNC-CONFIRMED-SUMMARY::*"),
+                cacheKey("S5-SYNC-USER-TOTAL::*"),
+                cacheKey("S5-SYNC-AGGREGATE::*")
         );
     }
 

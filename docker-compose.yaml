@@ -12,9 +12,9 @@
       MONGO_INITDB_DATABASE: tripplanningmongo
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+      interval: 15s
+      timeout: 10s
+      retries: 15
 
   redis:
     image: redis:7
@@ -23,9 +23,9 @@
     command: redis-server --requirepass redispass --maxmemory 256mb --maxmemory-policy allkeys-lru
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "redispass", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+      interval: 15s
+      timeout: 10s
+      retries: 15
 
   elasticsearch:
     image: elasticsearch:8.13.4
@@ -68,9 +68,9 @@
       NEO4J_server_memory_heap_initial__size: 256m
     healthcheck:
       test: ["CMD", "neo4j", "status"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+      interval: 15s
+      timeout: 10s
+      retries: 15
       start_period: 30s
 
   rabbitmq:
@@ -83,9 +83,9 @@
       RABBITMQ_DEFAULT_PASS: guest
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
-      interval: 10s
+      interval: 15s
       timeout: 10s
-      retries: 10
+      retries: 15
       start_period: 30s
 
   # ── Per-Service PostgreSQL Databases ───────────────────────────────────────
@@ -102,9 +102,9 @@
       - user-pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready"]
-      interval: 10s
+      interval: 15s
       timeout: 10s
-      retries: 10
+      retries: 15
       start_period: 60s
 
   destination-postgres:
@@ -119,9 +119,9 @@
       - destination-pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready"]
-      interval: 10s
+      interval: 15s
       timeout: 10s
-      retries: 10
+      retries: 15
       start_period: 60s
 
   itinerary-postgres:
@@ -136,9 +136,9 @@
       - itinerary-pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready"]
-      interval: 10s
+      interval: 15s
       timeout: 10s
-      retries: 10
+      retries: 15
       start_period: 60s
 
   activity-postgres:
@@ -153,9 +153,9 @@
       - activity-pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready"]
-      interval: 10s
+      interval: 15s
       timeout: 10s
-      retries: 10
+      retries: 15
       start_period: 60s
 
   booking-postgres:
@@ -170,9 +170,10 @@
       - booking-pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready"]
-      interval: 10s
+      interval: 15s
       timeout: 10s
-      retries: 10
+      retries: 15
+
       start_period: 60s
 
   # ── Application Services ───────────────────────────────────────────────────
