@@ -1,42 +1,60 @@
-﻿spring:
-  application:
-    name: api-gateway
-  cloud:
-    gateway:
-      routes:
-        - id: user-service
-          uri: http://user-service:8080
-          predicates:
-            - Path=/api/users/**,/api/auth/**,/api/saved-destinations/**
-        - id: destination-service
-          uri: http://destination-service:8080
-          predicates:
-            - Path=/api/destinations/**
-        - id: itinerary-service
-          uri: http://itinerary-service:8080
-          predicates:
-            - Path=/api/itineraries/**,/api/itinerary-days/**
-        - id: activity-service
-          uri: http://activity-service:8080
-          predicates:
-            - Path=/api/activities/**
-        - id: booking-service
-          uri: http://booking-service:8080
-          predicates:
-            - Path=/api/bookings/**,/api/coupons/**,/api/booking-coupons/**
-
 server:
   port: 8080
 
+spring:
+  application:
+    name: api-gateway
+
+  cloud:
+    gateway:
+      routes:
+        # ─── User Service ─────────────────────────────────────────────────────
+        - id: user-service
+          uri: http://user-service:8081
+          predicates:
+            - Path=/api/users/**, /api/auth/**, /api/saved-destinations/**
+          filters:
+            - RewritePath=/api/(?<segment>.*), /api/$\{segment}
+
+        # ─── Destination Service ──────────────────────────────────────────────
+        - id: destination-service
+          uri: http://destination-service:8082
+          predicates:
+            - Path=/api/destinations/**
+
+        # ─── Itinerary Service ────────────────────────────────────────────────
+        - id: itinerary-service
+          uri: http://itinerary-service:8083
+          predicates:
+            - Path=/api/itineraries/**, /api/itinerary-days/**
+
+        # ─── Activity Service ─────────────────────────────────────────────────
+        - id: activity-service
+          uri: http://activity-service:8084
+          predicates:
+            - Path=/api/activities/**
+
+        # ─── Booking Service ──────────────────────────────────────────────────
+        - id: booking-service
+          uri: http://booking-service:8085
+          predicates:
+            - Path=/api/bookings/**, /api/coupons/**, /api/booking-coupons/**
+
 jwt:
-  secret: ${JWT_SECRET:7Wl0A/qUHLdXuZKT3nra3mBBtOot+/SF/eLo0MTq5zQ=}
+  secret: ${JWT_SECRET:7Tz8mG9kQp2vXwLcHdNjBfYsAeRuOiPb3V5W0yZ1sT4=}
 
 management:
   endpoints:
     web:
       exposure:
-        include: health,info
+        include: health,info,metrics
   endpoint:
     health:
+      show-details: always
       probes:
         enabled: true
+
+logging:
+  level:
+    com.team2.tripplanning.gateway: DEBUG
+    org.springframework.cloud.gateway: INFO
