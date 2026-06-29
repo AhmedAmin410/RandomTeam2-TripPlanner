@@ -79,7 +79,8 @@ public interface ActivityRepository extends JpaRepository<Activity, Long> {
                    COALESCE(AVG(CAST(metadata ->> 'cost' AS NUMERIC)), 0) AS avgCost,
                    COALESCE(AVG(CAST(metadata ->> 'duration' AS NUMERIC)), 0) AS avgDuration
             FROM activities
-            WHERE scheduled_time >= :startDate AND scheduled_time <= :endDate
+            WHERE scheduled_time >= CAST(:startDate AS timestamp)
+              AND scheduled_time < CAST(:endDate AS timestamp) + INTERVAL '1 day'
             GROUP BY category
             """, nativeQuery = true)
     List<Object[]> getAnalyticsByCategory(@Param("startDate") String startDate,
