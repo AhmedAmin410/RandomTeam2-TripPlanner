@@ -141,6 +141,23 @@ public class ActivityController {
         return ResponseEntity.ok(activityService.getActivityTimeline(id, startTime, endTime));
     }
 
+    // S4-F10: Activity Analytics Dashboard
+    @GetMapping("/analytics")
+    public ResponseEntity<ActivityAnalyticsDTO> analyticsDashboard(
+            @RequestParam String startDate,
+            @RequestParam String endDate) {
+        return ResponseEntity.ok(activityService.getAnalyticsDashboard(startDate, endDate));
+    }
+
+    // S4-F11: Record Activity Lifecycle Event
+    @PostMapping("/{id}/events")
+    public ResponseEntity<Map<String, String>> recordLifecycleEvent(
+            @PathVariable Long id,
+            @RequestBody Map<String, String> body) {
+        activityService.recordLifecycleEvent(id, body.get("status"), body.get("notes"));
+        return ResponseEntity.status(201).body(Map.of("message", "Lifecycle event recorded"));
+    }
+
 
 
 }

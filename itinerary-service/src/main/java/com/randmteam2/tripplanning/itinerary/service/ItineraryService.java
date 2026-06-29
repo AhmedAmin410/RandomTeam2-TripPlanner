@@ -13,6 +13,8 @@ import com.randmteam2.tripplanning.itinerary.observer.EntityObserver;
 import com.randmteam2.tripplanning.itinerary.observer.MongoEventLogger;
 import com.randmteam2.tripplanning.itinerary.repository.ItineraryDayRepository;
 import com.randmteam2.tripplanning.itinerary.repository.ItineraryRepository;
+import org.neo4j.driver.Driver;
+import org.neo4j.driver.Record;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Values;
 import org.springframework.cache.annotation.Cacheable;
@@ -32,18 +34,60 @@ public class ItineraryService {
     private final BookingServiceClient bookingServiceClient;
     private final ItineraryRepository itineraryRepository;
     private final ItineraryDayRepository itineraryDayRepository;
+    private final Driver neo4jDriver;
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
 
     public ItineraryService(ItineraryEventPublisher itineraryEventPublisher, ItineraryRepository itineraryRepository,
                             ItineraryDayRepository itineraryDayRepository,
-                            ItineraryEventRepository itineraryEventRepository, UserServiceClient userServiceClient, DestinationServiceClient destinationServiceClient, BookingServiceClient bookingServiceClient) {
+                            ItineraryEventRepository itineraryEventRepository, UserServiceClient userServiceClient, DestinationServiceClient destinationServiceClient, BookingServiceClient bookingServiceClient,
+                            Driver neo4jDriver) {
         this.itineraryEventPublisher = itineraryEventPublisher;
         this.itineraryRepository = itineraryRepository;
         this.itineraryDayRepository = itineraryDayRepository;
         this.userServiceClient = userServiceClient;
         this.destinationServiceClient = destinationServiceClient;
         this.bookingServiceClient = bookingServiceClient;
+        this.neo4jDriver = neo4jDriver;
         register(new MongoEventLogger(itineraryEventRepository));
+    }
+
+    // ─── S3-F12: Get Recommended Destinations for User (Neo4j graph traversal) ───
+    @Cacheable(value = "itinerary-service::S3-F12", key = "#userId + ':' + #limit")
+    public List<DestinationRecommendationDTO> getRecommendations(Long userId, int limit) {
+        // M3: user existence is owned by user-service — verify via Feign (404 if absent).
+        try {
+            userServiceClient.getUser(userId);
+        } catch (feign.FeignException.NotFound e) {
+            throw new RuntimeException("User not found with id: " + userId);
+        } catch (feign.FeignException e) {
+            // user-service temporarily unavailable — soft dependency, continue.
+        }
+        List<DestinationRecommendationDTO> recommendations = new ArrayList<>();
+        try (Session session = neo4jDriver.session()) {
+            String cypher = """
+                    MATCH (me:User {userId: $userId})-[:VISITED]->(d:Destination)<-[:VISITED]-(other:User)
+                    MATCH (other)-[:VISITED]->(rec:Destination)
+                    WHERE NOT (me)-[:VISITED]->(rec)
+                    RETURN rec.destinationId AS destinationId, rec.name AS name,
+                           rec.country AS country, rec.category AS category,
+                           COUNT(DISTINCT other) AS score
+                    ORDER BY score DESC
+                    LIMIT $limit
+                    """;
+            var result = session.run(cypher, Values.parameters("userId", userId, "limit", limit));
+            while (result.hasNext()) {
+                Record record = result.next();
+                Long destId = record.get("destinationId").asLong();
+                String name = record.get("name").isNull() ? null : record.get("name").asString();
+                String country = record.get("country").isNull() ? null : record.get("country").asString();
+                String category = record.get("category").isNull() ? null : record.get("category").asString();
+                Long score = record.get("score").asLong();
+                recommendations.add(new DestinationRecommendationDTO(destId, name, country, category, score));
+            }
+        } catch (Exception e) {
+            // Neo4j is a soft dependency — degrade gracefully to an empty list.
+        }
+        return recommendations;
     }
 
     public void register(EntityObserver observer) { observers.add(observer); }
