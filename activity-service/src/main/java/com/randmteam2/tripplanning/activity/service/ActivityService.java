@@ -4,6 +4,10 @@ import com.randmteam2.tripplanning.activity.dto.*;
 import com.randmteam2.tripplanning.activity.model.Activity;
 import com.randmteam2.tripplanning.activity.model.ActivityLifecycleEvent;
 import com.randmteam2.tripplanning.activity.repository.ActivityLifecycleEventRepository;
+import com.randmteam2.tripplanning.activity.observer.MongoEventLogger;
+import com.randmteam2.tripplanning.activity.messaging.ActivityEventPublisher;
+import com.randmteam2.tripplanning.contracts.events.ActivityCreatedEvent;
+import com.randmteam2.tripplanning.contracts.events.ActivityLifecycleRecordedEvent;
 import com.randmteam2.tripplanning.contracts.feign.ItineraryServiceClient;
 import feign.FeignException;
 import org.slf4j.Logger;
@@ -18,7 +22,10 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -29,13 +36,19 @@ public class ActivityService {
     private final ActivityRepository activityRepository;
     private final ActivityLifecycleEventRepository lifecycleEventRepository;
     private final ItineraryServiceClient itineraryServiceClient;
+    private final MongoEventLogger mongoEventLogger;
+    private final ActivityEventPublisher activityEventPublisher;
 
     public ActivityService(ActivityRepository activityRepository,
                            ActivityLifecycleEventRepository lifecycleEventRepository,
-                           ItineraryServiceClient itineraryServiceClient) {
+                           ItineraryServiceClient itineraryServiceClient,
+                           MongoEventLogger mongoEventLogger,
+                           ActivityEventPublisher activityEventPublisher) {
         this.activityRepository = activityRepository;
         this.lifecycleEventRepository = lifecycleEventRepository;
         this.itineraryServiceClient = itineraryServiceClient;
+        this.mongoEventLogger = mongoEventLogger;
+        this.activityEventPublisher = activityEventPublisher;
     }
 
     private void validateItineraryExists(Long itineraryId) {
@@ -121,6 +134,9 @@ public class ActivityService {
         activity.setItineraryId(itineraryId);
         Activity saved = activityRepository.save(activity);
         log.info("Activity {} saved with status=CREATED", saved.getId());
+        activityEventPublisher.publishActivityCreated(new ActivityCreatedEvent(
+                saved.getId(), itineraryId,
+                saved.getCategory() != null ? saved.getCategory().toString() : null));
         return saved;
     }
 
@@ -259,6 +275,71 @@ public class ActivityService {
                 .collect(Collectors.toList());
     }
 
+    // ─── S4-F10: Activity Analytics Dashboard ───────────────────────────────
+    public ActivityAnalyticsDTO getAnalyticsDashboard(String startDate, String endDate) {
+        if (startDate != null && endDate != null && startDate.compareTo(endDate) > 0) {
+            throw new RuntimeException("invalid date range: startDate must be before endDate");
+        }
+        // Pure-observability log — written on every invocation (Observer chain).
+        mongoEventLogger.onEvent("ANALYTICS_VIEWED", Map.of(
+                "action", "ANALYTICS_VIEWED",
+                "details", "startDate=" + startDate + ",endDate=" + endDate
+        ));
 
+        List<Object[]> rows = activityRepository.getAnalyticsByCategory(startDate, endDate);
+
+        long total = 0;
+        double totalCost = 0;
+        double totalDuration = 0;
+        Map<String, Long> byCategory = new LinkedHashMap<>();
+
+        for (Object[] row : rows) {
+            String category = (String) row[0];
+            long count = ((Number) row[1]).longValue();
+            double avgCost = row[2] != null ? ((Number) row[2]).doubleValue() : 0.0;
+            double avgDuration = row[3] != null ? ((Number) row[3]).doubleValue() : 0.0;
+            total += count;
+            totalCost += avgCost * count;
+            totalDuration += avgDuration * count;
+            byCategory.put(category, count);
+        }
+
+        return ActivityAnalyticsDTO.builder()
+                .totalActivities(total)
+                .averageCost(total > 0 ? totalCost / total : 0.0)
+                .averageDurationHours(total > 0 ? totalDuration / total : 0.0)
+                .activitiesByCategory(byCategory)
+                .build();
+    }
+
+    // ─── S4-F11: Record Activity Lifecycle Event ────────────────────────────
+    private static final List<String> VALID_LIFECYCLE_STATUSES =
+            List.of("BOOKED", "STARTED", "COMPLETED", "CANCELLED");
+
+    public ActivityLifecycleEvent recordLifecycleEvent(Long activityId, String status, String notes) {
+        // Activity lives in this service's own PostgreSQL — validate locally.
+        Activity activity = activityRepository.findById(activityId)
+                .orElseThrow(() -> new RuntimeException("Activity not found with id: " + activityId));
+
+        if (status == null || !VALID_LIFECYCLE_STATUSES.contains(status)) {
+            throw new RuntimeException("invalid status: must be one of " + VALID_LIFECYCLE_STATUSES);
+        }
+
+        ActivityLifecycleEvent event = new ActivityLifecycleEvent(
+                activityId, Instant.now(), UUID.randomUUID(), status);
+        lifecycleEventRepository.save(event);
+
+        // Observability audit log to MongoDB activity_events (Observer chain).
+        mongoEventLogger.onEvent("EVENT_RECORDED", Map.of(
+                "activityId", activityId,
+                "action", "EVENT_RECORDED",
+                "details", "status=" + status + (notes != null ? ",notes=" + notes : "")
+        ));
+
+        // M3 §2.9: publish activity.lifecycle-recorded for downstream consumers.
+        activityEventPublisher.publishLifecycleRecorded(
+                new ActivityLifecycleRecordedEvent(activityId, activity.getItineraryId(), status));
+        return event;
+    }
 
 }

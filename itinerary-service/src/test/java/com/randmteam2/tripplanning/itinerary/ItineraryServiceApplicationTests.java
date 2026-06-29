@@ -7,6 +7,7 @@ import com.randmteam2.tripplanning.itinerary.mongo.ItineraryEventRepository;
 import com.randmteam2.tripplanning.itinerary.neo4j.DestinationNodeRepository;
 import com.randmteam2.tripplanning.itinerary.neo4j.UserNodeRepository;
 import org.junit.jupiter.api.Test;
+import org.neo4j.driver.Driver;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -34,6 +35,9 @@ class ItineraryServiceApplicationTests {
 
     @MockBean
     private RabbitTemplate rabbitTemplate;
+
+    @MockBean
+    private Driver neo4jDriver;
 
     @Test
     void contextLoads() {

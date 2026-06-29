@@ -6,6 +6,7 @@ import com.randmteam2.tripplanning.itinerary.model.ItineraryDay;
 import com.randmteam2.tripplanning.itinerary.service.ItineraryDayService;
 import com.randmteam2.tripplanning.itinerary.service.ItineraryService;
 import com.randmteam2.tripplanning.itinerary.service.RecordVisitService;
+import com.randmteam2.tripplanning.itinerary.security.JwtService;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -21,12 +22,37 @@ public class ItineraryController {
     private final ItineraryService itineraryService;
     private final ItineraryDayService itineraryDayService;
     private final RecordVisitService recordVisitService;
+    private final JwtService jwtService;
 
     public ItineraryController(ItineraryService itineraryService,
-                               ItineraryDayService itineraryDayService, RecordVisitService recordVisitService) {
+                               ItineraryDayService itineraryDayService, RecordVisitService recordVisitService,
+                               JwtService jwtService) {
         this.itineraryService = itineraryService;
         this.itineraryDayService = itineraryDayService;
         this.recordVisitService = recordVisitService;
+        this.jwtService = jwtService;
+    }
+
+    // S3-F12: Get Recommended Destinations for User
+    @GetMapping("/recommendations")
+    public ResponseEntity<?> recommendations(
+            @RequestParam Long userId,
+            @RequestParam(defaultValue = "5") int limit,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+        // Ownership check: caller's uid must equal userId, or caller must be ADMIN.
+        String token = authHeader != null ? authHeader.replace("Bearer ", "") : "";
+        Long callerUid = jwtService.extractUserId(token);
+        String role = jwtService.extractRole(token);
+        if (!"ADMIN".equals(role) && (callerUid == null || !callerUid.equals(userId))) {
+            return ResponseEntity.status(403).body(Map.of("error", "Forbidden: not the target user"));
+        }
+        try {
+            return ResponseEntity.ok(itineraryService.getRecommendations(userId, limit));
+        } catch (RuntimeException e) {
+            String msg = e.getMessage() != null ? e.getMessage() : "error";
+            int status = msg.contains("not found") ? 404 : 400;
+            return ResponseEntity.status(status).body(Map.of("error", msg));
+        }
     }
 
     @GetMapping("/health")
