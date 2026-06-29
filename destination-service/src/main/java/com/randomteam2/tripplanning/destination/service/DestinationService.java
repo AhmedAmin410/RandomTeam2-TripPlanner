@@ -9,17 +9,14 @@ import com.randomteam2.tripplanning.destination.model.Destination;
 import com.randomteam2.tripplanning.destination.model.DestinationReview;
 import com.randomteam2.tripplanning.destination.observer.EntityObserver;
 import com.randomteam2.tripplanning.destination.observer.MongoEventLogger;
+import com.randomteam2.tripplanning.destination.feign.ItineraryServiceClient;
+import com.randomteam2.tripplanning.destination.feign.UserServiceClient;
+import com.randomteam2.tripplanning.destination.messaging.DestinationEventPublisher;
 import com.randomteam2.tripplanning.destination.repository.DestinationEventRepository;
 import com.randomteam2.tripplanning.destination.repository.DestinationRepository;
 import com.randomteam2.tripplanning.destination.repository.DestinationReviewRepository;
-import com.randmteam2.tripplanning.contracts.dto.DestinationBookingRevenueAggregateDTO;
-import com.randmteam2.tripplanning.contracts.dto.DestinationDashboardAggregateDTO;
-import com.randmteam2.tripplanning.contracts.dto.BatchDestinationRequest;
-import com.randmteam2.tripplanning.contracts.dto.DestinationSummaryDTO;
-import com.randmteam2.tripplanning.contracts.feign.ItineraryServiceClient;
-import com.randmteam2.tripplanning.contracts.feign.UserServiceClient;
-import feign.FeignException;
 
+import feign.FeignException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
@@ -55,6 +52,7 @@ public class DestinationService {
     private final RedisTemplate<String, Object> redisTemplate;
     private final ItineraryServiceClient itineraryServiceClient;
     private final UserServiceClient userServiceClient;
+    private final DestinationEventPublisher destinationEventPublisher;
     private final List<EntityObserver> observers = new ArrayList<>();
 
     public DestinationService(
@@ -69,7 +67,8 @@ public class DestinationService {
             DestinationEventRepository destinationEventRepository,
             RedisTemplate<String, Object> redisTemplate,
             ItineraryServiceClient itineraryServiceClient,
-            UserServiceClient userServiceClient) {
+            UserServiceClient userServiceClient,
+            DestinationEventPublisher destinationEventPublisher) {
         this.destinationRepository = destinationRepository;
         this.destinationReviewRepository = destinationReviewRepository;
         this.cacheInvalidationService = cacheInvalidationService;
@@ -81,6 +80,7 @@ public class DestinationService {
         this.redisTemplate = redisTemplate;
         this.itineraryServiceClient = itineraryServiceClient;
         this.userServiceClient = userServiceClient;
+        this.destinationEventPublisher = destinationEventPublisher;
         register(mongoEventLogger);
     }
 
@@ -130,17 +130,25 @@ public class DestinationService {
     }
 
     @Transactional(readOnly = true)
-    public List<DestinationSummaryDTO> batchGetDestinations(BatchDestinationRequest request) {
-        if (request == null || request.destinationIds() == null) {
+    public List<DestinationSummaryDTO> getDestinationsBatch(DestinationBatchRequest request) {
+        if (request == null || request.destinationIds() == null || request.destinationIds().isEmpty()) {
             return List.of();
         }
-        return destinationRepository.findAllById(request.destinationIds()).stream()
-                .map(d -> new DestinationSummaryDTO(
-                        d.getId(),
-                        d.getName(),
-                        d.getCountry(),
-                        d.getCategory() != null ? d.getCategory().name() : null))
-                .toList();
+        List<Long> ids = request.destinationIds();
+        Map<Long, Destination> byId = destinationRepository.findAllById(ids).stream()
+                .collect(Collectors.toMap(Destination::getId, d -> d, (a, b) -> a, LinkedHashMap::new));
+        List<DestinationSummaryDTO> result = new ArrayList<>();
+        for (Long id : ids) {
+            Destination destination = byId.get(id);
+            if (destination != null) {
+                result.add(new DestinationSummaryDTO(
+                        destination.getId(),
+                        destination.getName(),
+                        destination.getCountry(),
+                        destination.getCategory() != null ? destination.getCategory().name() : null));
+            }
+        }
+        return result;
     }
 
     @Transactional(readOnly = true)
@@ -163,6 +171,31 @@ public class DestinationService {
         }
         return destination;
     }
+
+    /**
+     * Returns the clean DestinationDTO used by GET /api/destinations/{id}.
+     * Called by S3 and S5 via Feign — returns exactly:
+     * id, name, country, category, status, rating, totalRatings, details.
+     */
+    @Transactional(readOnly = true)
+    public DestinationDTO getDestinationDTOById(Long id) {
+        Destination destination = getDestinationById(id);
+        return toDTO(destination);
+    }
+
+    private DestinationDTO toDTO(Destination d) {
+        return new DestinationDTO(
+                d.getId(),
+                d.getName(),
+                d.getCountry(),
+                d.getCategory() != null ? d.getCategory().name() : null,
+                d.getStatus() != null ? d.getStatus().name() : null,
+                d.getRating(),
+                d.getTotalRatings(),
+                d.getDetails()
+        );
+    }
+
 
     @Transactional
     public Destination updateDestination(Long id, Destination updated) {
@@ -260,8 +293,26 @@ public class DestinationService {
 
     // ─── M1 Features ─────────────────────────────────────────────────────────
 
+    /**
+     * S2-F3: Get Destination Booking Revenue Summary.
+     *
+     * M3 change: the M1 implementation joined destinations, itineraries, and bookings
+     * across all three databases in a single native SQL query. That cross-database JOIN is
+     * replaced here with a single Feign call to itinerary-service, which encapsulates the
+     * chain (itinerary-service → booking-service) and returns the pre-aggregated result.
+     * destination-service never opens a JDBC connection to itinerary-postgres or
+     * booking-postgres.
+     *
+     * The returned aggregate is then mapped to DestinationRevenueDTO via the
+     * ObjectArrayDtoAdapter (M2 Builder contract preserved).
+     *
+     * Cache: 10-minute TTL, keyed by destinationId + date range.
+     */
     @Transactional(readOnly = true)
-    public DestinationRevenueDTO getDestinationRevenueSummary(Long destinationId, LocalDate startDate, LocalDate endDate) {
+    public DestinationRevenueDTO getDestinationRevenueSummary(Long destinationId,
+                                                              LocalDate startDate,
+                                                              LocalDate endDate) {
+        // 1. Validate date parameters
         if (startDate == null || endDate == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "startDate and endDate are required");
         }
@@ -269,43 +320,36 @@ public class DestinationService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "endDate must not be before startDate");
         }
 
+        // 2. Return cached result if present
         String cacheKey = "destination-service::S2-F3::" + destinationId + "::" + startDate + "::" + endDate;
         try {
             Object cached = redisTemplate.opsForValue().get(cacheKey);
-            if (cached instanceof DestinationRevenueDTO dto) {
-                return dto;
+            if (cached instanceof DestinationRevenueDTO hit) {
+                return hit;
             }
         } catch (Exception e) {
-            logger.warn("Redis read failed", e);
+            logger.warn("Redis read failed for S2-F3 key {}", cacheKey, e);
         }
 
+        // 3. Validate destination exists — 404 if not found
         Destination destination = destinationRepository.findById(destinationId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Destination not found"));
 
-        Object[] row = legacyDestinationRevenueSummary(destinationId, startDate, endDate);
-        if (row == null) {
-            DestinationBookingRevenueAggregateDTO aggregate = itineraryServiceClient.getDestinationBookingRevenue(
-                    destinationId, startDate.toString(), endDate.toString());
-            if (aggregate != null) {
-                row = new Object[]{
-                        aggregate.totalBookings(),
-                        aggregate.totalRevenue(),
-                        aggregate.averageBookingAmount()
-                };
-            }
-        }
-        if (row != null && row.length == 1 && row[0] instanceof Object[]) {
-            row = (Object[]) row[0];
-        }
+        // 4. Single Feign call to itinerary-service (M3 — replaces 3-table JOIN)
+        DestinationBookingRevenueAggregateDTO aggregate = itineraryServiceClient.getDestinationBookingRevenue(
+                destinationId, startDate.toString(), endDate.toString());
 
-        // Adapter pattern: convert Object[] → DTO
-        DestinationRevenueDTO dto = objectArrayDtoAdapter.adaptRevenue(destination.getId(), destination.getName(), row);
+        // 5. Adapt aggregate + local destination fields into the response DTO
+        DestinationRevenueDTO dto = objectArrayDtoAdapter.adaptRevenue(
+                destination.getId(), destination.getName(), aggregate);
 
+        // 6. Cache for 10 minutes
         try {
             redisTemplate.opsForValue().set(cacheKey, dto, 10, TimeUnit.MINUTES);
         } catch (Exception e) {
-            logger.warn("Redis write failed", e);
+            logger.warn("Redis write failed for S2-F3 key {}", cacheKey, e);
         }
+
         return dto;
     }
 
@@ -328,37 +372,72 @@ public class DestinationService {
         return savedDestination;
     }
 
+    /**
+     * S2-F4: Update Destination Status.
+     *
+     * M3 change: the M1 INACTIVE guard used a direct SQL COUNT on the shared database
+     * (SELECT COUNT(*) FROM itineraries WHERE destination_id = ? AND status IN ('DRAFT','PLANNED','IN_PROGRESS')).
+     * That is replaced with a single Feign call to itinerary-service at
+     * GET /api/itineraries/destination/{destinationId}/active-count which counts over the
+     * expanded M3 active set: DRAFT, PLANNED, IN_PROGRESS, COMPLETING, PAYMENT_PENDING.
+     * The saga states (COMPLETING, PAYMENT_PENDING) are included so a destination cannot
+     * be deactivated while any trip referencing it is mid-saga.
+     *
+     * For ACTIVE or SEASONAL transitions the Feign call is skipped entirely (same as M1).
+     *
+     * After every successful status change a destination.status-changed event is published
+     * to the destination.events RabbitMQ exchange.
+     */
     @Transactional
     public Destination updateStatus(Long id, String statusRaw) {
+        // 1. Reject blank or null input
         if (statusRaw == null || statusRaw.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "status is required");
         }
+
+        // 2. Parse to enum — reject unknown values with 400
         final Destination.Status newStatus;
         try {
             newStatus = Destination.Status.valueOf(statusRaw.trim().toUpperCase());
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid status");
         }
+
+        // 3. Fetch destination — 404 if absent
         Destination destination = destinationRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Destination not found"));
+
+        // 4. INACTIVE guard (M3): single Feign call replaces the M1 direct SQL COUNT.
+        //    ACTIVE and SEASONAL transitions skip this block entirely.
         if (newStatus == Destination.Status.INACTIVE) {
-            long activeRefs = Math.max(
-                    legacyActiveItineraryReferences(id),
-                    itineraryServiceClient.getDestinationActiveItineraryCount(id));
-            if (activeRefs > 0) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Active itineraries still reference this destination");
+            Integer activeCount = itineraryServiceClient.getDestinationActiveItineraryCount(id);
+            if (activeCount != null && activeCount > 0) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Cannot mark destination INACTIVE: " + activeCount +
+                                " active itinerary/itineraries still reference it");
             }
         }
+
+        // 5. Apply change and persist
         Destination.Status oldStatus = destination.getStatus();
         destination.setStatus(newStatus);
-        Destination savedDestination = destinationRepository.save(destination);
-        elasticsearchIndexService.indexDestination(savedDestination, "auto_crud_update");
-        cacheInvalidationService.evictDestinationCaches(savedDestination.getId());
-        Map<String, Object> payload = destinationPayload(savedDestination);
+        Destination saved = destinationRepository.save(destination);
+
+        // 6. Side-effects: Elasticsearch re-index, cache eviction, observer log
+        elasticsearchIndexService.indexDestination(saved, "auto_crud_update");
+        cacheInvalidationService.evictDestinationCaches(saved.getId());
+        Map<String, Object> payload = destinationPayload(saved);
         payload.put("oldStatus", oldStatus != null ? oldStatus.name() : null);
         payload.put("newStatus", newStatus.name());
         notifyObservers("STATUS_CHANGED", payload);
-        return savedDestination;
+
+        // 7. Publish destination.status-changed event to destination.events exchange
+        destinationEventPublisher.publishStatusChanged(new StatusChangedEvent(
+                id,
+                oldStatus != null ? oldStatus.name() : null,
+                newStatus.name()));
+
+        return saved;
     }
 
     @Transactional(readOnly = true)
@@ -413,41 +492,14 @@ public class DestinationService {
             logger.warn("Redis read failed", e);
         }
 
-        List<Object[]> legacyRows = legacyTopRatedDestinationsReport(limit);
-        if (legacyRows != null) {
-            List<TopDestinationDTO> result = new ArrayList<>(legacyRows.size());
-            for (Object[] row : legacyRows) {
-                result.add(TopDestinationDTO.builder()
-                        .destinationId(((Number) row[0]).longValue())
-                        .name((String) row[1])
-                        .rating(row[2] != null ? ((Number) row[2]).doubleValue() : 0.0)
-                        .totalBookings(((Number) row[3]).longValue())
-                        .build());
-            }
-            try {
-                redisTemplate.opsForValue().set(cacheKey, result, 10, TimeUnit.MINUTES);
-            } catch (Exception e) {
-                logger.warn("Redis write failed", e);
-            }
-            return result;
-        }
-
-        List<Destination> destinations = destinationRepository.findAll().stream()
-                .sorted(Comparator.comparing(
-                                (Destination d) -> d.getRating() != null ? d.getRating() : 0.0)
-                        .reversed()
-                        .thenComparing(Destination::getId))
-                .limit(limit)
-                .toList();
-        List<TopDestinationDTO> result = new ArrayList<>(destinations.size());
-        for (Destination dest : destinations) {
-            DestinationBookingRevenueAggregateDTO aggregate = itineraryServiceClient.getDestinationBookingRevenue(
-                    dest.getId(), "1900-01-01", "2100-01-01");
+        List<Object[]> rows = destinationRepository.findTopRatedDestinationsReport(limit);
+        List<TopDestinationDTO> result = new ArrayList<>(rows.size());
+        for (Object[] row : rows) {
             result.add(TopDestinationDTO.builder()
-                    .destinationId(dest.getId())
-                    .name(dest.getName())
-                    .rating(dest.getRating() != null ? dest.getRating() : 0.0)
-                    .totalBookings(nullToZero(aggregate.totalBookings()))
+                    .destinationId(((Number) row[0]).longValue())
+                    .name((String) row[1])
+                    .rating(row[2] != null ? ((Number) row[2]).doubleValue() : 0.0)
+                    .totalBookings(((Number) row[3]).longValue())
                     .build());
         }
         try {
@@ -469,26 +521,14 @@ public class DestinationService {
         if (ratingValue < 1 || ratingValue > 5) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "rating must be between 1 and 5");
         }
-        List<Object[]> legacyItineraryRows = legacyItineraryDestinationIdAndStatus(request.getItineraryId());
-        Long itineraryDestinationId;
-        String status;
-        if (legacyItineraryRows != null && legacyItineraryRows.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Itinerary not found");
-        }
-        if (legacyItineraryRows != null) {
-            Object[] row = legacyItineraryRows.get(0);
-            itineraryDestinationId = row[0] != null ? ((Number) row[0]).longValue() : null;
-            status = row[1] != null ? row[1].toString() : null;
-        } else {
-            Map<String, Object> itinerary = getItineraryMap(request.getItineraryId());
-            itineraryDestinationId = asLong(itinerary.get("destinationId"));
-            status = itinerary.get("status") != null ? itinerary.get("status").toString() : null;
-        }
-        if (itineraryDestinationId == null || !itineraryDestinationId.equals(destinationId)) {
+        ItineraryDTO itinerary = fetchItinerary(request.getItineraryId());
+        if (itinerary.destinationId() == null || !itinerary.destinationId().equals(destinationId)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Itinerary does not reference this destination");
         }
-        if (!"COMPLETED".equals(status)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Itinerary must be COMPLETED to rate this destination");
+        String status = itinerary.status() != null ? itinerary.status().trim().toUpperCase() : "";
+        if (!"COMPLETED".equals(status) && !"PAID".equals(status)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Itinerary must be in a completed state (COMPLETED or PAID) to rate this destination");
         }
         int priorCount = destination.getTotalRatings() != null ? destination.getTotalRatings() : 0;
         double priorAvg = destination.getRating() != null ? destination.getRating() : 0.0;
@@ -503,6 +543,11 @@ public class DestinationService {
         payload.put("itineraryId", request.getItineraryId());
         payload.put("ratingValue", ratingValue);
         notifyObservers("RATING_ADDED", payload);
+        destinationEventPublisher.publishRated(new DestinationRatedEvent(
+                destinationId,
+                request.getItineraryId(),
+                (double) ratingValue,
+                itinerary.userId()));
         return savedDestination;
     }
 
@@ -513,13 +558,6 @@ public class DestinationService {
         if (request == null || request.getVerifiedBy() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "verifiedBy is required");
         }
-        Long legacyAdminCount = legacyAdminUserCount(request.getVerifiedBy());
-        boolean isAdmin = legacyAdminCount != null
-                ? legacyAdminCount > 0
-                : "ADMIN".equals(String.valueOf(getUserMap(request.getVerifiedBy()).get("role")));
-        if (!isAdmin) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only an ADMIN user may verify reviews");
-        }
         DestinationReview review = destinationReviewRepository.findById(reviewId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Review not found"));
         if (review.getDestination() == null || !destinationId.equals(review.getDestination().getId())) {
@@ -528,6 +566,10 @@ public class DestinationService {
         LocalDate visitDate = review.getVisitDate();
         if (visitDate != null && visitDate.isAfter(LocalDate.now())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot verify a review for a future visit date");
+        }
+        UserDTO user = fetchUserForReviewVerification(request.getVerifiedBy());
+        if (user.role() == null || !"ADMIN".equalsIgnoreCase(user.role())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only an ADMIN user may verify reviews");
         }
         review.setVerified(true);
         Map<String, Object> metadata = review.getMetadata() == null ? new HashMap<>() : new HashMap<>(review.getMetadata());
@@ -704,47 +746,51 @@ public class DestinationService {
         notifyObservers("INDEXED", payload);
     }
 
+
     /**
      * S2-F12: Get Destination Analytics Dashboard.
-     * Logs DASHBOARD_VIEWED on every invocation (even cache hits) – logging is outside cache.
+     *
+     * M3 change: the itinerary aggregation (totalItineraries, completedItineraries,
+     * totalVisitors) is obtained via a single Feign call to itinerary-service at
+     * GET /api/itineraries/destination/{destinationId}/dashboard-aggregate
+     * instead of querying the shared database directly.
+     *
+     * Observer contract (M2 preserved): DASHBOARD_VIEWED is fired on every
+     * invocation, including cache hits. The observer notify happens before the
+     * cache check so it can never be skipped.
+     *
+     * Cache: 10-minute TTL, keyed by destinationId.
      */
     public DestinationDashboardDTO getDestinationDashboard(Long destinationId) {
+        // 1. Validate destination exists — 404 if not found
         Destination destination = destinationRepository.findById(destinationId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Destination not found"));
 
-        // Always log DASHBOARD_VIEWED (outside cache check)
-        Map<String, Object> viewPayload = destinationPayload(destination);
-        viewPayload.put("dashboardParams", Map.of("destinationId", destinationId));
-        notifyObservers("DASHBOARD_VIEWED", viewPayload);
+        // 2. Always fire DASHBOARD_VIEWED regardless of cache state
+        Map<String, Object> eventPayload = destinationPayload(destination);
+        eventPayload.put("dashboardParams", Map.of("destinationId", destinationId));
+        notifyObservers("DASHBOARD_VIEWED", eventPayload);
 
+        // 3. Return cached response if present
         String cacheKey = "destination-service::S2-F12::" + destinationId;
         try {
             Object cached = redisTemplate.opsForValue().get(cacheKey);
-            if (cached instanceof DestinationDashboardDTO dto) {
-                return dto;
+            if (cached instanceof DestinationDashboardDTO hit) {
+                return hit;
             }
         } catch (Exception e) {
-            logger.warn("Redis read failed for S2-F12", e);
+            logger.warn("Redis read failed for S2-F12 key {}", cacheKey, e);
         }
 
-        Object[] stats = legacyDestinationDashboardStats(destinationId);
-        long totalItineraries;
-        long completedItineraries;
-        long totalVisitors;
-        if (stats != null) {
-            if (stats.length == 1 && stats[0] instanceof Object[]) {
-                stats = (Object[]) stats[0];
-            }
-            totalItineraries = stats[0] != null ? ((Number) stats[0]).longValue() : 0L;
-            completedItineraries = stats[1] != null ? ((Number) stats[1]).longValue() : 0L;
-            totalVisitors = stats[2] != null ? ((Number) stats[2]).longValue() : 0L;
-        } else {
-            DestinationDashboardAggregateDTO aggregate = itineraryServiceClient.getDestinationDashboardAggregate(destinationId);
-            totalItineraries = aggregate != null ? nullToZero(aggregate.totalItineraries()) : 0L;
-            completedItineraries = aggregate != null ? nullToZero(aggregate.completedItineraries()) : 0L;
-            totalVisitors = aggregate != null ? nullToZero(aggregate.totalVisitors()) : 0L;
-        }
+        // 4. Fetch itinerary aggregates from itinerary-service via Feign (M3)
+        DestinationDashboardAggregateDTO aggregate =
+                itineraryServiceClient.getDestinationDashboardAggregate(destinationId);
 
+        long totalItineraries     = aggregate != null && aggregate.totalItineraries()     != null ? aggregate.totalItineraries()     : 0L;
+        long completedItineraries = aggregate != null && aggregate.completedItineraries() != null ? aggregate.completedItineraries() : 0L;
+        long totalVisitors        = aggregate != null && aggregate.totalVisitors()        != null ? aggregate.totalVisitors()        : 0L;
+
+        // 5. Build response — ratings come from the local Destination row (unchanged from M2)
         DestinationDashboardDTO dto = DestinationDashboardDTO.builder()
                 .destinationId(destination.getId())
                 .name(destination.getName())
@@ -755,103 +801,29 @@ public class DestinationService {
                 .averageRating(destination.getRating() != null ? destination.getRating() : 0.0)
                 .build();
 
+        // 6. Cache for 10 minutes
         try {
             redisTemplate.opsForValue().set(cacheKey, dto, 10, TimeUnit.MINUTES);
         } catch (Exception e) {
-            logger.warn("Redis write failed for S2-F12", e);
+            logger.warn("Redis write failed for S2-F12 key {}", cacheKey, e);
         }
+
         return dto;
     }
 
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> getItineraryMap(Long itineraryId) {
+    private ItineraryDTO fetchItinerary(Long itineraryId) {
         try {
-            Object response = itineraryServiceClient.getItinerary(itineraryId);
-            if (response instanceof Map<?, ?> map) {
-                return (Map<String, Object>) map;
-            }
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Invalid itinerary response");
+            return itineraryServiceClient.getItinerary(itineraryId);
         } catch (FeignException.NotFound e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Itinerary not found", e);
-        } catch (FeignException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Unable to validate itinerary", e);
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Itinerary not found");
         }
     }
 
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> getUserMap(Long userId) {
+    private UserDTO fetchUserForReviewVerification(Long userId) {
         try {
-            Object response = userServiceClient.getUser(userId);
-            if (response instanceof Map<?, ?> map) {
-                return (Map<String, Object>) map;
-            }
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Invalid user response");
+            return userServiceClient.getUser(userId);
         } catch (FeignException.NotFound e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found", e);
-        } catch (FeignException e) {
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Unable to validate user", e);
-        }
-    }
-
-    private Long asLong(Object value) {
-        if (value instanceof Number number) return number.longValue();
-        if (value == null) return null;
-        return Long.valueOf(value.toString());
-    }
-
-    private long nullToZero(Long value) {
-        return value != null ? value : 0L;
-    }
-
-    private double nullToZero(Double value) {
-        return value != null ? value : 0.0;
-    }
-
-    private Object[] legacyDestinationRevenueSummary(Long destinationId, LocalDate startDate, LocalDate endDate) {
-        try {
-            return destinationRepository.findDestinationRevenueSummary(destinationId, startDate, endDate);
-        } catch (UnsupportedOperationException e) {
-            return null;
-        }
-    }
-
-    private long legacyActiveItineraryReferences(Long destinationId) {
-        try {
-            return destinationRepository.countActiveItinerariesReferencingDestination(destinationId);
-        } catch (UnsupportedOperationException e) {
-            return 0L;
-        }
-    }
-
-    private List<Object[]> legacyTopRatedDestinationsReport(int limit) {
-        try {
-            return destinationRepository.findTopRatedDestinationsReport(limit);
-        } catch (UnsupportedOperationException e) {
-            return null;
-        }
-    }
-
-    private List<Object[]> legacyItineraryDestinationIdAndStatus(Long itineraryId) {
-        try {
-            return destinationRepository.findItineraryDestinationIdAndStatus(itineraryId);
-        } catch (UnsupportedOperationException e) {
-            return null;
-        }
-    }
-
-    private Long legacyAdminUserCount(Long userId) {
-        try {
-            return destinationRepository.countAdminUserById(userId);
-        } catch (UnsupportedOperationException e) {
-            return null;
-        }
-    }
-
-    private Object[] legacyDestinationDashboardStats(Long destinationId) {
-        try {
-            return destinationRepository.findDestinationDashboardStats(destinationId);
-        } catch (UnsupportedOperationException e) {
-            return null;
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only an ADMIN user may verify reviews");
         }
     }
 }

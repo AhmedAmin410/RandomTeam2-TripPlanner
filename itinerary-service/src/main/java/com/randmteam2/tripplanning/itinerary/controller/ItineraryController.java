@@ -3,11 +3,6 @@ package com.randmteam2.tripplanning.itinerary.controller;
 import com.randmteam2.tripplanning.itinerary.dto.*;
 import com.randmteam2.tripplanning.itinerary.model.Itinerary;
 import com.randmteam2.tripplanning.itinerary.model.ItineraryDay;
-import com.randmteam2.tripplanning.contracts.dto.BatchItineraryRequest;
-import com.randmteam2.tripplanning.contracts.dto.DestinationBookingRevenueAggregateDTO;
-import com.randmteam2.tripplanning.contracts.dto.DestinationDashboardAggregateDTO;
-import com.randmteam2.tripplanning.contracts.dto.ItinerarySummaryDTO;
-import com.randmteam2.tripplanning.contracts.dto.UserTripSummaryAggregateDTO;
 import com.randmteam2.tripplanning.itinerary.service.ItineraryDayService;
 import com.randmteam2.tripplanning.itinerary.service.ItineraryService;
 import com.randmteam2.tripplanning.itinerary.service.RecordVisitService;
@@ -49,47 +44,13 @@ public class ItineraryController {
         return ResponseEntity.status(201).body(itineraryService.create(itinerary));
     }
 
+    @GetMapping("/user/{userId}/summary")
+    public ResponseEntity<UserTripSummaryAggregateDTO> getUserSummary(@PathVariable Long userId) {
+        return ResponseEntity.ok(itineraryService.getUserTripSummary(userId));
+    }
     @GetMapping("/{id}")
     public ResponseEntity<Itinerary> getById(@PathVariable Long id) {
         return ResponseEntity.ok(itineraryService.getById(id));
-    }
-
-    @GetMapping("/user/{userId}/summary")
-    public ResponseEntity<UserTripSummaryAggregateDTO> getUserItinerarySummary(@PathVariable Long userId) {
-        return ResponseEntity.ok(itineraryService.getUserItinerarySummary(userId));
-    }
-
-    @GetMapping("/user/{userId}/active-count")
-    public ResponseEntity<Integer> getActiveItineraryCount(@PathVariable Long userId) {
-        return ResponseEntity.ok(itineraryService.getActiveItineraryCount(userId));
-    }
-
-    @GetMapping("/user/{userId}/completed-count")
-    public ResponseEntity<Long> getCompletedItineraryCount(@PathVariable Long userId) {
-        return ResponseEntity.ok(itineraryService.getCompletedItineraryCount(userId));
-    }
-
-    @GetMapping("/destination/{destinationId}/active-count")
-    public ResponseEntity<Integer> getDestinationActiveItineraryCount(@PathVariable Long destinationId) {
-        return ResponseEntity.ok(itineraryService.getDestinationActiveItineraryCount(destinationId));
-    }
-
-    @GetMapping("/destination/{destinationId}/booking-revenue")
-    public ResponseEntity<DestinationBookingRevenueAggregateDTO> getDestinationBookingRevenue(
-            @PathVariable Long destinationId,
-            @RequestParam String startDate,
-            @RequestParam String endDate) {
-        return ResponseEntity.ok(itineraryService.getDestinationBookingRevenue(destinationId, startDate, endDate));
-    }
-
-    @GetMapping("/destination/{destinationId}/dashboard-aggregate")
-    public ResponseEntity<DestinationDashboardAggregateDTO> getDestinationDashboardAggregate(@PathVariable Long destinationId) {
-        return ResponseEntity.ok(itineraryService.getDestinationDashboardAggregate(destinationId));
-    }
-
-    @PostMapping("/batch")
-    public ResponseEntity<List<ItinerarySummaryDTO>> batchGetItineraries(@RequestBody BatchItineraryRequest request) {
-        return ResponseEntity.ok(itineraryService.batchGetItineraries(request));
     }
 
     @GetMapping
@@ -210,5 +171,38 @@ public class ItineraryController {
         }
     }
 
+
+    @GetMapping("/user/{userId}/active-count")
+    public ResponseEntity<Integer> getUserActiveCount(@PathVariable Long userId) {
+        return ResponseEntity.ok(itineraryService.getUserActiveCount(userId));
+    }
+
+    @GetMapping("/user/{userId}/completed-count")
+    public ResponseEntity<Long> getUserCompletedCount(@PathVariable Long userId) {
+        return ResponseEntity.ok(itineraryService.getUserCompletedCount(userId));
+    }
+
+    @GetMapping("/destination/{destinationId}/active-count")
+    public ResponseEntity<Integer> getDestinationActiveCount(@PathVariable Long destinationId) {
+        return ResponseEntity.ok(itineraryService.getDestinationActiveCount(destinationId));
+    }
+
+    @GetMapping("/destination/{destinationId}/booking-revenue")
+    public ResponseEntity<DestinationBookingRevenueAggregateDTO> getDestinationBookingRevenue(
+            @PathVariable Long destinationId) {
+        return ResponseEntity.ok(itineraryService.getDestinationBookingRevenue(destinationId));
+    }
+
+    @GetMapping("/destination/{destinationId}/dashboard-aggregate")
+    public ResponseEntity<DestinationDashboardAggregateDTO> getDestinationDashboardAggregate(
+            @PathVariable Long destinationId) {
+        return ResponseEntity.ok(itineraryService.getDestinationDashboardAggregate(destinationId));
+    }
+
+    @PostMapping("/batch")
+    public ResponseEntity<List<ItinerarySummaryDTO>> getBatch(
+            @RequestBody BatchItineraryRequest request) {
+        return ResponseEntity.ok(itineraryService.getBatch(request.getItineraryIds()));
+    }
 
 }

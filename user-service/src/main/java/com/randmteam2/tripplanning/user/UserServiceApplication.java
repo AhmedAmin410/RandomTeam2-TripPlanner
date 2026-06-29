@@ -7,7 +7,7 @@ import org.springframework.cloud.openfeign.EnableFeignClients;
 
 @SpringBootApplication
 @EnableCaching
-@EnableFeignClients(basePackages = "com.randmteam2.tripplanning.contracts.feign")
+@EnableFeignClients
 public class UserServiceApplication {
 
     public static void main(String[] args) {

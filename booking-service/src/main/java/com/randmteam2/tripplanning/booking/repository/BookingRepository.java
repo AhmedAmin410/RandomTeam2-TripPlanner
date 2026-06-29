@@ -1,6 +1,7 @@
 package com.randmteam2.tripplanning.booking.repository;
 
 import com.randmteam2.tripplanning.booking.model.Booking;
+import com.randmteam2.tripplanning.booking.model.BookingStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -18,26 +19,6 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     long countByItineraryIdAndStatus(Long itineraryId, com.randmteam2.tripplanning.booking.model.BookingStatus status);
 
     @Query("""
-        select count(b)
-        from Booking b
-        where b.userId = :userId and b.status = com.randmteam2.tripplanning.booking.model.BookingStatus.CONFIRMED
-        and (b.createdAt is null or b.createdAt between :startDate and :endDate)
-        """)
-    long countConfirmedBookingsByUserAndDateRange(@Param("userId") Long userId,
-                                                  @Param("startDate") LocalDateTime startDate,
-                                                  @Param("endDate") LocalDateTime endDate);
-
-    @Query("""
-        select coalesce(sum(b.amount), 0)
-        from Booking b
-        where b.userId = :userId and b.status = com.randmteam2.tripplanning.booking.model.BookingStatus.CONFIRMED
-        and (b.createdAt is null or b.createdAt between :startDate and :endDate)
-        """)
-    Double sumConfirmedAmountByUserAndDateRange(@Param("userId") Long userId,
-                                                @Param("startDate") LocalDateTime startDate,
-                                                @Param("endDate") LocalDateTime endDate);
-
-    @Query("""
         select coalesce(sum(b.amount), 0)
         from Booking b
         where b.itineraryId = :itineraryId and b.status = com.randmteam2.tripplanning.booking.model.BookingStatus.CONFIRMED
@@ -45,13 +26,50 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
     Double sumConfirmedAmountByItineraryId(@Param("itineraryId") Long itineraryId);
 
     @Query("""
-        select b
+        select coalesce(sum(b.amount), 0)
         from Booking b
-        where b.status = com.randmteam2.tripplanning.booking.model.BookingStatus.CONFIRMED
-        and b.createdAt between :startDate and :endDate
+        where b.userId = :userId
+          and b.status = com.randmteam2.tripplanning.booking.model.BookingStatus.CONFIRMED
+          and b.createdAt between :startDate and :endDate
         """)
-    List<Booking> findConfirmedBookingsInDateRange(@Param("startDate") LocalDateTime startDate,
-                                                   @Param("endDate") LocalDateTime endDate);
+    Double sumConfirmedAmountByUserAndDateRange(@Param("userId") Long userId,
+                                                @Param("startDate") LocalDateTime startDate,
+                                                @Param("endDate") LocalDateTime endDate);
+
+    @Query("""
+        select count(b)
+        from Booking b
+        where b.userId = :userId
+          and b.status = com.randmteam2.tripplanning.booking.model.BookingStatus.CONFIRMED
+          and b.createdAt between :startDate and :endDate
+        """)
+    Long countConfirmedTripsByUserAndDateRange(@Param("userId") Long userId,
+                                               @Param("startDate") LocalDateTime startDate,
+                                               @Param("endDate") LocalDateTime endDate);
+
+    @Query("""
+        select coalesce(sum(b.amount), 0)
+        from Booking b
+        where b.itineraryId in :itineraryIds
+          and b.status = :status
+          and b.createdAt between :startDate and :endDate
+        """)
+    Double sumAmountByItineraryIdsAndStatus(@Param("itineraryIds") List<Long> itineraryIds,
+                                            @Param("status") com.randmteam2.tripplanning.booking.model.BookingStatus status,
+                                            @Param("startDate") LocalDateTime startDate,
+                                            @Param("endDate") LocalDateTime endDate);
+
+    @Query("""
+        select count(b)
+        from Booking b
+        where b.itineraryId in :itineraryIds
+          and b.status = :status
+          and b.createdAt between :startDate and :endDate
+        """)
+    Long countByItineraryIdsAndStatus(@Param("itineraryIds") List<Long> itineraryIds,
+                                      @Param("status") com.randmteam2.tripplanning.booking.model.BookingStatus status,
+                                      @Param("startDate") LocalDateTime startDate,
+                                      @Param("endDate") LocalDateTime endDate);
 
     @Modifying
     @Query("""
@@ -94,6 +112,15 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
         """, nativeQuery = true)
     List<Object[]> getUserBookingSummary(@Param("userId") Long userId);
 
+    // S5-F10 confirmed bookings in date range (local table only)
+    @Query("""
+        select b from Booking b
+        where b.status = com.randmteam2.tripplanning.booking.model.BookingStatus.CONFIRMED
+          and b.createdAt between :startDate and :endDate
+        """)
+    List<Booking> findConfirmedBookingsInRange(@Param("startDate") LocalDateTime startDate,
+                                               @Param("endDate") LocalDateTime endDate);
+
     // S5-F6
     @Query(value = """
         SELECT status, COUNT(*) as count, COALESCE(SUM(amount), 0) as total
@@ -120,4 +147,5 @@ public interface BookingRepository extends JpaRepository<Booking, Long> {
 
     List<Object[]> getTopUsedCoupons(@Param("limit") int limit);
 
+    List<Booking> findByUserIdAndStatus(Long userId, BookingStatus bookingStatus);
 }

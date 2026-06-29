@@ -1,19 +1,15 @@
 package com.randmteam2.tripplanning.booking.service;
 
 import com.randmteam2.tripplanning.booking.dto.DestinationSeasonRevenueDTO;
+import com.randmteam2.tripplanning.booking.feign.BookingFeignClients;
 import com.randmteam2.tripplanning.booking.model.Booking;
-import com.randmteam2.tripplanning.booking.mongo.EventFactory;
-import com.randmteam2.tripplanning.booking.mongo.EventType;
 import com.randmteam2.tripplanning.booking.mongo.PaymentAuditEvent;
 import com.randmteam2.tripplanning.booking.mongo.PaymentAuditEventRepository;
 import com.randmteam2.tripplanning.booking.repository.BookingRepository;
-import com.randmteam2.tripplanning.contracts.dto.BatchDestinationRequest;
-import com.randmteam2.tripplanning.contracts.dto.BatchItineraryRequest;
 import com.randmteam2.tripplanning.contracts.dto.DestinationSummaryDTO;
 import com.randmteam2.tripplanning.contracts.dto.ItinerarySummaryDTO;
-import com.randmteam2.tripplanning.contracts.feign.DestinationServiceClient;
-import com.randmteam2.tripplanning.contracts.feign.ItineraryServiceClient;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -21,23 +17,34 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.function.Function;
-import java.util.stream.Collectors;
+import java.util.*;
 
 @Service
 public class BookingAnalyticsService {
 
-    @Autowired private BookingRepository bookingRepository;
-    @Autowired private PaymentAuditEventRepository auditRepository;
-    @Autowired private ItineraryServiceClient itineraryServiceClient;
-    @Autowired private DestinationServiceClient destinationServiceClient;
+    private static final Logger log = LoggerFactory.getLogger(BookingAnalyticsService.class);
 
+    private final BookingRepository bookingRepository;
+    private final PaymentAuditEventRepository auditRepository;
+    private final BookingFeignClients.ItineraryServiceSafeClient itineraryServiceSafeClient;
+    private final BookingFeignClients.DestinationServiceSafeClient destinationServiceSafeClient;
+
+    public BookingAnalyticsService(
+            BookingRepository bookingRepository,
+            PaymentAuditEventRepository auditRepository,
+            BookingFeignClients.ItineraryServiceSafeClient itineraryServiceSafeClient,
+            BookingFeignClients.DestinationServiceSafeClient destinationServiceSafeClient) {
+        this.bookingRepository = bookingRepository;
+        this.auditRepository = auditRepository;
+        this.itineraryServiceSafeClient = itineraryServiceSafeClient;
+        this.destinationServiceSafeClient = destinationServiceSafeClient;
+    }
+
+    /**
+     * S5-F10 — Revenue by Destination and Season.
+     * M3: two Feign batch calls replace the old 3-table SQL JOIN.
+     * Cached 10 minutes.
+     */
     @Cacheable(value = "booking-service", key = "'S5-F10::' + #startDate + '::' + #endDate")
     public List<DestinationSeasonRevenueDTO> getRevenueByDestinationAndSeason(
             LocalDate startDate, LocalDate endDate) {
@@ -50,145 +57,111 @@ public class BookingAnalyticsService {
         LocalDateTime from = startDate.atStartOfDay();
         LocalDateTime to   = endDate.atTime(23, 59, 59, 999_000_000);
 
-        List<Booking> bookings = bookingRepository.findConfirmedBookingsInDateRange(from, to);
+        // 1. Fetch confirmed bookings locally — no cross-service SQL
+        List<Booking> bookings = bookingRepository.findConfirmedBookingsInRange(from, to);
         if (bookings.isEmpty()) {
             return List.of();
         }
 
-        Map<Long, ItinerarySummaryDTO> itinerariesById = loadItineraries(bookings);
-        Map<Long, DestinationSummaryDTO> destinationsById = loadDestinations(itinerariesById.values());
-        Map<Long, RevenueAccumulator> totalsByDestination = new LinkedHashMap<>();
-
-        for (Booking booking : bookings) {
-            ItinerarySummaryDTO itinerary = itinerariesById.get(booking.getItineraryId());
-            if (itinerary == null || itinerary.destinationId() == null) {
-                continue;
-            }
-
-            RevenueAccumulator total = totalsByDestination.computeIfAbsent(
-                    itinerary.destinationId(), RevenueAccumulator::new);
-            total.add(booking.getAmount(), seasonalSurcharge(booking));
-        }
-
-        return totalsByDestination.values().stream()
-                .sorted((left, right) -> Double.compare(right.totalRevenue, left.totalRevenue))
-                .map(total -> {
-                    DestinationSummaryDTO destination = destinationsById.get(total.destinationId);
-                    String name = destination != null ? destination.name() : "Destination " + total.destinationId;
-                    return DestinationSeasonRevenueDTO.builder()
-                            .destinationId(total.destinationId)
-                            .destinationName(name)
-                            .totalRevenue(total.totalRevenue)
-                            .surchargeRevenue(total.surchargeRevenue)
-                            .baseRevenue(total.totalRevenue - total.surchargeRevenue)
-                            .peakBookingCount(total.peakBookingCount)
-                            .offPeakBookingCount(total.offPeakBookingCount)
-                            .build();
-                })
-                .toList();
-    }
-
-    // called OUTSIDE @Cacheable so it fires on every request including cache hits
-    public void logAnalyticsViewed() {
-        try {
-            PaymentAuditEvent ev = (PaymentAuditEvent) EventFactory.createEvent(
-                    EventType.PAYMENT_AUDIT,
-                    Map.of("action", "ANALYTICS_VIEWED",
-                           "timestamp", LocalDateTime.now(),
-                           "details", Map.of("endpoint", "S5-F10")));
-            auditRepository.save(ev);
-        } catch (Exception e) {
-            System.err.println("[WARN] MongoDB analytics log failed: " + e.getMessage());
-        }
-    }
-
-    private Map<Long, ItinerarySummaryDTO> loadItineraries(List<Booking> bookings) {
+        // 2. Collect distinct itineraryIds
         List<Long> itineraryIds = bookings.stream()
                 .map(Booking::getItineraryId)
-                .filter(Objects::nonNull)
                 .distinct()
                 .toList();
-        if (itineraryIds.isEmpty()) {
-            return Map.of();
+
+        // 3. Feign batch → itinerary-service: build itineraryId → destinationId map
+        Map<Long, Long> itineraryToDestination = new HashMap<>();
+        try {
+            List<ItinerarySummaryDTO> itineraries =
+                    itineraryServiceSafeClient.batchGetItineraries(itineraryIds);
+            for (ItinerarySummaryDTO it : itineraries) {
+                if (it.destinationId() != null) {
+                    itineraryToDestination.put(it.itineraryId(), it.destinationId());
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Feign call to itinerary-service failed for S5-F10: {}", e.getMessage());
+            return List.of();
         }
 
-        List<ItinerarySummaryDTO> itineraries =
-                itineraryServiceClient.batchGetItineraries(new BatchItineraryRequest(itineraryIds));
-        if (itineraries == null) {
-            return Map.of();
+        if (itineraryToDestination.isEmpty()) {
+            return List.of();
         }
-        return itineraries.stream()
-                .filter(itinerary -> itinerary.itineraryId() != null)
-                .collect(Collectors.toMap(
-                        ItinerarySummaryDTO::itineraryId,
-                        Function.identity(),
-                        (first, ignored) -> first,
-                        HashMap::new));
-    }
 
-    private Map<Long, DestinationSummaryDTO> loadDestinations(Collection<ItinerarySummaryDTO> itineraries) {
-        List<Long> destinationIds = itineraries.stream()
-                .map(ItinerarySummaryDTO::destinationId)
-                .filter(Objects::nonNull)
+        // 4. Collect distinct destinationIds
+        List<Long> destinationIds = itineraryToDestination.values().stream()
                 .distinct()
                 .toList();
-        if (destinationIds.isEmpty()) {
-            return Map.of();
+
+        // 5. Feign batch → destination-service: build destinationId → name map
+        Map<Long, String> destinationNames = new HashMap<>();
+        try {
+            List<DestinationSummaryDTO> destinations =
+                    destinationServiceSafeClient.batchGetDestinations(destinationIds);
+            for (DestinationSummaryDTO d : destinations) {
+                destinationNames.put(d.destinationId(), d.name());
+            }
+        } catch (Exception e) {
+            log.warn("Feign call to destination-service failed for S5-F10: {}", e.getMessage());
+            return List.of();
         }
 
-        List<DestinationSummaryDTO> destinations =
-                destinationServiceClient.batchGetDestinations(new BatchDestinationRequest(destinationIds));
-        if (destinations == null) {
-            return Map.of();
+        // 6. Group bookings by destinationId and aggregate revenue stats
+        Map<Long, List<Booking>> byDestination = new HashMap<>();
+        for (Booking b : bookings) {
+            Long destId = itineraryToDestination.get(b.getItineraryId());
+            if (destId == null) continue;
+            byDestination.computeIfAbsent(destId, k -> new ArrayList<>()).add(b);
         }
-        return destinations.stream()
-                .filter(destination -> destination.destinationId() != null)
-                .collect(Collectors.toMap(
-                        DestinationSummaryDTO::destinationId,
-                        Function.identity(),
-                        (first, ignored) -> first,
-                        HashMap::new));
+
+        return byDestination.entrySet().stream().map(entry -> {
+                    Long destId = entry.getKey();
+                    List<Booking> group = entry.getValue();
+
+                    double totalRevenue    = 0;
+                    double surchargeRevenue = 0;
+                    long   peakCount       = 0;
+                    long   offPeakCount    = 0;
+
+                    for (Booking b : group) {
+                        totalRevenue += b.getAmount();
+                        double surcharge = 0;
+                        if (b.getBookingDetails() != null) {
+                            Object s = b.getBookingDetails().get("seasonalSurcharge");
+                            if (s instanceof Number n) surcharge = n.doubleValue();
+                        }
+                        surchargeRevenue += surcharge;
+                        if (surcharge > 0) peakCount++; else offPeakCount++;
+                    }
+
+                    return DestinationSeasonRevenueDTO.builder()
+                            .destinationId(destId)
+                            .destinationName(destinationNames.getOrDefault(destId, "Unknown"))
+                            .totalRevenue(totalRevenue)
+                            .surchargeRevenue(surchargeRevenue)
+                            .baseRevenue(totalRevenue - surchargeRevenue)
+                            .peakBookingCount(peakCount)
+                            .offPeakBookingCount(offPeakCount)
+                            .build();
+                })
+                .sorted(Comparator.comparingDouble(DestinationSeasonRevenueDTO::getTotalRevenue).reversed())
+                .toList();
     }
 
-    private double seasonalSurcharge(Booking booking) {
-        Map<String, Object> details = booking.getBookingDetails();
-        if (details == null) {
-            return 0.0;
-        }
-
-        Object value = details.get("seasonalSurcharge");
-        if (value instanceof Number number) {
-            return number.doubleValue();
-        }
-        if (value instanceof String text) {
-            try {
-                return Double.parseDouble(text);
-            } catch (NumberFormatException ignored) {
-                return 0.0;
-            }
-        }
-        return 0.0;
-    }
-
-    private static class RevenueAccumulator {
-        private final Long destinationId;
-        private double totalRevenue;
-        private double surchargeRevenue;
-        private long peakBookingCount;
-        private long offPeakBookingCount;
-
-        private RevenueAccumulator(Long destinationId) {
-            this.destinationId = destinationId;
-        }
-
-        private void add(Double amount, double surcharge) {
-            totalRevenue += amount != null ? amount : 0.0;
-            surchargeRevenue += surcharge;
-            if (surcharge > 0) {
-                peakBookingCount++;
-            } else {
-                offPeakBookingCount++;
-            }
+    /**
+     * Logs ANALYTICS_VIEWED to MongoDB — called outside the cached method
+     * so it fires on every invocation including cache hits (M2 §10.5.1).
+     * ANALYTICS_VIEWED must NOT trigger cache invalidation (M2 §4.4.4).
+     */
+    public void logAnalyticsViewed() {
+        try {
+            PaymentAuditEvent ev = new PaymentAuditEvent();
+            ev.setAction("ANALYTICS_VIEWED");
+            ev.setTimestamp(LocalDateTime.now());
+            ev.setDetails(Map.of("endpoint", "S5-F10"));
+            auditRepository.save(ev);
+        } catch (Exception e) {
+            log.warn("MongoDB analytics log failed: {}", e.getMessage());
         }
     }
 }

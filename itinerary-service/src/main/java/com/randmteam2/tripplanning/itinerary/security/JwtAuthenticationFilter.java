@@ -26,7 +26,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getServletPath();
         return "/api/itineraries/health".equals(path)
-                || path.startsWith("/actuator");
+                || path.startsWith("/actuator")
+                // Internal Feign endpoints called by user-service without a gateway JWT
+                || path.matches("/api/itineraries/user/[^/]+/summary")
+                || path.matches("/api/itineraries/user/[^/]+/active-count")
+                || path.matches("/api/itineraries/user/[^/]+/completed-count");
     }
 
     @Override
@@ -37,7 +41,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         AuthContext ctx = new AuthContext(request);
 
-        // Build the chain
         AuthHandler tokenExtractor = new TokenExtractionHandler();
         AuthHandler signatureValidator = new SignatureValidationHandler(jwtService);
         AuthHandler userLoader = new UserLoaderHandler();
@@ -49,8 +52,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         try {
             tokenExtractor.handle(ctx);
-
-            // All handlers passed Ã¢â‚¬â€ populate Spring Security context
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(
                             ctx.getEmail(),
@@ -65,6 +66,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             response.setStatus(e.getStatusCode());
             response.setContentType("application/json");
             response.getWriter().write("{\"error\": \"" + e.getMessage() + "\"}");
+            response.getWriter().flush();
         }
     }
 }

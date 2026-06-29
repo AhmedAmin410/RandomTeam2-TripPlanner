@@ -6,25 +6,25 @@ import com.randmteam2.tripplanning.activity.model.ActivityLifecycleEvent;
 import com.randmteam2.tripplanning.activity.repository.ActivityLifecycleEventRepository;
 import com.randmteam2.tripplanning.contracts.feign.ItineraryServiceClient;
 import feign.FeignException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.cache.annotation.Cacheable;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.randmteam2.tripplanning.activity.repository.ActivityRepository;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
 public class ActivityService {
+
+    private static final Logger log = LoggerFactory.getLogger(ActivityService.class);
 
     private final ActivityRepository activityRepository;
     private final ActivityLifecycleEventRepository lifecycleEventRepository;
@@ -40,14 +40,18 @@ public class ActivityService {
 
     private void validateItineraryExists(Long itineraryId) {
         try {
+            MDC.put("itineraryId", itineraryId.toString());
+            log.info("Calling ItineraryServiceClient.getItinerary with args={}", itineraryId);
             itineraryServiceClient.getItinerary(itineraryId);
+            log.info("ItineraryServiceClient.getItinerary returned successfully");
         } catch (FeignException.NotFound e) {
+            log.warn("Feign call to itinerary-service failed: {}", e.getMessage());
             throw new RuntimeException("Itinerary not found with id: " + itineraryId);
         } catch (FeignException e) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_GATEWAY,
-                    "Unable to validate itinerary " + itineraryId,
-                    e);
+            log.warn("Feign call to itinerary-service failed: {}", e.getMessage());
+            throw new RuntimeException("Itinerary service temporarily unavailable");
+        } finally {
+            MDC.remove("itineraryId");
         }
     }
 
@@ -95,17 +99,35 @@ public class ActivityService {
         };
     }
 
+    @Transactional
+    public List<Activity> batchCreate(Long itineraryId, List<Activity> activities) {
+        validateItineraryExists(itineraryId);
+        for (Activity activity : activities) {
+            if (activity.getLatitude() < -90 || activity.getLatitude() > 90) {
+                throw new IllegalArgumentException("Latitude must be between -90 and 90");
+            }
+            if (activity.getLongitude() < -180 || activity.getLongitude() > 180) {
+                throw new IllegalArgumentException("Longitude must be between -180 and 180");
+            }
+            activity.setItineraryId(itineraryId);
+        }
+        List<Activity> saved = activityRepository.saveAll(activities);
+        log.info("Batch created {} activities for itinerary {}", saved.size(), itineraryId);
+        return saved;
+    }
+
     public Activity createForItinerary(Long itineraryId, Activity activity) {
         validateItineraryExists(itineraryId);
         activity.setItineraryId(itineraryId);
-        return activityRepository.save(activity);
+        Activity saved = activityRepository.save(activity);
+        log.info("Activity {} saved with status=CREATED", saved.getId());
+        return saved;
     }
 
     public Activity getLatestByItineraryId(Long itineraryId) {
-        validateItineraryExists(itineraryId);
         Activity latest = activityRepository.findLatestByItineraryId(itineraryId);
         if (latest == null) {
-            throw new RuntimeException("No activities not found for itinerary: " + itineraryId);
+            throw new RuntimeException("No activities found for itinerary: " + itineraryId);
         }
         return latest;
     }
@@ -146,10 +168,16 @@ public class ActivityService {
         return activityRepository.findByHistory(start, end, categoryParam);
     }
 
-    // --- S4-F8: Activity Summary DTO (Fixed Type Conversion) ---
     public ActivitySummaryDTO getActivitySummary(Long itineraryId, LocalDate start, LocalDate end) {
         if (!activityRepository.existsByItineraryId(itineraryId)) {
-            throw new RuntimeException("Itinerary not found with id: " + itineraryId);
+            return ActivitySummaryDTO.builder()
+                    .itineraryId(itineraryId)
+                    .totalActivities(0L)
+                    .averageCost(0.0)
+                    .maxCost(0.0)
+                    .firstScheduledTime(null)
+                    .lastScheduledTime(null)
+                    .build();
         }
 
         // 1. Convert LocalDate boundaries to LocalDateTime for the query

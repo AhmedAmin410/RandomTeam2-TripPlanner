@@ -1,9 +1,5 @@
 package com.randmteam2.tripplanning.booking.config;
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.cache.CacheManager;
-import org.springframework.cache.support.NoOpCacheManager;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
@@ -15,7 +11,6 @@ import org.springframework.data.redis.serializer.StringRedisSerializer;
 public class RedisConfig {
 
     @Bean
-    @ConditionalOnBean(RedisConnectionFactory.class)
     public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory factory) {
         RedisTemplate<String, Object> tpl = new RedisTemplate<>();
         tpl.setConnectionFactory(factory);
@@ -24,11 +19,5 @@ public class RedisConfig {
         tpl.setHashKeySerializer(new StringRedisSerializer());
         tpl.setHashValueSerializer(new GenericJackson2JsonRedisSerializer());
         return tpl;
-    }
-
-    @Bean
-    @ConditionalOnMissingBean(CacheManager.class)
-    public CacheManager noOpCacheManager() {
-        return new NoOpCacheManager();
     }
 }

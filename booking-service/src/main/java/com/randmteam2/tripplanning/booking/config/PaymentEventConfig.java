@@ -15,21 +15,31 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class PaymentEventConfig {
 
-    public static final String PAYMENT_EXCHANGE = "payment.events";
+    // ── Exchange names ────────────────────────────────────────────────────
+    public static final String PAYMENT_EXCHANGE   = "payment.events";
     public static final String ITINERARY_EXCHANGE = "itinerary.events";
-    public static final String PAYMENT_SAGA_QUEUE = "payment.saga-listener";
-    public static final String PAYMENT_SAGA_DLQ = "payment.saga-listener.dlq";
-    public static final String PAYMENT_SAGA_DLX = "payment.saga-listener.dlx";
 
+    // ── Queue names ───────────────────────────────────────────────────────
+    public static final String PAYMENT_SAGA_QUEUE = "payment.saga-listener";
+    public static final String PAYMENT_SAGA_DLQ   = "payment.saga-listener.dlq";
+    public static final String PAYMENT_SAGA_DLX   = "payment.saga-listener.dlx";
+
+    // ── Exchanges ─────────────────────────────────────────────────────────
+
+    /** Producer: booking-service publishes payment.* events here */
     @Bean
     public TopicExchange paymentEventsExchange() {
         return new TopicExchange(PAYMENT_EXCHANGE, true, false);
     }
 
+    /** Consumer reference: itinerary.events is declared by itinerary-service;
+     *  booking-service declares a reference so Spring deduplicates safely. */
     @Bean
     public TopicExchange itineraryEventsExchange() {
         return new TopicExchange(ITINERARY_EXCHANGE, true, false);
     }
+
+    // ── Dead-letter exchange + DLQ ────────────────────────────────────────
 
     @Bean
     public DirectExchange paymentSagaDeadLetterExchange() {
@@ -37,30 +47,8 @@ public class PaymentEventConfig {
     }
 
     @Bean
-    public Queue paymentSagaQueue() {
-        return QueueBuilder.durable(PAYMENT_SAGA_QUEUE)
-                .withArgument("x-dead-letter-exchange", PAYMENT_SAGA_DLX)
-                .withArgument("x-dead-letter-routing-key", PAYMENT_SAGA_DLQ)
-                .build();
-    }
-
-    @Bean
     public Queue paymentSagaDeadLetterQueue() {
         return QueueBuilder.durable(PAYMENT_SAGA_DLQ).build();
-    }
-
-    @Bean
-    public Binding completedBinding(Queue paymentSagaQueue, TopicExchange itineraryEventsExchange) {
-        return BindingBuilder.bind(paymentSagaQueue)
-                .to(itineraryEventsExchange)
-                .with("itinerary.completed");
-    }
-
-    @Bean
-    public Binding cancelledBinding(Queue paymentSagaQueue, TopicExchange itineraryEventsExchange) {
-        return BindingBuilder.bind(paymentSagaQueue)
-                .to(itineraryEventsExchange)
-                .with("itinerary.cancelled");
     }
 
     @Bean
@@ -70,6 +58,34 @@ public class PaymentEventConfig {
                 .to(paymentSagaDeadLetterExchange)
                 .with(PAYMENT_SAGA_DLQ);
     }
+
+    // ── Consumer queue (binds itinerary.completed + itinerary.cancelled) ──
+
+    @Bean
+    public Queue paymentSagaQueue() {
+        return QueueBuilder.durable(PAYMENT_SAGA_QUEUE)
+                .withArgument("x-dead-letter-exchange",    PAYMENT_SAGA_DLX)
+                .withArgument("x-dead-letter-routing-key", PAYMENT_SAGA_DLQ)
+                .build();
+    }
+
+    @Bean
+    public Binding completedBinding(Queue paymentSagaQueue,
+                                    TopicExchange itineraryEventsExchange) {
+        return BindingBuilder.bind(paymentSagaQueue)
+                .to(itineraryEventsExchange)
+                .with("itinerary.completed");
+    }
+
+    @Bean
+    public Binding cancelledBinding(Queue paymentSagaQueue,
+                                    TopicExchange itineraryEventsExchange) {
+        return BindingBuilder.bind(paymentSagaQueue)
+                .to(itineraryEventsExchange)
+                .with("itinerary.cancelled");
+    }
+
+    // ── JSON message converter ────────────────────────────────────────────
 
     @Bean
     public MessageConverter jacksonMessageConverter(ObjectMapper objectMapper) {

@@ -1,5 +1,9 @@
 package com.randmteam2.tripplanning.itinerary.service;
 
+import com.randmteam2.tripplanning.itinerary.dto.DestinationDTO;
+import com.randmteam2.tripplanning.itinerary.dto.UserDTO;
+import com.randmteam2.tripplanning.itinerary.feign.DestinationServiceClient;
+import com.randmteam2.tripplanning.itinerary.feign.UserServiceClient;
 import com.randmteam2.tripplanning.itinerary.model.Itinerary;
 import com.randmteam2.tripplanning.itinerary.mongo.ItineraryEventRepository;
 import com.randmteam2.tripplanning.itinerary.neo4j.DestinationNode;
@@ -10,14 +14,12 @@ import com.randmteam2.tripplanning.itinerary.neo4j.VisitedRelationship;
 import com.randmteam2.tripplanning.itinerary.observer.EntityObserver;
 import com.randmteam2.tripplanning.itinerary.observer.MongoEventLogger;
 import com.randmteam2.tripplanning.itinerary.repository.ItineraryRepository;
-import com.randmteam2.tripplanning.contracts.feign.DestinationServiceClient;
-import com.randmteam2.tripplanning.contracts.feign.UserServiceClient;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
-import java.util.Map;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 @Service
@@ -71,13 +73,13 @@ public class RecordVisitService {
         Long userId = itinerary.getUserId();
         Long destinationId = itinerary.getDestinationId();
 
-        Map<String, Object> user = asMap(userServiceClient.getUser(userId));
-        String userName = valueAsString(user.get("name"), "Unknown");
+        UserDTO user = userServiceClient.getUser(userId);
+        String userName = valueAsString(user != null ? user.getName() : null, "Unknown");
 
-        Map<String, Object> destination = asMap(destinationServiceClient.getDestination(destinationId));
-        String destName = valueAsString(destination.get("name"), "Unknown");
-        String destCountry = valueAsString(destination.get("country"), "");
-        String destCategory = valueAsString(destination.get("category"), "");
+        DestinationDTO destination = destinationServiceClient.getDestination(destinationId);
+        String destName = valueAsString(destination != null ? destination.getName() : null, "Unknown");
+        String destCountry = valueAsString(destination != null ? destination.getCountry() : null, "");
+        String destCategory = valueAsString(destination != null ? destination.getCategory() : null, "");
 
         // Find or create UserNode
         UserNode userNode = userNodeRepository.findByUserId(userId)
@@ -122,14 +124,6 @@ public class RecordVisitService {
         notifyObservers("VISIT_RECORDED", payload);
 
         return "Visit recorded successfully";
-    }
-
-    @SuppressWarnings("unchecked")
-    private Map<String, Object> asMap(Object response) {
-        if (response instanceof Map<?, ?> map) {
-            return (Map<String, Object>) map;
-        }
-        return Map.of();
     }
 
     private String valueAsString(Object value, String fallback) {

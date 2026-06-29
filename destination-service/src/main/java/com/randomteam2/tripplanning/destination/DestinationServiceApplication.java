@@ -5,7 +5,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.cloud.openfeign.EnableFeignClients;
 
 @SpringBootApplication
-@EnableFeignClients(basePackages = "com.randmteam2.tripplanning.contracts.feign")
+@EnableFeignClients(basePackages = "com.randomteam2.tripplanning.destination.feign")
 public class DestinationServiceApplication {
 
     public static void main(String[] args) {

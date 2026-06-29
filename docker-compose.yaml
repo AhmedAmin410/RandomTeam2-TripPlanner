@@ -12,9 +12,9 @@
       MONGO_INITDB_DATABASE: tripplanningmongo
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+      interval: 15s
+      timeout: 10s
+      retries: 15
 
   redis:
     image: redis:7
@@ -23,9 +23,9 @@
     command: redis-server --requirepass redispass --maxmemory 256mb --maxmemory-policy allkeys-lru
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "redispass", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+      interval: 15s
+      timeout: 10s
+      retries: 15
 
   elasticsearch:
     image: elasticsearch:8.13.4
@@ -68,9 +68,9 @@
       NEO4J_server_memory_heap_initial__size: 256m
     healthcheck:
       test: ["CMD", "neo4j", "status"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+      interval: 15s
+      timeout: 10s
+      retries: 15
       start_period: 30s
 
   rabbitmq:
@@ -83,9 +83,9 @@
       RABBITMQ_DEFAULT_PASS: guest
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
-      interval: 10s
+      interval: 15s
       timeout: 10s
-      retries: 10
+      retries: 15
       start_period: 30s
 
   # ── Per-Service PostgreSQL Databases ───────────────────────────────────────
@@ -102,9 +102,9 @@
       - user-pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready"]
-      interval: 10s
+      interval: 15s
       timeout: 10s
-      retries: 10
+      retries: 15
       start_period: 60s
 
   destination-postgres:
@@ -119,9 +119,9 @@
       - destination-pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready"]
-      interval: 10s
+      interval: 15s
       timeout: 10s
-      retries: 10
+      retries: 15
       start_period: 60s
 
   itinerary-postgres:
@@ -136,9 +136,9 @@
       - itinerary-pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready"]
-      interval: 10s
+      interval: 15s
       timeout: 10s
-      retries: 10
+      retries: 15
       start_period: 60s
 
   activity-postgres:
@@ -153,9 +153,9 @@
       - activity-pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready"]
-      interval: 10s
+      interval: 15s
       timeout: 10s
-      retries: 10
+      retries: 15
       start_period: 60s
 
   booking-postgres:
@@ -170,9 +170,10 @@
       - booking-pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready"]
-      interval: 10s
+      interval: 15s
       timeout: 10s
-      retries: 10
+      retries: 15
+
       start_period: 60s
 
   # ── Application Services ───────────────────────────────────────────────────
@@ -191,8 +192,6 @@
       SPRING_DATA_REDIS_PASSWORD: redispass
       SPRING_RABBITMQ_HOST: rabbitmq
       JWT_SECRET: 7Wl0A/qUHLdXuZKT3nra3mBBtOot+/SF/eLo0MTq5zQ=
-      FEIGN_USER_SERVICE_URL: http://user-service:8080
-      FEIGN_DESTINATION_SERVICE_URL: http://destination-service:8080
       FEIGN_ITINERARY_SERVICE_URL: http://itinerary-service:8080
       FEIGN_BOOKING_SERVICE_URL: http://booking-service:8080
     depends_on:
@@ -226,10 +225,8 @@
       SPRING_ELASTICSEARCH_URIS: http://elasticsearch:9200
       SPRING_RABBITMQ_HOST: rabbitmq
       JWT_SECRET: 7Wl0A/qUHLdXuZKT3nra3mBBtOot+/SF/eLo0MTq5zQ=
-      FEIGN_DESTINATION_SERVICE_URL: http://destination-service:8080
       FEIGN_ITINERARY_SERVICE_URL: http://itinerary-service:8080
       FEIGN_USER_SERVICE_URL: http://user-service:8080
-      FEIGN_BOOKING_SERVICE_URL: http://booking-service:8080
     depends_on:
       destination-postgres:
         condition: service_healthy
@@ -267,7 +264,6 @@
       JWT_SECRET: 7Wl0A/qUHLdXuZKT3nra3mBBtOot+/SF/eLo0MTq5zQ=
       FEIGN_USER_SERVICE_URL: http://user-service:8080
       FEIGN_DESTINATION_SERVICE_URL: http://destination-service:8080
-      FEIGN_ITINERARY_SERVICE_URL: http://itinerary-service:8080
       FEIGN_BOOKING_SERVICE_URL: http://booking-service:8080
     depends_on:
       itinerary-postgres:
@@ -281,7 +277,7 @@
       rabbitmq:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
+      test: [ "CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1" ]
       interval: 15s
       timeout: 10s
       retries: 10
@@ -290,7 +286,7 @@
   activity-service:
     build: ./activity-service
     ports:
-      - "8084:8080"
+      - "8084:8084"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://activity-postgres:5432/tripdb-activities
       SPRING_DATASOURCE_USERNAME: postgres
@@ -305,10 +301,7 @@
       SPRING_CASSANDRA_KEYSPACE_NAME: tripplanningks
       SPRING_RABBITMQ_HOST: rabbitmq
       JWT_SECRET: 7Wl0A/qUHLdXuZKT3nra3mBBtOot+/SF/eLo0MTq5zQ=
-      FEIGN_USER_SERVICE_URL: http://user-service:8080
-      FEIGN_DESTINATION_SERVICE_URL: http://destination-service:8080
       FEIGN_ITINERARY_SERVICE_URL: http://itinerary-service:8080
-      FEIGN_BOOKING_SERVICE_URL: http://booking-service:8080
     depends_on:
       activity-postgres:
         condition: service_healthy
@@ -321,7 +314,7 @@
       rabbitmq:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8084/actuator/health || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 10
@@ -344,7 +337,6 @@
       FEIGN_USER_SERVICE_URL: http://user-service:8080
       FEIGN_ITINERARY_SERVICE_URL: http://itinerary-service:8080
       FEIGN_DESTINATION_SERVICE_URL: http://destination-service:8080
-      FEIGN_BOOKING_SERVICE_URL: http://booking-service:8080
     depends_on:
       booking-postgres:
         condition: service_healthy
@@ -369,15 +361,15 @@
       JWT_SECRET: 7Wl0A/qUHLdXuZKT3nra3mBBtOot+/SF/eLo0MTq5zQ=
     depends_on:
       user-service:
-        condition: service_healthy
+        condition: service_started
       destination-service:
-        condition: service_healthy
+        condition: service_started
       itinerary-service:
-        condition: service_healthy
+        condition: service_started
       activity-service:
-        condition: service_healthy
+        condition: service_started
       booking-service:
-        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
       interval: 15s

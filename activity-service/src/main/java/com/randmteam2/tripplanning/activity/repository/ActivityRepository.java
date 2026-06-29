@@ -71,6 +71,8 @@ public interface ActivityRepository extends JpaRepository<Activity, Long> {
             @Param("since") Integer sinceMinutes
     );
 
+
+
     @Query(value = """
             SELECT category,
                    COUNT(*) AS cnt,

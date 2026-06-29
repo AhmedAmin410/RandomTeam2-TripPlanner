@@ -8,40 +8,9 @@ import org.springframework.data.rest.core.annotation.RepositoryRestResource;
 
 import java.util.List;
 import java.util.Optional;
-import java.time.LocalDate;
 
 @RepositoryRestResource(exported = false)
 public interface DestinationRepository extends JpaRepository<Destination, Long> {
-
-    @Deprecated
-    default long countActiveItinerariesReferencingDestination(Long destinationId) {
-        throw new UnsupportedOperationException("Use itinerary-service via Feign");
-    }
-
-    @Deprecated
-    default List<Object[]> findTopRatedDestinationsReport(int limit) {
-        throw new UnsupportedOperationException("Use destination-service plus itinerary-service aggregates");
-    }
-
-    @Deprecated
-    default List<Object[]> findItineraryDestinationIdAndStatus(Long itineraryId) {
-        throw new UnsupportedOperationException("Use itinerary-service via Feign");
-    }
-
-    @Deprecated
-    default long countAdminUserById(Long userId) {
-        throw new UnsupportedOperationException("Use user-service via Feign");
-    }
-
-    @Deprecated
-    default Object[] findDestinationRevenueSummary(Long destinationId, LocalDate startDate, LocalDate endDate) {
-        throw new UnsupportedOperationException("Use itinerary-service via Feign");
-    }
-
-    @Deprecated
-    default Object[] findDestinationDashboardStats(Long destinationId) {
-        throw new UnsupportedOperationException("Use itinerary-service via Feign");
-    }
 
     @Query(value = """
             SELECT * FROM destinations d
@@ -54,12 +23,21 @@ public interface DestinationRepository extends JpaRepository<Destination, Long> 
             @Param("value") String value,
             @Param("statusFilter") String statusFilter);
 
+    @Query(value = """
+            SELECT d.id, d.name, d.rating, 0::bigint
+            FROM destinations d
+            ORDER BY d.rating DESC NULLS LAST, d.id ASC
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<Object[]> findTopRatedDestinationsReport(@Param("limit") int limit);
+
     @Query("""
             SELECT DISTINCT d FROM Destination d
             LEFT JOIN FETCH d.destinationReviews
             WHERE d.id = :id
             """)
     Optional<Destination> findByIdWithDestinationReviews(@Param("id") Long id);
+
     @Query(value = """
             SELECT d.* FROM destinations d
             WHERE (:category IS NULL OR d.category = :category)

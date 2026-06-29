@@ -41,11 +41,16 @@ class BookingCacheInvalidationServiceTest {
                 "booking-service::S5-F3::*",
                 "booking-service::S5-F6::*",
                 "booking-service::S5-F8::*",
-                "booking-service::S5-F9::*"
+                "booking-service::S5-F9::*",
+                "booking-service::S5-F10::*",
+                "booking-service::S5-F11::*",
+                "booking-service::S5-SYNC-CONFIRMED-SUMMARY::*",
+                "booking-service::S5-SYNC-USER-TOTAL::*",
+                "booking-service::S5-SYNC-AGGREGATE::*"
         );
 
         ArgumentCaptor<Collection<String>> deleteCaptor = ArgumentCaptor.forClass(Collection.class);
-        verify(redisTemplate, org.mockito.Mockito.times(6)).delete(deleteCaptor.capture());
+        verify(redisTemplate, org.mockito.Mockito.times(11)).delete(deleteCaptor.capture());
         assertThat(deleteCaptor.getAllValues())
                 .allSatisfy(keys -> assertThat(keys).hasSize(1));
     }
@@ -68,10 +73,13 @@ class BookingCacheInvalidationServiceTest {
                 "booking-service::S5-F8::*",
                 "booking-service::S5-F9::*",
                 "booking-service::S5-F10::*",
-                "booking-service::S5-F11::*"
+                "booking-service::S5-F11::*",
+                "booking-service::S5-SYNC-CONFIRMED-SUMMARY::*",
+                "booking-service::S5-SYNC-USER-TOTAL::*",
+                "booking-service::S5-SYNC-AGGREGATE::*"
         );
 
-        verify(redisTemplate, org.mockito.Mockito.times(8)).delete(any(Collection.class));
+        verify(redisTemplate, org.mockito.Mockito.times(11)).delete(any(Collection.class));
     }
 
     @Test

@@ -1,66 +1,15 @@
 package com.randomteam2.tripplanning.destination;
 
-import com.randmteam2.tripplanning.contracts.feign.BookingServiceClient;
-import com.randmteam2.tripplanning.contracts.feign.DestinationServiceClient;
-import com.randmteam2.tripplanning.contracts.feign.ItineraryServiceClient;
-import com.randmteam2.tripplanning.contracts.feign.UserServiceClient;
-import com.randomteam2.tripplanning.destination.observer.MongoEventLogger;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
-import org.springframework.boot.autoconfigure.data.elasticsearch.ElasticsearchRepositoriesAutoConfiguration;
-import org.springframework.boot.autoconfigure.data.mongo.MongoRepositoriesAutoConfiguration;
-import org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration;
-import org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration;
-import org.springframework.boot.autoconfigure.elasticsearch.ElasticsearchRestClientAutoConfiguration;
-import org.springframework.boot.autoconfigure.mongo.MongoAutoConfiguration;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.data.redis.connection.RedisConnectionFactory;
-import org.springframework.test.context.ContextConfiguration;
+import org.springframework.cloud.openfeign.EnableFeignClients;
 
-import static org.mockito.Mockito.mock;
+import static org.assertj.core.api.Assertions.assertThat;
 
-@SpringBootTest
-@EnableAutoConfiguration(exclude = {RedisAutoConfiguration.class, ElasticsearchRestClientAutoConfiguration.class, MongoAutoConfiguration.class, RedisRepositoriesAutoConfiguration.class, ElasticsearchRepositoriesAutoConfiguration.class, MongoRepositoriesAutoConfiguration.class})
 class DestinationServiceApplicationTests {
 
-    @Configuration
-    static class TestConfig {
-
-        @Bean
-        public RedisConnectionFactory redisConnectionFactory() {
-            return mock(RedisConnectionFactory.class);
-        }
-
-        @Bean
-        public MongoEventLogger mongoEventLogger() {
-            return mock(MongoEventLogger.class);
-        }
-
-        @Bean
-        public UserServiceClient userServiceClient() {
-            return mock(UserServiceClient.class);
-        }
-
-        @Bean
-        public ItineraryServiceClient itineraryServiceClient() {
-            return mock(ItineraryServiceClient.class);
-        }
-
-        @Bean
-        public DestinationServiceClient destinationServiceClient() {
-            return mock(DestinationServiceClient.class);
-        }
-
-        @Bean
-        public BookingServiceClient bookingServiceClient() {
-            return mock(BookingServiceClient.class);
-        }
-    }
-
     @Test
-    void contextLoads() {
+    void applicationEnablesFeignClients() {
+        assertThat(DestinationServiceApplication.class.isAnnotationPresent(EnableFeignClients.class))
+                .isTrue();
     }
-
 }

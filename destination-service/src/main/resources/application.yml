@@ -1,4 +1,9 @@
 spring:
+  cloud:
+    compatibility-verifier:
+      enabled: false
+  application:
+    name: destination-service
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://destination-postgres:5432/tripdb-destinations}
     username: ${SPRING_DATASOURCE_USERNAME:postgres}
@@ -24,7 +29,7 @@ spring:
   elasticsearch:
     uris: ${SPRING_ELASTICSEARCH_URIS:http://localhost:9200}
   rabbitmq:
-    host: ${SPRING_RABBITMQ_HOST:rabbitmq}
+    host: ${SPRING_RABBITMQ_HOST:localhost}
     port: ${SPRING_RABBITMQ_PORT:5672}
     username: ${SPRING_RABBITMQ_USERNAME:guest}
     password: ${SPRING_RABBITMQ_PASSWORD:guest}
@@ -40,22 +45,19 @@ spring:
 server:
   port: 8080
 
+app:
+  env: ${APP_ENV:local}
+
+loki:
+  push:
+    url: ${LOKI_URL:http://localhost:3100/loki/api/v1/push}
+
 jwt:
   secret: ${JWT_SECRET:REPLACE_WITH_YOUR_44_CHAR_KEY}
   expiration: ${JWT_EXPIRATION_MS:86400000}
 
 feign:
   itinerary-service:
-    url: ${FEIGN_ITINERARY_SERVICE_URL:http://localhost:8083}
+    url: ${FEIGN_ITINERARY_SERVICE_URL:http://itinerary-service:8080}
   user-service:
-    url: ${FEIGN_USER_SERVICE_URL:http://localhost:8081}
-  destination-service:
-    url: ${FEIGN_DESTINATION_SERVICE_URL:http://localhost:8082}
-  booking-service:
-    url: ${FEIGN_BOOKING_SERVICE_URL:http://localhost:8085}
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: "health,info"
+    url: ${FEIGN_USER_SERVICE_URL:http://user-service:8080}
