@@ -23,12 +23,12 @@
     </dependencyManagement>
 
     <modules>
+        <module>contracts</module>
         <module>user-service</module>
         <module>destination-service</module>
         <module>itinerary-service</module>
         <module>activity-service</module>
         <module>booking-service</module>
-        <module>contracts</module>
         <module>api-gateway</module>
     </modules>
 
