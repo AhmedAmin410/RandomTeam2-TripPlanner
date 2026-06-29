@@ -10,14 +10,14 @@ public interface BookingServiceClient {
 
     @GetMapping("/api/bookings/user/{userId}/total")
     UserBookingTotalDTO getUserBookingTotal(
-        @PathVariable Long userId,
-        @RequestParam String startDate,
-        @RequestParam String endDate
+        @PathVariable("userId") Long userId,
+        @RequestParam("startDate") String startDate,
+        @RequestParam("endDate") String endDate
     );
 
     @PostMapping("/api/bookings/aggregate-by-itineraries")
     ItineraryBookingAggregateDTO aggregateByItineraries(@RequestBody Object request);
 
     @GetMapping("/api/bookings/itinerary/{itineraryId}/confirmed-summary")
-    ConfirmedSummaryDTO getConfirmedSummary(@PathVariable Long itineraryId);
+    ConfirmedSummaryDTO getConfirmedSummary(@PathVariable("itineraryId") Long itineraryId);
 }

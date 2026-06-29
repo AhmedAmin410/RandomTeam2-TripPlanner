@@ -1,5 +1,9 @@
 package com.randmteam2.tripplanning.user;
 
+import com.randmteam2.tripplanning.contracts.feign.BookingServiceClient;
+import com.randmteam2.tripplanning.contracts.feign.DestinationServiceClient;
+import com.randmteam2.tripplanning.contracts.feign.ItineraryServiceClient;
+import com.randmteam2.tripplanning.contracts.feign.UserServiceClient;
 import com.randmteam2.tripplanning.user.repository.AuthEventRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -18,6 +22,18 @@ class UserServiceApplicationTests {
 
     @MockBean
     AuthEventRepository authEventRepository;
+
+    @MockBean
+    UserServiceClient userServiceClient;
+
+    @MockBean
+    ItineraryServiceClient itineraryServiceClient;
+
+    @MockBean
+    DestinationServiceClient destinationServiceClient;
+
+    @MockBean
+    BookingServiceClient bookingServiceClient;
 
     @Test
     void contextLoads() {

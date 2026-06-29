@@ -4,12 +4,12 @@ import com.randmteam2.tripplanning.activity.dto.*;
 import com.randmteam2.tripplanning.activity.model.Activity;
 import com.randmteam2.tripplanning.activity.model.ActivityLifecycleEvent;
 import com.randmteam2.tripplanning.activity.repository.ActivityLifecycleEventRepository;
-import org.springframework.beans.factory.annotation.Value;
+import com.randmteam2.tripplanning.contracts.feign.ItineraryServiceClient;
+import feign.FeignException;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.client.RestTemplate;
 import com.randmteam2.tripplanning.activity.repository.ActivityRepository;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -28,20 +28,26 @@ public class ActivityService {
 
     private final ActivityRepository activityRepository;
     private final ActivityLifecycleEventRepository lifecycleEventRepository;
-
-
-    private String itineraryServiceUrl;
+    private final ItineraryServiceClient itineraryServiceClient;
 
     public ActivityService(ActivityRepository activityRepository,
-                           ActivityLifecycleEventRepository lifecycleEventRepository) {
+                           ActivityLifecycleEventRepository lifecycleEventRepository,
+                           ItineraryServiceClient itineraryServiceClient) {
         this.activityRepository = activityRepository;
         this.lifecycleEventRepository = lifecycleEventRepository;
+        this.itineraryServiceClient = itineraryServiceClient;
     }
 
     private void validateItineraryExists(Long itineraryId) {
-        Integer count = activityRepository.checkItineraryExists(itineraryId);
-        if (count == null || count == 0) {
+        try {
+            itineraryServiceClient.getItinerary(itineraryId);
+        } catch (FeignException.NotFound e) {
             throw new RuntimeException("Itinerary not found with id: " + itineraryId);
+        } catch (FeignException e) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_GATEWAY,
+                    "Unable to validate itinerary " + itineraryId,
+                    e);
         }
     }
 

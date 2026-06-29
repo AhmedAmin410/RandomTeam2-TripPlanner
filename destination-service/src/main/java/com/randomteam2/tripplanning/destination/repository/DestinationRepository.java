@@ -13,12 +13,35 @@ import java.time.LocalDate;
 @RepositoryRestResource(exported = false)
 public interface DestinationRepository extends JpaRepository<Destination, Long> {
 
-    @Query(value = """
-            SELECT COUNT(*) FROM itineraries
-            WHERE destination_id = :destinationId
-            AND status IN ('DRAFT', 'PLANNED', 'IN_PROGRESS')
-            """, nativeQuery = true)
-    long countActiveItinerariesReferencingDestination(@Param("destinationId") Long destinationId);
+    @Deprecated
+    default long countActiveItinerariesReferencingDestination(Long destinationId) {
+        throw new UnsupportedOperationException("Use itinerary-service via Feign");
+    }
+
+    @Deprecated
+    default List<Object[]> findTopRatedDestinationsReport(int limit) {
+        throw new UnsupportedOperationException("Use destination-service plus itinerary-service aggregates");
+    }
+
+    @Deprecated
+    default List<Object[]> findItineraryDestinationIdAndStatus(Long itineraryId) {
+        throw new UnsupportedOperationException("Use itinerary-service via Feign");
+    }
+
+    @Deprecated
+    default long countAdminUserById(Long userId) {
+        throw new UnsupportedOperationException("Use user-service via Feign");
+    }
+
+    @Deprecated
+    default Object[] findDestinationRevenueSummary(Long destinationId, LocalDate startDate, LocalDate endDate) {
+        throw new UnsupportedOperationException("Use itinerary-service via Feign");
+    }
+
+    @Deprecated
+    default Object[] findDestinationDashboardStats(Long destinationId) {
+        throw new UnsupportedOperationException("Use itinerary-service via Feign");
+    }
 
     @Query(value = """
             SELECT * FROM destinations d
@@ -31,64 +54,12 @@ public interface DestinationRepository extends JpaRepository<Destination, Long> 
             @Param("value") String value,
             @Param("statusFilter") String statusFilter);
 
-    @Query(value = """
-            SELECT d.id, d.name, d.rating,
-                   COALESCE((
-                       SELECT COUNT(*)::bigint FROM bookings b
-                       INNER JOIN itineraries i ON b.itinerary_id = i.id
-                       WHERE i.destination_id = d.id AND b.status = 'CONFIRMED'
-                   ), 0)
-            FROM destinations d
-            ORDER BY d.rating DESC NULLS LAST, d.id ASC
-            LIMIT :limit
-            """, nativeQuery = true)
-    List<Object[]> findTopRatedDestinationsReport(@Param("limit") int limit);
-
-    @Query(value = """
-            SELECT i.destination_id, i.status
-            FROM itineraries i
-            WHERE i.id = :itineraryId
-            """, nativeQuery = true)
-    List<Object[]> findItineraryDestinationIdAndStatus(@Param("itineraryId") Long itineraryId);
-
-    @Query(value = """
-            SELECT COUNT(*) FROM users u
-            WHERE u.id = :userId AND u.role::text = 'ADMIN'
-            """, nativeQuery = true)
-    long countAdminUserById(@Param("userId") Long userId);
-
     @Query("""
             SELECT DISTINCT d FROM Destination d
             LEFT JOIN FETCH d.destinationReviews
             WHERE d.id = :id
             """)
     Optional<Destination> findByIdWithDestinationReviews(@Param("id") Long id);
-    @Query(value = """
-            SELECT
-                COUNT(b.id)::bigint AS total_bookings,
-                COALESCE(SUM(b.amount), 0) AS total_revenue,
-                COALESCE(AVG(b.amount), 0) AS average_booking_amount
-            FROM bookings b
-            INNER JOIN itineraries i ON b.itinerary_id = i.id
-            WHERE i.destination_id = :destinationId
-            AND b.status = 'CONFIRMED'
-            AND DATE(b.created_at) BETWEEN :startDate AND :endDate
-            """, nativeQuery = true)
-    Object[] findDestinationRevenueSummary(
-            @Param("destinationId") Long destinationId,
-            @Param("startDate") LocalDate startDate,
-            @Param("endDate") LocalDate endDate);
-
-    @Query(value = """
-            SELECT
-                COUNT(i.id)::bigint AS total_itineraries,
-                COUNT(CASE WHEN i.status = 'COMPLETED' THEN 1 END)::bigint AS completed_itineraries,
-                COUNT(DISTINCT i.user_id)::bigint AS total_visitors
-            FROM itineraries i
-            WHERE i.destination_id = :destinationId
-            """, nativeQuery = true)
-    Object[] findDestinationDashboardStats(@Param("destinationId") Long destinationId);
-
     @Query(value = """
             SELECT d.* FROM destinations d
             WHERE (:category IS NULL OR d.category = :category)

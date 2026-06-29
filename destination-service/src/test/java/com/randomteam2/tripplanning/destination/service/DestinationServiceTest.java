@@ -31,6 +31,8 @@ import com.randomteam2.tripplanning.destination.security.RoleAuthorizationHandle
 import com.randomteam2.tripplanning.destination.security.SignatureValidationHandler;
 import com.randomteam2.tripplanning.destination.security.TokenExtractionHandler;
 import com.randomteam2.tripplanning.destination.security.UserLoaderHandler;
+import com.randmteam2.tripplanning.contracts.feign.ItineraryServiceClient;
+import com.randmteam2.tripplanning.contracts.feign.UserServiceClient;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -86,6 +88,8 @@ class DestinationServiceTest {
     @Mock private RedisTemplate<String, Object> redisTemplate;
     @Mock private ValueOperations<String, Object> valueOperations;
     @Mock private EntityObserver mockObserver;
+    @Mock private ItineraryServiceClient itineraryServiceClient;
+    @Mock private UserServiceClient userServiceClient;
     @InjectMocks private DestinationService destinationService;
 
     @BeforeEach

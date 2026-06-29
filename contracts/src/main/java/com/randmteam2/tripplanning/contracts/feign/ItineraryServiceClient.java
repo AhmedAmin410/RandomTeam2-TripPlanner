@@ -9,29 +9,29 @@ import java.util.List;
 public interface ItineraryServiceClient {
 
     @GetMapping("/api/itineraries/user/{userId}/summary")
-    UserTripSummaryAggregateDTO getUserItinerarySummary(@PathVariable Long userId);
+    UserTripSummaryAggregateDTO getUserItinerarySummary(@PathVariable("userId") Long userId);
 
     @GetMapping("/api/itineraries/user/{userId}/active-count")
-    int getActiveItineraryCount(@PathVariable Long userId);
+    int getActiveItineraryCount(@PathVariable("userId") Long userId);
 
     @GetMapping("/api/itineraries/user/{userId}/completed-count")
-    long getCompletedItineraryCount(@PathVariable Long userId);
+    long getCompletedItineraryCount(@PathVariable("userId") Long userId);
 
     @GetMapping("/api/itineraries/destination/{destinationId}/booking-revenue")
     DestinationBookingRevenueAggregateDTO getDestinationBookingRevenue(
-        @PathVariable Long destinationId,
-        @RequestParam String startDate,
-        @RequestParam String endDate
+        @PathVariable("destinationId") Long destinationId,
+        @RequestParam("startDate") String startDate,
+        @RequestParam("endDate") String endDate
     );
 
     @GetMapping("/api/itineraries/destination/{destinationId}/active-count")
-    int getDestinationActiveItineraryCount(@PathVariable Long destinationId);
+    int getDestinationActiveItineraryCount(@PathVariable("destinationId") Long destinationId);
 
     @GetMapping("/api/itineraries/destination/{destinationId}/dashboard-aggregate")
-    DestinationDashboardAggregateDTO getDestinationDashboardAggregate(@PathVariable Long destinationId);
+    DestinationDashboardAggregateDTO getDestinationDashboardAggregate(@PathVariable("destinationId") Long destinationId);
 
     @GetMapping("/api/itineraries/{itineraryId}")
-    Object getItinerary(@PathVariable Long itineraryId);
+    Object getItinerary(@PathVariable("itineraryId") Long itineraryId);
 
     @PostMapping("/api/itineraries/batch")
     List<ItinerarySummaryDTO> batchGetItineraries(@RequestBody BatchItineraryRequest request);

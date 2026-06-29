@@ -7,5 +7,5 @@ import org.springframework.web.bind.annotation.*;
 public interface UserServiceClient {
 
     @GetMapping("/api/users/{userId}")
-    Object getUser(@PathVariable Long userId);
+    Object getUser(@PathVariable("userId") Long userId);
 }

@@ -12,6 +12,13 @@ import com.randomteam2.tripplanning.destination.observer.MongoEventLogger;
 import com.randomteam2.tripplanning.destination.repository.DestinationEventRepository;
 import com.randomteam2.tripplanning.destination.repository.DestinationRepository;
 import com.randomteam2.tripplanning.destination.repository.DestinationReviewRepository;
+import com.randmteam2.tripplanning.contracts.dto.DestinationBookingRevenueAggregateDTO;
+import com.randmteam2.tripplanning.contracts.dto.DestinationDashboardAggregateDTO;
+import com.randmteam2.tripplanning.contracts.dto.BatchDestinationRequest;
+import com.randmteam2.tripplanning.contracts.dto.DestinationSummaryDTO;
+import com.randmteam2.tripplanning.contracts.feign.ItineraryServiceClient;
+import com.randmteam2.tripplanning.contracts.feign.UserServiceClient;
+import feign.FeignException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,6 +53,8 @@ public class DestinationService {
     private final ObjectArrayDtoAdapter objectArrayDtoAdapter;
     private final DestinationEventRepository destinationEventRepository;
     private final RedisTemplate<String, Object> redisTemplate;
+    private final ItineraryServiceClient itineraryServiceClient;
+    private final UserServiceClient userServiceClient;
     private final List<EntityObserver> observers = new ArrayList<>();
 
     public DestinationService(
@@ -58,7 +67,9 @@ public class DestinationService {
             ElasticsearchHitAdapter elasticsearchHitAdapter,
             ObjectArrayDtoAdapter objectArrayDtoAdapter,
             DestinationEventRepository destinationEventRepository,
-            RedisTemplate<String, Object> redisTemplate) {
+            RedisTemplate<String, Object> redisTemplate,
+            ItineraryServiceClient itineraryServiceClient,
+            UserServiceClient userServiceClient) {
         this.destinationRepository = destinationRepository;
         this.destinationReviewRepository = destinationReviewRepository;
         this.cacheInvalidationService = cacheInvalidationService;
@@ -68,6 +79,8 @@ public class DestinationService {
         this.objectArrayDtoAdapter = objectArrayDtoAdapter;
         this.destinationEventRepository = destinationEventRepository;
         this.redisTemplate = redisTemplate;
+        this.itineraryServiceClient = itineraryServiceClient;
+        this.userServiceClient = userServiceClient;
         register(mongoEventLogger);
     }
 
@@ -114,6 +127,20 @@ public class DestinationService {
     @Transactional(readOnly = true)
     public List<Destination> getAllDestinations() {
         return destinationRepository.findAll();
+    }
+
+    @Transactional(readOnly = true)
+    public List<DestinationSummaryDTO> batchGetDestinations(BatchDestinationRequest request) {
+        if (request == null || request.destinationIds() == null) {
+            return List.of();
+        }
+        return destinationRepository.findAllById(request.destinationIds()).stream()
+                .map(d -> new DestinationSummaryDTO(
+                        d.getId(),
+                        d.getName(),
+                        d.getCountry(),
+                        d.getCategory() != null ? d.getCategory().name() : null))
+                .toList();
     }
 
     @Transactional(readOnly = true)
@@ -255,7 +282,18 @@ public class DestinationService {
         Destination destination = destinationRepository.findById(destinationId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Destination not found"));
 
-        Object[] row = destinationRepository.findDestinationRevenueSummary(destinationId, startDate, endDate);
+        Object[] row = legacyDestinationRevenueSummary(destinationId, startDate, endDate);
+        if (row == null) {
+            DestinationBookingRevenueAggregateDTO aggregate = itineraryServiceClient.getDestinationBookingRevenue(
+                    destinationId, startDate.toString(), endDate.toString());
+            if (aggregate != null) {
+                row = new Object[]{
+                        aggregate.totalBookings(),
+                        aggregate.totalRevenue(),
+                        aggregate.averageBookingAmount()
+                };
+            }
+        }
         if (row != null && row.length == 1 && row[0] instanceof Object[]) {
             row = (Object[]) row[0];
         }
@@ -304,7 +342,9 @@ public class DestinationService {
         Destination destination = destinationRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Destination not found"));
         if (newStatus == Destination.Status.INACTIVE) {
-            long activeRefs = destinationRepository.countActiveItinerariesReferencingDestination(id);
+            long activeRefs = Math.max(
+                    legacyActiveItineraryReferences(id),
+                    itineraryServiceClient.getDestinationActiveItineraryCount(id));
             if (activeRefs > 0) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Active itineraries still reference this destination");
             }
@@ -373,14 +413,41 @@ public class DestinationService {
             logger.warn("Redis read failed", e);
         }
 
-        List<Object[]> rows = destinationRepository.findTopRatedDestinationsReport(limit);
-        List<TopDestinationDTO> result = new ArrayList<>(rows.size());
-        for (Object[] row : rows) {
+        List<Object[]> legacyRows = legacyTopRatedDestinationsReport(limit);
+        if (legacyRows != null) {
+            List<TopDestinationDTO> result = new ArrayList<>(legacyRows.size());
+            for (Object[] row : legacyRows) {
+                result.add(TopDestinationDTO.builder()
+                        .destinationId(((Number) row[0]).longValue())
+                        .name((String) row[1])
+                        .rating(row[2] != null ? ((Number) row[2]).doubleValue() : 0.0)
+                        .totalBookings(((Number) row[3]).longValue())
+                        .build());
+            }
+            try {
+                redisTemplate.opsForValue().set(cacheKey, result, 10, TimeUnit.MINUTES);
+            } catch (Exception e) {
+                logger.warn("Redis write failed", e);
+            }
+            return result;
+        }
+
+        List<Destination> destinations = destinationRepository.findAll().stream()
+                .sorted(Comparator.comparing(
+                                (Destination d) -> d.getRating() != null ? d.getRating() : 0.0)
+                        .reversed()
+                        .thenComparing(Destination::getId))
+                .limit(limit)
+                .toList();
+        List<TopDestinationDTO> result = new ArrayList<>(destinations.size());
+        for (Destination dest : destinations) {
+            DestinationBookingRevenueAggregateDTO aggregate = itineraryServiceClient.getDestinationBookingRevenue(
+                    dest.getId(), "1900-01-01", "2100-01-01");
             result.add(TopDestinationDTO.builder()
-                    .destinationId(((Number) row[0]).longValue())
-                    .name((String) row[1])
-                    .rating(row[2] != null ? ((Number) row[2]).doubleValue() : 0.0)
-                    .totalBookings(((Number) row[3]).longValue())
+                    .destinationId(dest.getId())
+                    .name(dest.getName())
+                    .rating(dest.getRating() != null ? dest.getRating() : 0.0)
+                    .totalBookings(nullToZero(aggregate.totalBookings()))
                     .build());
         }
         try {
@@ -402,13 +469,21 @@ public class DestinationService {
         if (ratingValue < 1 || ratingValue > 5) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "rating must be between 1 and 5");
         }
-        List<Object[]> rows = destinationRepository.findItineraryDestinationIdAndStatus(request.getItineraryId());
-        if (rows.isEmpty()) {
+        List<Object[]> legacyItineraryRows = legacyItineraryDestinationIdAndStatus(request.getItineraryId());
+        Long itineraryDestinationId;
+        String status;
+        if (legacyItineraryRows != null && legacyItineraryRows.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Itinerary not found");
         }
-        Object[] row = rows.get(0);
-        Long itineraryDestinationId = row[0] != null ? ((Number) row[0]).longValue() : null;
-        String status = row[1] != null ? row[1].toString() : null;
+        if (legacyItineraryRows != null) {
+            Object[] row = legacyItineraryRows.get(0);
+            itineraryDestinationId = row[0] != null ? ((Number) row[0]).longValue() : null;
+            status = row[1] != null ? row[1].toString() : null;
+        } else {
+            Map<String, Object> itinerary = getItineraryMap(request.getItineraryId());
+            itineraryDestinationId = asLong(itinerary.get("destinationId"));
+            status = itinerary.get("status") != null ? itinerary.get("status").toString() : null;
+        }
         if (itineraryDestinationId == null || !itineraryDestinationId.equals(destinationId)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Itinerary does not reference this destination");
         }
@@ -438,8 +513,11 @@ public class DestinationService {
         if (request == null || request.getVerifiedBy() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "verifiedBy is required");
         }
-        long adminCount = destinationRepository.countAdminUserById(request.getVerifiedBy());
-        if (adminCount == 0) {
+        Long legacyAdminCount = legacyAdminUserCount(request.getVerifiedBy());
+        boolean isAdmin = legacyAdminCount != null
+                ? legacyAdminCount > 0
+                : "ADMIN".equals(String.valueOf(getUserMap(request.getVerifiedBy()).get("role")));
+        if (!isAdmin) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only an ADMIN user may verify reviews");
         }
         DestinationReview review = destinationReviewRepository.findById(reviewId)
@@ -649,14 +727,23 @@ public class DestinationService {
             logger.warn("Redis read failed for S2-F12", e);
         }
 
-        Object[] stats = destinationRepository.findDestinationDashboardStats(destinationId);
-        if (stats != null && stats.length == 1 && stats[0] instanceof Object[]) {
-            stats = (Object[]) stats[0];
+        Object[] stats = legacyDestinationDashboardStats(destinationId);
+        long totalItineraries;
+        long completedItineraries;
+        long totalVisitors;
+        if (stats != null) {
+            if (stats.length == 1 && stats[0] instanceof Object[]) {
+                stats = (Object[]) stats[0];
+            }
+            totalItineraries = stats[0] != null ? ((Number) stats[0]).longValue() : 0L;
+            completedItineraries = stats[1] != null ? ((Number) stats[1]).longValue() : 0L;
+            totalVisitors = stats[2] != null ? ((Number) stats[2]).longValue() : 0L;
+        } else {
+            DestinationDashboardAggregateDTO aggregate = itineraryServiceClient.getDestinationDashboardAggregate(destinationId);
+            totalItineraries = aggregate != null ? nullToZero(aggregate.totalItineraries()) : 0L;
+            completedItineraries = aggregate != null ? nullToZero(aggregate.completedItineraries()) : 0L;
+            totalVisitors = aggregate != null ? nullToZero(aggregate.totalVisitors()) : 0L;
         }
-
-        long totalItineraries = stats != null && stats[0] != null ? ((Number) stats[0]).longValue() : 0L;
-        long completedItineraries = stats != null && stats[1] != null ? ((Number) stats[1]).longValue() : 0L;
-        long totalVisitors = stats != null && stats[2] != null ? ((Number) stats[2]).longValue() : 0L;
 
         DestinationDashboardDTO dto = DestinationDashboardDTO.builder()
                 .destinationId(destination.getId())
@@ -674,5 +761,97 @@ public class DestinationService {
             logger.warn("Redis write failed for S2-F12", e);
         }
         return dto;
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> getItineraryMap(Long itineraryId) {
+        try {
+            Object response = itineraryServiceClient.getItinerary(itineraryId);
+            if (response instanceof Map<?, ?> map) {
+                return (Map<String, Object>) map;
+            }
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Invalid itinerary response");
+        } catch (FeignException.NotFound e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Itinerary not found", e);
+        } catch (FeignException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Unable to validate itinerary", e);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> getUserMap(Long userId) {
+        try {
+            Object response = userServiceClient.getUser(userId);
+            if (response instanceof Map<?, ?> map) {
+                return (Map<String, Object>) map;
+            }
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Invalid user response");
+        } catch (FeignException.NotFound e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found", e);
+        } catch (FeignException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Unable to validate user", e);
+        }
+    }
+
+    private Long asLong(Object value) {
+        if (value instanceof Number number) return number.longValue();
+        if (value == null) return null;
+        return Long.valueOf(value.toString());
+    }
+
+    private long nullToZero(Long value) {
+        return value != null ? value : 0L;
+    }
+
+    private double nullToZero(Double value) {
+        return value != null ? value : 0.0;
+    }
+
+    private Object[] legacyDestinationRevenueSummary(Long destinationId, LocalDate startDate, LocalDate endDate) {
+        try {
+            return destinationRepository.findDestinationRevenueSummary(destinationId, startDate, endDate);
+        } catch (UnsupportedOperationException e) {
+            return null;
+        }
+    }
+
+    private long legacyActiveItineraryReferences(Long destinationId) {
+        try {
+            return destinationRepository.countActiveItinerariesReferencingDestination(destinationId);
+        } catch (UnsupportedOperationException e) {
+            return 0L;
+        }
+    }
+
+    private List<Object[]> legacyTopRatedDestinationsReport(int limit) {
+        try {
+            return destinationRepository.findTopRatedDestinationsReport(limit);
+        } catch (UnsupportedOperationException e) {
+            return null;
+        }
+    }
+
+    private List<Object[]> legacyItineraryDestinationIdAndStatus(Long itineraryId) {
+        try {
+            return destinationRepository.findItineraryDestinationIdAndStatus(itineraryId);
+        } catch (UnsupportedOperationException e) {
+            return null;
+        }
+    }
+
+    private Long legacyAdminUserCount(Long userId) {
+        try {
+            return destinationRepository.countAdminUserById(userId);
+        } catch (UnsupportedOperationException e) {
+            return null;
+        }
+    }
+
+    private Object[] legacyDestinationDashboardStats(Long destinationId) {
+        try {
+            return destinationRepository.findDestinationDashboardStats(destinationId);
+        } catch (UnsupportedOperationException e) {
+            return null;
+        }
     }
 }

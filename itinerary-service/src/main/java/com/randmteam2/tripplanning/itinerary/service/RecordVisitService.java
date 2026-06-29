@@ -10,6 +10,8 @@ import com.randmteam2.tripplanning.itinerary.neo4j.VisitedRelationship;
 import com.randmteam2.tripplanning.itinerary.observer.EntityObserver;
 import com.randmteam2.tripplanning.itinerary.observer.MongoEventLogger;
 import com.randmteam2.tripplanning.itinerary.repository.ItineraryRepository;
+import com.randmteam2.tripplanning.contracts.feign.DestinationServiceClient;
+import com.randmteam2.tripplanning.contracts.feign.UserServiceClient;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -24,15 +26,21 @@ public class RecordVisitService {
     private final ItineraryRepository itineraryRepository;
     private final UserNodeRepository userNodeRepository;
     private final DestinationNodeRepository destinationNodeRepository;
+    private final UserServiceClient userServiceClient;
+    private final DestinationServiceClient destinationServiceClient;
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
 
     public RecordVisitService(ItineraryRepository itineraryRepository,
                               UserNodeRepository userNodeRepository,
                               DestinationNodeRepository destinationNodeRepository,
-                              ItineraryEventRepository itineraryEventRepository) {
+                              ItineraryEventRepository itineraryEventRepository,
+                              UserServiceClient userServiceClient,
+                              DestinationServiceClient destinationServiceClient) {
         this.itineraryRepository = itineraryRepository;
         this.userNodeRepository = userNodeRepository;
         this.destinationNodeRepository = destinationNodeRepository;
+        this.userServiceClient = userServiceClient;
+        this.destinationServiceClient = destinationServiceClient;
         register(new MongoEventLogger(itineraryEventRepository));
     }
 
@@ -63,19 +71,13 @@ public class RecordVisitService {
         Long userId = itinerary.getUserId();
         Long destinationId = itinerary.getDestinationId();
 
-        // Get user details from PG
-        Object[] userRow = itineraryRepository.getUserById(userId);
-        String userName = userRow != null && userRow.length > 1 && userRow[1] != null
-                ? userRow[1].toString() : "Unknown";
+        Map<String, Object> user = asMap(userServiceClient.getUser(userId));
+        String userName = valueAsString(user.get("name"), "Unknown");
 
-        // Get destination details from PG
-        Object[] destRow = itineraryRepository.getDestinationById(destinationId);
-        String destName = destRow != null && destRow.length > 1 && destRow[1] != null
-                ? destRow[1].toString() : "Unknown";
-        String destCountry = destRow != null && destRow.length > 2 && destRow[2] != null
-                ? destRow[2].toString() : "";
-        String destCategory = destRow != null && destRow.length > 3 && destRow[3] != null
-                ? destRow[3].toString() : "";
+        Map<String, Object> destination = asMap(destinationServiceClient.getDestination(destinationId));
+        String destName = valueAsString(destination.get("name"), "Unknown");
+        String destCountry = valueAsString(destination.get("country"), "");
+        String destCategory = valueAsString(destination.get("category"), "");
 
         // Find or create UserNode
         UserNode userNode = userNodeRepository.findByUserId(userId)
@@ -120,5 +122,17 @@ public class RecordVisitService {
         notifyObservers("VISIT_RECORDED", payload);
 
         return "Visit recorded successfully";
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> asMap(Object response) {
+        if (response instanceof Map<?, ?> map) {
+            return (Map<String, Object>) map;
+        }
+        return Map.of();
+    }
+
+    private String valueAsString(Object value, String fallback) {
+        return value != null ? value.toString() : fallback;
     }
 }

@@ -1,11 +1,13 @@
 package com.randmteam2.tripplanning.activity.config;
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.Set;
 
 @Component
+@ConditionalOnBean(RedisTemplate.class)
 public class CacheUtils {
 
     private final RedisTemplate<String, Object> redisTemplate;

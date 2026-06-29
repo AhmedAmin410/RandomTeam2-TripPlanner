@@ -9,7 +9,7 @@ import java.util.List;
 public interface DestinationServiceClient {
 
     @GetMapping("/api/destinations/{id}")
-    Object getDestination(@PathVariable Long id);
+    Object getDestination(@PathVariable("id") Long id);
 
     @PostMapping("/api/destinations/batch")
     List<DestinationSummaryDTO> batchGetDestinations(@RequestBody BatchDestinationRequest request);

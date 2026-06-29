@@ -13,6 +13,11 @@ import com.randmteam2.tripplanning.booking.mongo.PaymentAuditEvent;
 import com.randmteam2.tripplanning.booking.mongo.PaymentAuditEventRepository;
 import com.randmteam2.tripplanning.booking.observer.BookingEvent;
 import com.randmteam2.tripplanning.booking.observer.BookingEventPublisher;
+import com.randmteam2.tripplanning.contracts.dto.ConfirmedSummaryDTO;
+import com.randmteam2.tripplanning.contracts.dto.UserBookingTotalDTO;
+import com.randmteam2.tripplanning.contracts.feign.ItineraryServiceClient;
+import com.randmteam2.tripplanning.contracts.feign.UserServiceClient;
+import feign.FeignException;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -29,19 +34,25 @@ public class BookingService {
     private final PaymentAuditEventRepository auditRepository;
     private final BookingEventPublisher eventPublisher;
     private final BookingCacheInvalidationService cacheInvalidationService;
+    private final UserServiceClient userServiceClient;
+    private final ItineraryServiceClient itineraryServiceClient;
 
     public BookingService(BookingRepository bookingRepository,
                           CouponRepository couponRepository,
                           BookingCouponRepository bookingCouponRepository,
                           PaymentAuditEventRepository auditRepository,
                           BookingEventPublisher eventPublisher,
-                          BookingCacheInvalidationService cacheInvalidationService) {
+                          BookingCacheInvalidationService cacheInvalidationService,
+                          UserServiceClient userServiceClient,
+                          ItineraryServiceClient itineraryServiceClient) {
         this.bookingRepository = bookingRepository;
         this.couponRepository = couponRepository;
         this.bookingCouponRepository = bookingCouponRepository;
         this.auditRepository = auditRepository;
         this.eventPublisher = eventPublisher;
         this.cacheInvalidationService = cacheInvalidationService;
+        this.userServiceClient = userServiceClient;
+        this.itineraryServiceClient = itineraryServiceClient;
     }
 
     // ── CRUD ──────────────────────────────────────────────────────────────
@@ -114,10 +125,7 @@ public class BookingService {
     // ── S5-F3 ─────────────────────────────────────────────────────────────
     @Cacheable(value = "booking-service", key = "'S5-F3::' + #userId")
     public UserBookingSummaryDTO getUserBookingSummary(Long userId) {
-        List<Object[]> userCheck = bookingRepository.checkUserExists(userId);
-        if (userCheck == null || userCheck.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found");
-        }
+        requireUserExists(userId);
         List<Object[]> results = bookingRepository.getUserBookingSummary(userId);
         Map<String, Double> typeBreakdown = new HashMap<>();
         int totalBookings = 0;
@@ -145,12 +153,8 @@ public class BookingService {
     public Booking createBookingForItinerary(Long itineraryId,
                                              Map<String, Object> body,
                                              boolean simulateFailure) {
-        // validation (unchanged from M1)
-        List<Object[]> itinerary = bookingRepository.findItineraryById(itineraryId);
-        if (itinerary == null || itinerary.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Itinerary not found");
-        }
-        String itineraryStatus = (String) itinerary.get(0)[0];
+        Map<String, Object> itinerary = getItineraryMap(itineraryId);
+        String itineraryStatus = asString(itinerary.get("status"));
         if (!itineraryStatus.equals("PLANNED") && !itineraryStatus.equals("IN_PROGRESS")) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Itinerary must be PLANNED or IN_PROGRESS");
@@ -164,10 +168,10 @@ public class BookingService {
         booking.setType(BookingType.valueOf((String) body.get("type")));
 
         // NEW: compute seasonalSurcharge
-        Long destinationId = bookingRepository.findDestinationIdByItineraryId(itineraryId);
+        Long destinationId = asLong(itinerary.get("destinationId"));
         double surcharge = 0.0;
         if (destinationId != null) {
-            long activeCount = bookingRepository.countActiveItinerariesForDestination(destinationId);
+            long activeCount = itineraryServiceClient.getDestinationActiveItineraryCount(destinationId);
             double multiplier = activeCount <= 5 ? 1.0 : activeCount <= 15 ? 1.3 : 1.6;
             surcharge = (multiplier == 1.0) ? 0.0
                     : booking.getAmount() * (multiplier - 1) / multiplier;
@@ -405,21 +409,9 @@ public class BookingService {
                     "Only CONFIRMED bookings can be refunded");
         }
 
-        // 3. fetch itinerary startDate and status
-        List<Object[]> rows = bookingRepository.findItineraryStartDateAndStatus(booking.getItineraryId());
-        if (rows == null || rows.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Linked itinerary not found");
-        }
-        Object startDateObj = rows.get(0)[0];
-        LocalDate startDate;
-        if (startDateObj instanceof java.sql.Date d) {
-            startDate = d.toLocalDate();
-        } else if (startDateObj instanceof LocalDate ld) {
-            startDate = ld;
-        } else {
-            startDate = LocalDate.parse(startDateObj.toString());
-        }
-        String itiStatus = (String) rows.get(0)[1];
+        Map<String, Object> itinerary = getItineraryMap(booking.getItineraryId());
+        LocalDate startDate = asLocalDate(itinerary.get("startDate"));
+        String itiStatus = asString(itinerary.get("status"));
         boolean itineraryStarted = "IN_PROGRESS".equals(itiStatus) || "COMPLETED".equals(itiStatus);
 
         // 4. select strategy — no if/else chains here, selector does it
@@ -479,5 +471,63 @@ public class BookingService {
         } catch (Exception e) {
             System.err.println("[WARN] MongoDB write failed: " + e.getMessage());
         }
+    }
+
+    public UserBookingTotalDTO getUserBookingTotal(Long userId, String startDate, String endDate) {
+        requireUserExists(userId);
+        LocalDateTime start = LocalDate.parse(startDate).atStartOfDay();
+        LocalDateTime end = LocalDate.parse(endDate).atTime(23, 59, 59);
+        Long count = bookingRepository.countConfirmedBookingsByUserAndDateRange(userId, start, end);
+        Double total = bookingRepository.sumConfirmedAmountByUserAndDateRange(userId, start, end);
+        return new UserBookingTotalDTO(userId, total != null ? total : 0.0, count);
+    }
+
+    public ConfirmedSummaryDTO getConfirmedSummary(Long itineraryId) {
+        long count = bookingRepository.countByItineraryIdAndStatus(itineraryId, BookingStatus.CONFIRMED);
+        Double total = bookingRepository.sumConfirmedAmountByItineraryId(itineraryId);
+        return new ConfirmedSummaryDTO(count, total != null ? total : 0.0);
+    }
+
+    private void requireUserExists(Long userId) {
+        try {
+            userServiceClient.getUser(userId);
+        } catch (FeignException.NotFound e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found", e);
+        } catch (FeignException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Unable to validate user", e);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> getItineraryMap(Long itineraryId) {
+        try {
+            Object response = itineraryServiceClient.getItinerary(itineraryId);
+            if (response instanceof Map<?, ?> map) {
+                return (Map<String, Object>) map;
+            }
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Invalid itinerary response");
+        } catch (FeignException.NotFound e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Itinerary not found", e);
+        } catch (FeignException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Unable to validate itinerary", e);
+        }
+    }
+
+    private Long asLong(Object value) {
+        if (value instanceof Number number) return number.longValue();
+        if (value == null) return null;
+        return Long.valueOf(value.toString());
+    }
+
+    private String asString(Object value) {
+        return value != null ? value.toString() : "";
+    }
+
+    private LocalDate asLocalDate(Object value) {
+        if (value instanceof LocalDate localDate) return localDate;
+        if (value == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Itinerary startDate is missing");
+        }
+        return LocalDate.parse(value.toString());
     }
 }

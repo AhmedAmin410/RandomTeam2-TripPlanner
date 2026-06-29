@@ -1,6 +1,10 @@
 package com.randmteam2.tripplanning.itinerary.config;
 
 import org.springframework.cache.annotation.EnableCaching;
+import org.springframework.cache.CacheManager;
+import org.springframework.cache.support.NoOpCacheManager;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
@@ -18,6 +22,7 @@ import java.time.Duration;
 public class RedisConfig {
 
     @Bean
+    @ConditionalOnBean(RedisConnectionFactory.class)
     public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory factory) {
         RedisTemplate<String, Object> template = new RedisTemplate<>();
         template.setConnectionFactory(factory);
@@ -27,6 +32,7 @@ public class RedisConfig {
     }
 
     @Bean
+    @ConditionalOnBean(RedisConnectionFactory.class)
     public RedisCacheManager cacheManager(RedisConnectionFactory factory) {
         RedisCacheConfiguration config = RedisCacheConfiguration.defaultCacheConfig()
                 .entryTtl(Duration.ofMinutes(10))
@@ -38,5 +44,11 @@ public class RedisConfig {
         return RedisCacheManager.builder(factory)
                 .cacheDefaults(config)
                 .build();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(CacheManager.class)
+    public CacheManager noOpCacheManager() {
+        return new NoOpCacheManager();
     }
 }

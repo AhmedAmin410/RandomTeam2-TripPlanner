@@ -1,5 +1,9 @@
 package com.randomteam2.tripplanning.destination;
 
+import com.randmteam2.tripplanning.contracts.feign.BookingServiceClient;
+import com.randmteam2.tripplanning.contracts.feign.DestinationServiceClient;
+import com.randmteam2.tripplanning.contracts.feign.ItineraryServiceClient;
+import com.randmteam2.tripplanning.contracts.feign.UserServiceClient;
 import com.randomteam2.tripplanning.destination.observer.MongoEventLogger;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
@@ -32,6 +36,26 @@ class DestinationServiceApplicationTests {
         @Bean
         public MongoEventLogger mongoEventLogger() {
             return mock(MongoEventLogger.class);
+        }
+
+        @Bean
+        public UserServiceClient userServiceClient() {
+            return mock(UserServiceClient.class);
+        }
+
+        @Bean
+        public ItineraryServiceClient itineraryServiceClient() {
+            return mock(ItineraryServiceClient.class);
+        }
+
+        @Bean
+        public DestinationServiceClient destinationServiceClient() {
+            return mock(DestinationServiceClient.class);
+        }
+
+        @Bean
+        public BookingServiceClient bookingServiceClient() {
+            return mock(BookingServiceClient.class);
         }
     }
 

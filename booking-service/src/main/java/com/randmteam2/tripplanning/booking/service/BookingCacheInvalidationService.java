@@ -3,6 +3,7 @@ package com.randmteam2.tripplanning.booking.service;
 import org.springframework.data.redis.core.Cursor;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.ScanOptions;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -13,9 +14,10 @@ public class BookingCacheInvalidationService {
 
     private static final String CACHE_PREFIX = "booking-service::";
 
+    @Nullable
     private final RedisTemplate<String, Object> redisTemplate;
 
-    public BookingCacheInvalidationService(RedisTemplate<String, Object> redisTemplate) {
+    public BookingCacheInvalidationService(@Nullable RedisTemplate<String, Object> redisTemplate) {
         this.redisTemplate = redisTemplate;
     }
 
@@ -54,6 +56,9 @@ public class BookingCacheInvalidationService {
     }
 
     private void scanAndDelete(String pattern) {
+        if (redisTemplate == null) {
+            return;
+        }
         try (Cursor<String> cursor = redisTemplate.scan(
                 ScanOptions.scanOptions().match(pattern).count(1000).build())) {
             List<String> keys = new ArrayList<>();

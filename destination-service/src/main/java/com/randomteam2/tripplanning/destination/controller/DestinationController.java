@@ -4,6 +4,8 @@ import com.randomteam2.tripplanning.destination.dto.*;
 import com.randomteam2.tripplanning.destination.model.Destination;
 import com.randomteam2.tripplanning.destination.model.DestinationReview;
 import com.randomteam2.tripplanning.destination.service.DestinationService;
+import com.randmteam2.tripplanning.contracts.dto.BatchDestinationRequest;
+import com.randmteam2.tripplanning.contracts.dto.DestinationSummaryDTO;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -38,6 +40,11 @@ public class DestinationController {
     @GetMapping("/{id}")
     public ResponseEntity<Destination> getDestinationById(@PathVariable Long id) {
         return ResponseEntity.ok(destinationService.getDestinationById(id));
+    }
+
+    @PostMapping("/batch")
+    public ResponseEntity<List<DestinationSummaryDTO>> batchGetDestinations(@RequestBody BatchDestinationRequest request) {
+        return ResponseEntity.ok(destinationService.batchGetDestinations(request));
     }
 
     @PutMapping("/{id}")

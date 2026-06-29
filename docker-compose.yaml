@@ -191,6 +191,8 @@
       SPRING_DATA_REDIS_PASSWORD: redispass
       SPRING_RABBITMQ_HOST: rabbitmq
       JWT_SECRET: 7Wl0A/qUHLdXuZKT3nra3mBBtOot+/SF/eLo0MTq5zQ=
+      FEIGN_USER_SERVICE_URL: http://user-service:8080
+      FEIGN_DESTINATION_SERVICE_URL: http://destination-service:8080
       FEIGN_ITINERARY_SERVICE_URL: http://itinerary-service:8080
       FEIGN_BOOKING_SERVICE_URL: http://booking-service:8080
     depends_on:
@@ -224,8 +226,10 @@
       SPRING_ELASTICSEARCH_URIS: http://elasticsearch:9200
       SPRING_RABBITMQ_HOST: rabbitmq
       JWT_SECRET: 7Wl0A/qUHLdXuZKT3nra3mBBtOot+/SF/eLo0MTq5zQ=
+      FEIGN_DESTINATION_SERVICE_URL: http://destination-service:8080
       FEIGN_ITINERARY_SERVICE_URL: http://itinerary-service:8080
       FEIGN_USER_SERVICE_URL: http://user-service:8080
+      FEIGN_BOOKING_SERVICE_URL: http://booking-service:8080
     depends_on:
       destination-postgres:
         condition: service_healthy
@@ -247,7 +251,7 @@
   itinerary-service:
     build: ./itinerary-service
     ports:
-      - "8083:8083"
+      - "8083:8080"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://itinerary-postgres:5432/tripdb-itineraries
       SPRING_DATASOURCE_USERNAME: postgres
@@ -263,6 +267,7 @@
       JWT_SECRET: 7Wl0A/qUHLdXuZKT3nra3mBBtOot+/SF/eLo0MTq5zQ=
       FEIGN_USER_SERVICE_URL: http://user-service:8080
       FEIGN_DESTINATION_SERVICE_URL: http://destination-service:8080
+      FEIGN_ITINERARY_SERVICE_URL: http://itinerary-service:8080
       FEIGN_BOOKING_SERVICE_URL: http://booking-service:8080
     depends_on:
       itinerary-postgres:
@@ -276,7 +281,7 @@
       rabbitmq:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8083/actuator/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 10
@@ -285,7 +290,7 @@
   activity-service:
     build: ./activity-service
     ports:
-      - "8084:8084"
+      - "8084:8080"
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://activity-postgres:5432/tripdb-activities
       SPRING_DATASOURCE_USERNAME: postgres
@@ -300,7 +305,10 @@
       SPRING_CASSANDRA_KEYSPACE_NAME: tripplanningks
       SPRING_RABBITMQ_HOST: rabbitmq
       JWT_SECRET: 7Wl0A/qUHLdXuZKT3nra3mBBtOot+/SF/eLo0MTq5zQ=
+      FEIGN_USER_SERVICE_URL: http://user-service:8080
+      FEIGN_DESTINATION_SERVICE_URL: http://destination-service:8080
       FEIGN_ITINERARY_SERVICE_URL: http://itinerary-service:8080
+      FEIGN_BOOKING_SERVICE_URL: http://booking-service:8080
     depends_on:
       activity-postgres:
         condition: service_healthy
@@ -313,7 +321,7 @@
       rabbitmq:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8084/actuator/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 10
@@ -336,6 +344,7 @@
       FEIGN_USER_SERVICE_URL: http://user-service:8080
       FEIGN_ITINERARY_SERVICE_URL: http://itinerary-service:8080
       FEIGN_DESTINATION_SERVICE_URL: http://destination-service:8080
+      FEIGN_BOOKING_SERVICE_URL: http://booking-service:8080
     depends_on:
       booking-postgres:
         condition: service_healthy

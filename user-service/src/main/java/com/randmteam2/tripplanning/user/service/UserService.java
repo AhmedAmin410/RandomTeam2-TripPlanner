@@ -7,6 +7,10 @@ import com.randmteam2.tripplanning.user.dto.TopTravelerDTO;
 import com.randmteam2.tripplanning.user.dto.TravelStyleUserDTO;
 import com.randmteam2.tripplanning.user.dto.UserProfileDTO;
 import com.randmteam2.tripplanning.user.dto.UserTripSummaryDTO;
+import com.randmteam2.tripplanning.contracts.dto.UserBookingTotalDTO;
+import com.randmteam2.tripplanning.contracts.dto.UserTripSummaryAggregateDTO;
+import com.randmteam2.tripplanning.contracts.feign.BookingServiceClient;
+import com.randmteam2.tripplanning.contracts.feign.ItineraryServiceClient;
 import com.randmteam2.tripplanning.user.model.Role;
 import com.randmteam2.tripplanning.user.model.SavedDestination;
 import com.randmteam2.tripplanning.user.model.User;
@@ -37,6 +41,8 @@ public class UserService {
     private final UserEventPublisher eventPublisher;
     private final MongoDocumentAdapter mongoDocumentAdapter;
     private final ObjectArrayDtoAdapter objectArrayDtoAdapter;
+    private final ItineraryServiceClient itineraryServiceClient;
+    private final BookingServiceClient bookingServiceClient;
 
     public UserService(UserRepository userRepository,
                        SavedDestinationRepository savedDestinationRepository,
@@ -45,7 +51,9 @@ public class UserService {
                        AuthEventRepository authEventRepository,
                        UserEventPublisher eventPublisher,
                        MongoDocumentAdapter mongoDocumentAdapter,
-                       ObjectArrayDtoAdapter objectArrayDtoAdapter) {
+                       ObjectArrayDtoAdapter objectArrayDtoAdapter,
+                       ItineraryServiceClient itineraryServiceClient,
+                       BookingServiceClient bookingServiceClient) {
         this.userRepository = userRepository;
         this.savedDestinationRepository = savedDestinationRepository;
         this.passwordEncoder = passwordEncoder;
@@ -54,6 +62,8 @@ public class UserService {
         this.eventPublisher = eventPublisher;
         this.mongoDocumentAdapter = mongoDocumentAdapter;
         this.objectArrayDtoAdapter = objectArrayDtoAdapter;
+        this.itineraryServiceClient = itineraryServiceClient;
+        this.bookingServiceClient = bookingServiceClient;
     }
 
     public User createUser(User user) {
@@ -150,9 +160,16 @@ public class UserService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "User not found"));
-        List<Object[]> results = userRepository.getUserTripSummary(userId);
-        Object[] row = results.isEmpty() ? new Object[]{0, 0, 0, 0, 0} : results.get(0);
-        return objectArrayDtoAdapter.adapt(row, user.getId(), user.getName());
+        UserTripSummaryAggregateDTO aggregate = itineraryServiceClient.getUserItinerarySummary(userId);
+        return UserTripSummaryDTO.builder()
+                .userId(user.getId())
+                .name(user.getName())
+                .totalTrips(nullToZero(aggregate.totalTrips()))
+                .completedTrips(nullToZero(aggregate.completedTrips()))
+                .cancelledTrips(nullToZero(aggregate.cancelledTrips()))
+                .totalSpent(nullToZero(aggregate.totalBudget()))
+                .averageBudget(nullToZero(aggregate.averageBudget()))
+                .build();
     }
 
     @Cacheable(value = "cache-5min", key = "'user-service::S1-F5::' + #key + '::' + #value")
@@ -207,7 +224,7 @@ public class UserService {
                         HttpStatus.NOT_FOUND, "User not found"
                 ));
 
-        long activeItineraries = userRepository.countActiveItineraries(id);
+        long activeItineraries = itineraryServiceClient.getActiveItineraryCount(id);
 
         if (activeItineraries > 0) {
             throw new ResponseStatusException(
@@ -230,15 +247,19 @@ public class UserService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid date range");
         }
 
-        List<Object[]> results = userRepository.getTopTravelers(limit);
-
-        return results.stream()
-                .map(r -> TopTravelerDTO.builder()
-                        .userId(((Number) r[0]).longValue())
-                        .name((String) r[1])
-                        .totalSpent(((Number) r[2]).doubleValue())
-                        .tripCount(((Number) r[3]).longValue())
-                        .build())
+        int effectiveLimit = limit == null || limit < 1 ? 10 : limit;
+        return userRepository.findAll().stream()
+                .map(user -> {
+                    UserBookingTotalDTO total = bookingServiceClient.getUserBookingTotal(user.getId(), startDate, endDate);
+                    return TopTravelerDTO.builder()
+                            .userId(user.getId())
+                            .name(user.getName())
+                            .totalSpent(nullToZero(total.totalAmount()))
+                            .tripCount(nullToZero(total.tripCount()))
+                            .build();
+                })
+                .sorted((a, b) -> Double.compare(b.totalSpent(), a.totalSpent()))
+                .limit(effectiveLimit)
                 .toList();
     }
 
@@ -317,8 +338,8 @@ public class UserService {
             );
         }
 
-        return userRepository.findUsersByTravelStyleAndMinTrips(style, minTrips)
-                .stream()
+        return userRepository.findByPreference("travelStyle", style).stream()
+                .filter(u -> itineraryServiceClient.getCompletedItineraryCount(u.getId()) >= minTrips)
                 .map(u -> TravelStyleUserDTO.builder()
                         .userId(u.getId())
                         .name(u.getName())
@@ -327,6 +348,14 @@ public class UserService {
                         .preferences(u.getPreferences())
                         .build())
                 .toList();
+    }
+
+    private long nullToZero(Long value) {
+        return value != null ? value : 0L;
+    }
+
+    private double nullToZero(Double value) {
+        return value != null ? value : 0.0;
     }
 
     @Cacheable(value = "cache-5min", key = "'user-service::S1-F12::' + #userId + '::' + #page + '::' + #size")

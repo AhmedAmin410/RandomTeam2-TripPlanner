@@ -71,10 +71,6 @@ public interface ActivityRepository extends JpaRepository<Activity, Long> {
             @Param("since") Integer sinceMinutes
     );
 
-    @Query(value = "SELECT COUNT(*) FROM itineraries WHERE id = :itineraryId", nativeQuery = true)
-    Integer checkItineraryExists(@Param("itineraryId") Long itineraryId);
-
-
     @Query(value = """
             SELECT category,
                    COUNT(*) AS cnt,

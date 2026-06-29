@@ -31,4 +31,10 @@ server:
 jwt:
   secret: ${JWT_SECRET:7Wl0A/qUHLdXuZKT3nra3mBBtOot+/SF/eLo0MTq5zQ=}
 
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info"
+
 # Dockerfile placeholder - gateway team will add JwtGatewayFilter

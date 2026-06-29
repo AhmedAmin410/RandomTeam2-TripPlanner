@@ -9,6 +9,15 @@ import com.randmteam2.tripplanning.itinerary.observer.EntityObserver;
 import com.randmteam2.tripplanning.itinerary.observer.MongoEventLogger;
 import com.randmteam2.tripplanning.itinerary.repository.ItineraryDayRepository;
 import com.randmteam2.tripplanning.itinerary.repository.ItineraryRepository;
+import com.randmteam2.tripplanning.contracts.dto.BatchItineraryRequest;
+import com.randmteam2.tripplanning.contracts.dto.ConfirmedSummaryDTO;
+import com.randmteam2.tripplanning.contracts.dto.DestinationBookingRevenueAggregateDTO;
+import com.randmteam2.tripplanning.contracts.dto.DestinationDashboardAggregateDTO;
+import com.randmteam2.tripplanning.contracts.dto.ItinerarySummaryDTO;
+import com.randmteam2.tripplanning.contracts.dto.UserTripSummaryAggregateDTO;
+import com.randmteam2.tripplanning.contracts.feign.BookingServiceClient;
+import com.randmteam2.tripplanning.contracts.feign.DestinationServiceClient;
+import feign.FeignException;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Values;
 import org.springframework.cache.annotation.Cacheable;
@@ -27,13 +36,19 @@ public class ItineraryService {
 
     private final ItineraryRepository itineraryRepository;
     private final ItineraryDayRepository itineraryDayRepository;
+    private final BookingServiceClient bookingServiceClient;
+    private final DestinationServiceClient destinationServiceClient;
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
 
     public ItineraryService(ItineraryRepository itineraryRepository,
                             ItineraryDayRepository itineraryDayRepository,
-                            ItineraryEventRepository itineraryEventRepository) {
+                            ItineraryEventRepository itineraryEventRepository,
+                            BookingServiceClient bookingServiceClient,
+                            DestinationServiceClient destinationServiceClient) {
         this.itineraryRepository = itineraryRepository;
         this.itineraryDayRepository = itineraryDayRepository;
+        this.bookingServiceClient = bookingServiceClient;
+        this.destinationServiceClient = destinationServiceClient;
         register(new MongoEventLogger(itineraryEventRepository));
     }
 
@@ -108,8 +123,8 @@ public class ItineraryService {
         itinerary.setStatus(Itinerary.Status.COMPLETED);
 
         if (itinerary.getEstimatedBudget() == null) {
-            Double total = itineraryRepository.sumConfirmedBookings(id);
-            itinerary.setEstimatedBudget(total);
+            ConfirmedSummaryDTO summary = bookingServiceClient.getConfirmedSummary(id);
+            itinerary.setEstimatedBudget(summary.totalRevenue());
         }
 
         Itinerary saved = itineraryRepository.save(itinerary);
@@ -128,7 +143,6 @@ public class ItineraryService {
         }
 
         itinerary.setStatus(Itinerary.Status.CANCELLED);
-        itineraryRepository.cancelPendingBookings(id);
         Itinerary saved = itineraryRepository.save(itinerary);
         notifyObservers("ITINERARY_CANCELLED", itineraryPayload("ITINERARY_CANCELLED", saved));
         return saved;
@@ -143,13 +157,13 @@ public class ItineraryService {
             throw new RuntimeException("Itinerary must be DRAFT to assign a destination");
         }
 
-        Integer exists = itineraryRepository.checkDestinationExists(destinationId);
-        if (exists == null || exists == 0) {
+        Map<String, Object> destination = getDestinationMap(destinationId);
+        if (destination.isEmpty()) {
             throw new RuntimeException("Destination not found with id: " + destinationId);
         }
 
-        Integer active = itineraryRepository.checkDestinationActive(destinationId);
-        if (active == null || active == 0) {
+        String status = destination.get("status") != null ? destination.get("status").toString() : "";
+        if (!"ACTIVE".equals(status)) {
             throw new RuntimeException("Destination must be ACTIVE to assign it");
         }
 
@@ -356,6 +370,85 @@ public class ItineraryService {
     public List<ItineraryDay> getDays(Long itineraryId) {
         getById(itineraryId);
         return itineraryDayRepository.findByItineraryIdOrderByDayOrder(itineraryId);
+    }
+
+    public UserTripSummaryAggregateDTO getUserItinerarySummary(Long userId) {
+        List<Itinerary> itineraries = itineraryRepository.findByUserId(userId);
+        long total = itineraries.size();
+        long completed = itineraries.stream().filter(i -> i.getStatus() == Itinerary.Status.COMPLETED).count();
+        long cancelled = itineraries.stream().filter(i -> i.getStatus() == Itinerary.Status.CANCELLED).count();
+        double totalBudget = itineraries.stream()
+                .filter(i -> i.getStatus() == Itinerary.Status.COMPLETED)
+                .map(Itinerary::getEstimatedBudget)
+                .filter(java.util.Objects::nonNull)
+                .mapToDouble(Double::doubleValue)
+                .sum();
+        double averageBudget = completed > 0 ? totalBudget / completed : 0.0;
+        return new UserTripSummaryAggregateDTO(total, completed, cancelled, totalBudget, averageBudget);
+    }
+
+    public int getActiveItineraryCount(Long userId) {
+        return itineraryRepository.countByUserIdAndStatusIn(
+                userId,
+                List.of(Itinerary.Status.DRAFT, Itinerary.Status.PLANNED, Itinerary.Status.IN_PROGRESS));
+    }
+
+    public long getCompletedItineraryCount(Long userId) {
+        return itineraryRepository.countByUserIdAndStatus(userId, Itinerary.Status.COMPLETED);
+    }
+
+    public int getDestinationActiveItineraryCount(Long destinationId) {
+        return itineraryRepository.countByDestinationIdAndStatusIn(
+                destinationId,
+                List.of(Itinerary.Status.DRAFT, Itinerary.Status.PLANNED, Itinerary.Status.IN_PROGRESS));
+    }
+
+    public DestinationDashboardAggregateDTO getDestinationDashboardAggregate(Long destinationId) {
+        List<Itinerary> itineraries = itineraryRepository.findByDestinationId(destinationId);
+        long completed = itineraries.stream().filter(i -> i.getStatus() == Itinerary.Status.COMPLETED).count();
+        long visitors = itineraries.stream().map(Itinerary::getUserId).filter(java.util.Objects::nonNull).distinct().count();
+        return new DestinationDashboardAggregateDTO((long) itineraries.size(), completed, visitors);
+    }
+
+    public DestinationBookingRevenueAggregateDTO getDestinationBookingRevenue(Long destinationId, String startDate, String endDate) {
+        List<Itinerary> itineraries = itineraryRepository.findByDestinationId(destinationId);
+        long totalBookings = 0L;
+        double totalRevenue = 0.0;
+        for (Itinerary itinerary : itineraries) {
+            ConfirmedSummaryDTO summary = bookingServiceClient.getConfirmedSummary(itinerary.getId());
+            totalBookings += summary.count() != null ? summary.count() : 0L;
+            totalRevenue += summary.totalRevenue() != null ? summary.totalRevenue() : 0.0;
+        }
+        double average = totalBookings > 0 ? totalRevenue / totalBookings : 0.0;
+        return new DestinationBookingRevenueAggregateDTO(totalBookings, totalRevenue, average);
+    }
+
+    public List<ItinerarySummaryDTO> batchGetItineraries(BatchItineraryRequest request) {
+        if (request == null || request.itineraryIds() == null) {
+            return List.of();
+        }
+        return itineraryRepository.findAllById(request.itineraryIds()).stream()
+                .map(i -> new ItinerarySummaryDTO(
+                        i.getId(),
+                        i.getDestinationId(),
+                        i.getUserId(),
+                        i.getStatus() != null ? i.getStatus().name() : null))
+                .toList();
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> getDestinationMap(Long destinationId) {
+        try {
+            Object response = destinationServiceClient.getDestination(destinationId);
+            if (response instanceof Map<?, ?> map) {
+                return (Map<String, Object>) map;
+            }
+            return Map.of();
+        } catch (FeignException.NotFound e) {
+            throw new RuntimeException("Destination not found with id: " + destinationId, e);
+        } catch (FeignException e) {
+            throw new RuntimeException("Unable to validate destination " + destinationId, e);
+        }
     }
 
 

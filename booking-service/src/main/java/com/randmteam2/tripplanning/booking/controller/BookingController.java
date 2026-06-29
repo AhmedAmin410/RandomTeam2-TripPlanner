@@ -1,6 +1,8 @@
 package com.randmteam2.tripplanning.booking.controller;
 
 import com.randmteam2.tripplanning.booking.dto.BookingDetailsDTO;
+import com.randmteam2.tripplanning.contracts.dto.ConfirmedSummaryDTO;
+import com.randmteam2.tripplanning.contracts.dto.UserBookingTotalDTO;
 import com.randmteam2.tripplanning.booking.dto.PaymentHistoryEntryDTO;
 import com.randmteam2.tripplanning.booking.dto.RevenueReportDTO;
 import com.randmteam2.tripplanning.booking.dto.SettlementProcessRequest;
@@ -99,6 +101,14 @@ public class BookingController {
         return ResponseEntity.ok(bookingService.getUserBookingSummary(userId));
     }
 
+    @GetMapping("/user/{userId}/total")
+    public ResponseEntity<UserBookingTotalDTO> getUserBookingTotal(
+            @PathVariable Long userId,
+            @RequestParam String startDate,
+            @RequestParam String endDate) {
+        return ResponseEntity.ok(bookingService.getUserBookingTotal(userId, startDate, endDate));
+    }
+
     // ── S5-F4 ─────────────────────────────────────────────────────────────
     // ── S5-F4 ─────────────────────────────────────────────────────────────
     @PostMapping("/itinerary/{itineraryId}")
@@ -108,6 +118,11 @@ public class BookingController {
             @RequestParam(defaultValue = "false") boolean simulateFailure) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(bookingService.createBookingForItinerary(itineraryId, body, simulateFailure));
+    }
+
+    @GetMapping("/itinerary/{itineraryId}/confirmed-summary")
+    public ResponseEntity<ConfirmedSummaryDTO> getConfirmedSummary(@PathVariable Long itineraryId) {
+        return ResponseEntity.ok(bookingService.getConfirmedSummary(itineraryId));
     }
 
     // ── S5-F5 ─────────────────────────────────────────────────────────────
