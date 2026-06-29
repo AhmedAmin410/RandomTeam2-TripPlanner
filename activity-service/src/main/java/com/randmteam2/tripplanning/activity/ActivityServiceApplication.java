@@ -6,10 +6,15 @@ import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.cloud.openfeign.EnableFeignClients;
 import org.springframework.context.annotation.Bean;
 import org.springframework.web.client.RestTemplate;
+import com.randmteam2.tripplanning.contracts.feign.ItineraryServiceClient;
 
 @SpringBootApplication
 @EnableCaching
-@EnableFeignClients(basePackages = "com.randmteam2.tripplanning.contracts.feign")
+// Register only the Feign client activity-service actually uses. Scanning the
+// whole contracts.feign package instantiates all four clients, but activity only
+// configures feign.itinerary-service.url — the other three resolve to an
+// unresolved ${...} URL and fail at startup ("Illegal character found in host: '{'").
+@EnableFeignClients(clients = ItineraryServiceClient.class)
 public class ActivityServiceApplication {
 
     public static void main(String[] args) {
