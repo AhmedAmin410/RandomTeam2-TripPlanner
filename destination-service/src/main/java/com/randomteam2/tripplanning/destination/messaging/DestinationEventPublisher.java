@@ -8,6 +8,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Component;
 
+import java.util.Map;
+
 @Component
 public class DestinationEventPublisher {
 
@@ -24,7 +26,12 @@ public class DestinationEventPublisher {
             rabbitTemplate.convertAndSend(
                     DestinationRabbitMqConfig.DESTINATION_EVENTS_EXCHANGE,
                     "destination.status-changed",
-                    event);
+                    Map.of(
+                            "eventType", "destination.status-changed",
+                            "destinationId", event.destinationId(),
+                            "oldStatus", event.oldStatus(),
+                            "newStatus", event.newStatus()
+                    ));
             log.info("Published destination.status-changed for destinationId={} ({} -> {})",
                     event.destinationId(), event.oldStatus(), event.newStatus());
         } catch (Exception e) {
@@ -37,7 +44,13 @@ public class DestinationEventPublisher {
             rabbitTemplate.convertAndSend(
                     DestinationRabbitMqConfig.DESTINATION_EVENTS_EXCHANGE,
                     "destination.rated",
-                    event);
+                    Map.of(
+                            "eventType", "destination.rated",
+                            "destinationId", event.destinationId(),
+                            "itineraryId", event.itineraryId(),
+                            "rating", event.rating(),
+                            "userId", event.userId()
+                    ));
             log.info("Published destination.rated for destinationId={} itineraryId={} rating={}",
                     event.destinationId(), event.itineraryId(), event.rating());
         } catch (Exception e) {

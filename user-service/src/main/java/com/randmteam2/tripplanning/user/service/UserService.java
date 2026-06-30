@@ -84,7 +84,12 @@ public class UserService {
         cacheInvalidationService.evictUserReadCaches();
         try {
             rabbitTemplate.convertAndSend("user.events", "user.registered",
-                    Map.of("userId", saved.getId(), "email", saved.getEmail(), "role", saved.getRole().name()));
+                    Map.of(
+                            "eventType", "user.registered",
+                            "userId", saved.getId(),
+                            "email", saved.getEmail(),
+                            "role", saved.getRole().name()
+                    ));
             log.info("Published user.registered for userId={}", saved.getId());
         } catch (Exception e) {
             log.warn("Failed to publish user.registered for userId={}: {}", saved.getId(), e.getMessage());
@@ -237,7 +242,10 @@ public class UserService {
         // S1-READ-DB: publish user.deactivated to user.events exchange (S1-EVENTS wires the topology)
         try {
             rabbitTemplate.convertAndSend("user.events", "user.deactivated",
-                    Map.of("userId", saved.getId()));
+                    Map.of(
+                            "eventType", "user.deactivated",
+                            "userId", saved.getId()
+                    ));
             log.info("Published user.deactivated for userId={}", saved.getId());
         } catch (Exception e) {
             log.warn("Failed to publish user.deactivated for userId={}: {}", saved.getId(), e.getMessage());

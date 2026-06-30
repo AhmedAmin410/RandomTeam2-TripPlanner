@@ -97,7 +97,7 @@
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: tripdb-users
+      POSTGRES_DB: tripdb-bookings
     volumes:
       - user-pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -183,7 +183,7 @@
     ports:
       - "8081:8080"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://user-postgres:5432/tripdb-users
+      SPRING_DATASOURCE_URL: jdbc:postgresql://user-postgres:5432/tripdb-bookings
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
       SPRING_DATA_MONGODB_URI: mongodb://root:rootpass@mongodb:27017/tripplanningmongo?authSource=admin
@@ -191,6 +191,7 @@
       SPRING_DATA_REDIS_PORT: 6379
       SPRING_DATA_REDIS_PASSWORD: redispass
       SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_PROFILES_ACTIVE: docker
       JWT_SECRET: 7Wl0A/qUHLdXuZKT3nra3mBBtOot+/SF/eLo0MTq5zQ=
       FEIGN_ITINERARY_SERVICE_URL: http://itinerary-service:8080
       FEIGN_BOOKING_SERVICE_URL: http://booking-service:8080
@@ -215,7 +216,7 @@
     ports:
       - "8082:8080"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://destination-postgres:5432/tripdb-destinations
+      SPRING_DATASOURCE_URL: jdbc:postgresql://user-postgres:5432/tripdb-bookings
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
       SPRING_DATA_MONGODB_URI: mongodb://root:rootpass@mongodb:27017/tripplanningmongo?authSource=admin
@@ -224,11 +225,12 @@
       SPRING_DATA_REDIS_PASSWORD: redispass
       SPRING_ELASTICSEARCH_URIS: http://elasticsearch:9200
       SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_PROFILES_ACTIVE: docker
       JWT_SECRET: 7Wl0A/qUHLdXuZKT3nra3mBBtOot+/SF/eLo0MTq5zQ=
       FEIGN_ITINERARY_SERVICE_URL: http://itinerary-service:8080
       FEIGN_USER_SERVICE_URL: http://user-service:8080
     depends_on:
-      destination-postgres:
+      user-postgres:
         condition: service_healthy
       mongodb:
         condition: service_healthy
@@ -250,7 +252,7 @@
     ports:
       - "8083:8080"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://itinerary-postgres:5432/tripdb-itineraries
+      SPRING_DATASOURCE_URL: jdbc:postgresql://user-postgres:5432/tripdb-bookings
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
       SPRING_DATA_MONGODB_URI: mongodb://root:rootpass@mongodb:27017/tripplanningmongo?authSource=admin
@@ -261,12 +263,13 @@
       SPRING_DATA_NEO4J_USERNAME: neo4j
       SPRING_DATA_NEO4J_PASSWORD: neo4jpass
       SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_PROFILES_ACTIVE: docker
       JWT_SECRET: 7Wl0A/qUHLdXuZKT3nra3mBBtOot+/SF/eLo0MTq5zQ=
       FEIGN_USER_SERVICE_URL: http://user-service:8080
       FEIGN_DESTINATION_SERVICE_URL: http://destination-service:8080
       FEIGN_BOOKING_SERVICE_URL: http://booking-service:8080
     depends_on:
-      itinerary-postgres:
+      user-postgres:
         condition: service_healthy
       mongodb:
         condition: service_healthy
@@ -288,7 +291,7 @@
     ports:
       - "8084:8084"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://activity-postgres:5432/tripdb-activities
+      SPRING_DATASOURCE_URL: jdbc:postgresql://user-postgres:5432/tripdb-bookings
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
       SPRING_DATA_MONGODB_URI: mongodb://root:rootpass@mongodb:27017/tripplanningmongo?authSource=admin
@@ -300,10 +303,11 @@
       SPRING_CASSANDRA_LOCAL_DATACENTER: datacenter1
       SPRING_CASSANDRA_KEYSPACE_NAME: tripplanningks
       SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_PROFILES_ACTIVE: docker
       JWT_SECRET: 7Wl0A/qUHLdXuZKT3nra3mBBtOot+/SF/eLo0MTq5zQ=
       FEIGN_ITINERARY_SERVICE_URL: http://itinerary-service:8080
     depends_on:
-      activity-postgres:
+      user-postgres:
         condition: service_healthy
       mongodb:
         condition: service_healthy
@@ -325,7 +329,7 @@
     ports:
       - "8085:8080"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://booking-postgres:5432/tripdb-bookings
+      SPRING_DATASOURCE_URL: jdbc:postgresql://user-postgres:5432/tripdb-bookings
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
       SPRING_DATA_MONGODB_URI: mongodb://root:rootpass@mongodb:27017/tripplanningmongo?authSource=admin
@@ -333,12 +337,13 @@
       SPRING_DATA_REDIS_PORT: 6379
       SPRING_DATA_REDIS_PASSWORD: redispass
       SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_PROFILES_ACTIVE: docker
       JWT_SECRET: 7Wl0A/qUHLdXuZKT3nra3mBBtOot+/SF/eLo0MTq5zQ=
       FEIGN_USER_SERVICE_URL: http://user-service:8080
       FEIGN_ITINERARY_SERVICE_URL: http://itinerary-service:8080
       FEIGN_DESTINATION_SERVICE_URL: http://destination-service:8080
     depends_on:
-      booking-postgres:
+      user-postgres:
         condition: service_healthy
       mongodb:
         condition: service_healthy

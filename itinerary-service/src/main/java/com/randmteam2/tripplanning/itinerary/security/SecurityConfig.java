@@ -2,6 +2,7 @@ package com.randmteam2.tripplanning.itinerary.security;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -30,6 +31,11 @@ public class SecurityConfig {
                         .requestMatchers("/api/itineraries/user/*/summary").permitAll()
                         .requestMatchers("/api/itineraries/user/*/active-count").permitAll()
                         .requestMatchers("/api/itineraries/user/*/completed-count").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/itineraries/*").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/itineraries/destination/*/active-count").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/itineraries/destination/*/booking-revenue").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/itineraries/destination/*/dashboard-aggregate").permitAll()
+                        .requestMatchers("/api/itineraries/batch").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter,

@@ -13,6 +13,10 @@ import java.util.stream.Collectors;
 @Component
 public class Neo4jRecordAdapter {
 
+    public Map<String, Object> adapt(UserNode userNode) {
+        return adaptUserNode(userNode);
+    }
+
     public Map<String, Object> adaptUserNode(UserNode userNode) {
         Map<String, Object> result = new HashMap<>();
         result.put("userId", userNode.getUserId());

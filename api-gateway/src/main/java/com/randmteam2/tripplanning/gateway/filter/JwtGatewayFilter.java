@@ -51,7 +51,7 @@ public class JwtGatewayFilter implements GlobalFilter, Ordered {
 
         if (shouldBypassJwt(path)) {
             ServerHttpRequest mutated = exchange.getRequest().mutate()
-                    .header(X_CORRELATION_ID, correlationId)
+                    .headers(headers -> headers.set(X_CORRELATION_ID, correlationId))
                     .build();
             return chain.filter(exchange.mutate().request(mutated).build());
         }
@@ -75,9 +75,11 @@ public class JwtGatewayFilter implements GlobalFilter, Ordered {
             String role = claims.get("role", String.class);
 
             ServerHttpRequest mutated = exchange.getRequest().mutate()
-                    .header(X_CORRELATION_ID, correlationId)
-                    .header(X_USER_ID, uid != null ? String.valueOf(uid) : "")
-                    .header(X_USER_ROLE, role != null ? role : "")
+                    .headers(headers -> {
+                        headers.set(X_CORRELATION_ID, correlationId);
+                        headers.set(X_USER_ID, uid != null ? String.valueOf(uid) : "");
+                        headers.set(X_USER_ROLE, role != null ? role : "");
+                    })
                     .build();
             return chain.filter(exchange.mutate().request(mutated).build());
         } catch (Exception e) {

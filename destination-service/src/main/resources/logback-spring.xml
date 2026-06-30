@@ -23,13 +23,13 @@
         </format>
     </appender>
 
-    <springProfile name="test">
+    <springProfile name="test | docker">
         <root level="INFO">
             <appender-ref ref="CONSOLE"/>
         </root>
     </springProfile>
 
-    <springProfile name="!test">
+    <springProfile name="!test &amp; !docker">
         <root level="INFO">
             <appender-ref ref="CONSOLE"/>
             <appender-ref ref="LOKI"/>

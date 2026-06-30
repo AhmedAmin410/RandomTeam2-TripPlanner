@@ -3,7 +3,9 @@ package com.randmteam2.tripplanning.booking.service;
 import com.randmteam2.tripplanning.booking.dto.DestinationSeasonRevenueDTO;
 import com.randmteam2.tripplanning.booking.feign.BookingFeignClients;
 import com.randmteam2.tripplanning.booking.model.Booking;
-import com.randmteam2.tripplanning.booking.mongo.PaymentAuditEvent;
+import com.randmteam2.tripplanning.booking.mongo.EventFactory;
+import com.randmteam2.tripplanning.booking.mongo.EventType;
+import com.randmteam2.tripplanning.booking.mongo.MongoEvent;
 import com.randmteam2.tripplanning.booking.mongo.PaymentAuditEventRepository;
 import com.randmteam2.tripplanning.booking.repository.BookingRepository;
 import com.randmteam2.tripplanning.contracts.dto.DestinationSummaryDTO;
@@ -155,11 +157,12 @@ public class BookingAnalyticsService {
      */
     public void logAnalyticsViewed() {
         try {
-            PaymentAuditEvent ev = new PaymentAuditEvent();
-            ev.setAction("ANALYTICS_VIEWED");
-            ev.setTimestamp(LocalDateTime.now());
-            ev.setDetails(Map.of("endpoint", "S5-F10"));
-            auditRepository.save(ev);
+            MongoEvent ev = EventFactory.createEvent(EventType.PAYMENT_AUDIT, Map.of(
+                    "action", "ANALYTICS_VIEWED",
+                    "timestamp", LocalDateTime.now(),
+                    "details", Map.of("endpoint", "S5-F10")
+            ));
+            auditRepository.save((com.randmteam2.tripplanning.booking.mongo.PaymentAuditEvent) ev);
         } catch (Exception e) {
             log.warn("MongoDB analytics log failed: {}", e.getMessage());
         }

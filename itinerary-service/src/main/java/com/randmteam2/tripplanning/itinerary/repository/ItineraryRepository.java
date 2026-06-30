@@ -14,38 +14,6 @@ import java.util.List;
 @Repository
 public interface ItineraryRepository extends JpaRepository<Itinerary, Long> {
     @Query(value = """
-        SELECT COALESCE(SUM(b.amount), 0)
-        FROM bookings b
-        WHERE b.itinerary_id = :itineraryId
-        AND b.status = 'CONFIRMED'
-        """, nativeQuery = true)
-    Double sumConfirmedBookings(@Param("itineraryId") Long itineraryId);
-    @Modifying
-    @Transactional
-    @Query(value = """
-        UPDATE bookings
-        SET status = 'CANCELLED'
-        WHERE itinerary_id = :itineraryId
-        AND status = 'PENDING'
-        """, nativeQuery = true)
-    void cancelPendingBookings(@Param("itineraryId") Long itineraryId);
-
-
-    @Query(value = """
-        SELECT COUNT(*) FROM destinations
-        WHERE id = :destinationId
-        AND CAST(status AS VARCHAR) = 'ACTIVE'
-        """, nativeQuery = true)
-    Integer checkDestinationActive(@Param("destinationId") Long destinationId);
-
-    @Query(value = """
-        SELECT COUNT(*) FROM destinations
-        WHERE id = :destinationId
-        """, nativeQuery = true)
-    Integer checkDestinationExists(@Param("destinationId") Long destinationId);
-
-
-    @Query(value = """
         SELECT COALESCE(MAX(day_order), 0)
         FROM itinerary_days
         WHERE itinerary_id = :itineraryId
@@ -98,11 +66,6 @@ public interface ItineraryRepository extends JpaRepository<Itinerary, Long> {
     );
 
     @Query(value = """
-    SELECT COUNT(*) > 0 FROM users WHERE email = :email
-    """, nativeQuery = true)
-    boolean existsByUserEmail(@Param("email") String email);
-
-    @Query(value = """
     SELECT
         COUNT(*) as total,
         COALESCE(SUM(estimated_budget), 0) as totalBudget,
@@ -120,27 +83,6 @@ public interface ItineraryRepository extends JpaRepository<Itinerary, Long> {
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate
     );
-
-    @Query(value = """
-    SELECT u.id as userId, u.name as userName
-    FROM users u
-    WHERE u.id = :userId
-    """, nativeQuery = true)
-    Object[] getUserById(@Param("userId") Long userId);
-
-    @Query(value = """
-    SELECT d.id as destinationId, d.name as destinationName,
-           d.country as country, d.category as category
-    FROM destinations d
-    WHERE d.id = :destinationId
-    """, nativeQuery = true)
-    Object[] getDestinationById(@Param("destinationId") Long destinationId);
-
-
-    // S3-F12: Fetch destination details by id for enrichment
-    @Query(value = "SELECT id, name, country, category FROM destinations WHERE id = :destId", nativeQuery = true)
-    Object[] findDestinationDetails(@Param("destId") Long destId);
-
 
     List<Itinerary> findByUserId(Long userId);
 

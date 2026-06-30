@@ -16,6 +16,7 @@ public class ItineraryEventPublisher {
 
     public void publishItineraryPlaced(Long itineraryId, Long userId, Long destinationId) {
         Map<String, Object> payload = Map.of(
+                "eventType", "itinerary.placed",
                 "itineraryId", itineraryId,
                 "userId", userId,
                 "destinationId", destinationId
@@ -25,6 +26,7 @@ public class ItineraryEventPublisher {
 
     public void publishItineraryCompleted(Long itineraryId, Long userId, Long destinationId, Double totalAmount) {
         Map<String, Object> payload = Map.of(
+                "eventType", "itinerary.completed",
                 "itineraryId", itineraryId,
                 "userId", userId,
                 "destinationId", destinationId,
@@ -35,6 +37,7 @@ public class ItineraryEventPublisher {
 
     public void publishItineraryCancelled(Long itineraryId, Long userId, Long destinationId, String reason) {
         Map<String, Object> payload = Map.of(
+                "eventType", "itinerary.cancelled",
                 "itineraryId", itineraryId,
                 "userId", userId,
                 "destinationId", destinationId,

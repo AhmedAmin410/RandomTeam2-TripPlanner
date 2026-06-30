@@ -7,6 +7,9 @@ import com.randmteam2.tripplanning.booking.model.Booking;
 import com.randmteam2.tripplanning.booking.model.BookingStatus;
 import com.randmteam2.tripplanning.booking.model.Settlement;
 import com.randmteam2.tripplanning.booking.model.SettlementStatus;
+import com.randmteam2.tripplanning.booking.mongo.EventFactory;
+import com.randmteam2.tripplanning.booking.mongo.EventType;
+import com.randmteam2.tripplanning.booking.mongo.MongoEvent;
 import com.randmteam2.tripplanning.booking.mongo.PaymentAuditEvent;
 import com.randmteam2.tripplanning.booking.mongo.PaymentAuditEventRepository;
 import com.randmteam2.tripplanning.booking.repository.BookingRepository;
@@ -226,17 +229,20 @@ public class SettlementService {
 
     private void writeSettlementAudit(Settlement settlement, String action, String reason) {
         try {
-            PaymentAuditEvent audit = new PaymentAuditEvent();
-            audit.setSettlementId(settlement.getId());
-            audit.setItineraryId(settlement.getItineraryId());
-            audit.setAction(action);
-            audit.setTimestamp(LocalDateTime.now());
-            audit.setMethod("SETTLEMENT");
-            audit.setAmount(settlement.getAmount().doubleValue());
             Map<String, Object> details = new HashMap<>();
             details.put("status", settlement.getStatus().name());
             if (reason != null) details.put("reason", reason);
-            audit.setDetails(details);
+
+            MongoEvent event = EventFactory.createEvent(EventType.PAYMENT_AUDIT, Map.of(
+                    "action", action,
+                    "timestamp", LocalDateTime.now(),
+                    "method", "SETTLEMENT",
+                    "amount", settlement.getAmount().doubleValue(),
+                    "details", details
+            ));
+            PaymentAuditEvent audit = (PaymentAuditEvent) event;
+            audit.setSettlementId(settlement.getId());
+            audit.setItineraryId(settlement.getItineraryId());
             auditRepository.save(audit);
         } catch (Exception e) {
             log.warn("MongoDB settlement audit write failed for action={}: {}", action, e.getMessage());
@@ -245,16 +251,18 @@ public class SettlementService {
 
     private void writeBookingRefundAudit(Booking booking, String reason) {
         try {
-            PaymentAuditEvent audit = new PaymentAuditEvent();
+            MongoEvent event = EventFactory.createEvent(EventType.PAYMENT_AUDIT, Map.of(
+                    "action", "REFUNDED",
+                    "timestamp", LocalDateTime.now(),
+                    "method", booking.getType() != null ? booking.getType().name() : "",
+                    "amount", booking.getAmount(),
+                    "details", Map.of(
+                            "status", BookingStatus.CANCELLED.name(),
+                            "reason", reason != null ? reason : "itinerary_cancelled")
+            ));
+            PaymentAuditEvent audit = (PaymentAuditEvent) event;
             audit.setBookingId(booking.getId());
             audit.setItineraryId(booking.getItineraryId());
-            audit.setAction("REFUNDED");
-            audit.setTimestamp(LocalDateTime.now());
-            audit.setMethod(booking.getType() != null ? booking.getType().name() : null);
-            audit.setAmount(booking.getAmount());
-            audit.setDetails(Map.of(
-                    "status", BookingStatus.CANCELLED.name(),
-                    "reason", reason != null ? reason : "itinerary_cancelled"));
             auditRepository.save(audit);
         } catch (Exception e) {
             log.warn("MongoDB booking refund audit write failed: {}", e.getMessage());

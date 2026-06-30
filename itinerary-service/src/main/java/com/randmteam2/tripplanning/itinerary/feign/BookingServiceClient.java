@@ -12,7 +12,7 @@ import java.util.List;
 
 @FeignClient(name = "booking-service", url = "${feign.booking-service.url}")
 public interface BookingServiceClient {
-    @GetMapping("/api/bookings/itinerary/{id}/confirmed-count")
+    @GetMapping("/api/bookings/itinerary/{id}/confirmed-summary")
     BookingConfirmedSummaryDTO getConfirmedSummary(@PathVariable("id") Long id);
 
     @PostMapping("/api/bookings/aggregate-by-itineraries")

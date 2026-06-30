@@ -137,14 +137,14 @@ public class ItineraryService {
 
     public Itinerary update(Long id, Itinerary updated) {
         Itinerary existing = getById(id);
-        existing.setUserId(updated.getUserId());
-        existing.setDestinationId(updated.getDestinationId());
-        existing.setTitle(updated.getTitle());
-        existing.setStatus(updated.getStatus());
-        existing.setEstimatedBudget(updated.getEstimatedBudget());
-        existing.setMetadata(updated.getMetadata());
-        existing.setStartDate(updated.getStartDate());
-        existing.setEndDate(updated.getEndDate());
+        if (updated.getUserId() != null) existing.setUserId(updated.getUserId());
+        if (updated.getDestinationId() != null) existing.setDestinationId(updated.getDestinationId());
+        if (updated.getTitle() != null) existing.setTitle(updated.getTitle());
+        if (updated.getStatus() != null) existing.setStatus(updated.getStatus());
+        if (updated.getEstimatedBudget() != null) existing.setEstimatedBudget(updated.getEstimatedBudget());
+        if (updated.getMetadata() != null) existing.setMetadata(updated.getMetadata());
+        if (updated.getStartDate() != null) existing.setStartDate(updated.getStartDate());
+        if (updated.getEndDate() != null) existing.setEndDate(updated.getEndDate());
         Itinerary saved = itineraryRepository.save(existing);
         notifyObservers("ITINERARY_UPDATED", itineraryPayload("ITINERARY_UPDATED", saved));
         return saved;
@@ -211,6 +211,7 @@ public class ItineraryService {
         }
 
         // save budget
+        itinerary.setStatus(Itinerary.Status.COMPLETING);
         if (summary != null && summary.totalRevenue() != null) {
             itinerary.setEstimatedBudget(summary.totalRevenue());
         }
@@ -236,6 +237,13 @@ public class ItineraryService {
             throw new RuntimeException("Itinerary must be DRAFT or PLANNED to cancel it");
         }
 
+        int updated = itineraryRepository.atomicTransition(
+                id, Itinerary.Status.CANCELLED, itinerary.getStatus()
+        );
+        if (updated == 0) {
+            throw new RuntimeException("Itinerary cancellation already in progress");
+        }
+        itinerary.setStatus(Itinerary.Status.CANCELLED);
         Itinerary saved = itineraryRepository.save(itinerary);
         notifyObservers("ITINERARY_CANCELLED", itineraryPayload("ITINERARY_CANCELLED", saved));
         itineraryEventPublisher.publishItineraryCancelled(
@@ -265,6 +273,8 @@ public class ItineraryService {
             throw new RuntimeException("Destination is not active");
         }
 
+        itinerary.setDestinationId(destinationId);
+        itinerary.setStatus(Itinerary.Status.PLANNED);
         Itinerary saved = itineraryRepository.save(itinerary);
         notifyObservers("DESTINATION_ASSIGNED", itineraryPayload("DESTINATION_ASSIGNED", saved));
         itineraryEventPublisher.publishItineraryPlaced(
