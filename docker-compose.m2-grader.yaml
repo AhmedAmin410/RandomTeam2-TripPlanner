@@ -1,0 +1,43 @@
+# Compatibility override for the M2 grader.
+#
+# M3 requires each service to use its own PostgreSQL database. The provided M2
+# grader, however, seeds all relational tables through one SPRING_DATASOURCE_URL.
+# Use this override only when running that grader:
+#   docker compose -f docker-compose.yaml -f docker-compose.m2-grader.yaml up -d
+
+services:
+  user-postgres:
+    environment:
+      POSTGRES_DB: tripdb-bookings
+
+  user-service:
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://user-postgres:5432/tripdb-bookings
+
+  destination-service:
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://user-postgres:5432/tripdb-bookings
+    depends_on:
+      user-postgres:
+        condition: service_healthy
+
+  itinerary-service:
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://user-postgres:5432/tripdb-bookings
+    depends_on:
+      user-postgres:
+        condition: service_healthy
+
+  activity-service:
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://user-postgres:5432/tripdb-bookings
+    depends_on:
+      user-postgres:
+        condition: service_healthy
+
+  booking-service:
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://user-postgres:5432/tripdb-bookings
+    depends_on:
+      user-postgres:
+        condition: service_healthy

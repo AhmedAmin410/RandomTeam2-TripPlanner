@@ -27,6 +27,7 @@ import org.springframework.data.elasticsearch.core.query.Criteria;
 import org.springframework.data.elasticsearch.core.query.CriteriaQuery;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
@@ -572,7 +573,8 @@ public class DestinationService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot verify a review for a future visit date");
         }
         UserDTO user = fetchUserForReviewVerification(request.getVerifiedBy());
-        if (user.role() == null || !"ADMIN".equalsIgnoreCase(user.role())) {
+        if ((hasCurrentCaller() && !isCurrentCallerAdmin())
+                || user.role() == null || !"ADMIN".equalsIgnoreCase(user.role())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only an ADMIN user may verify reviews");
         }
         review.setVerified(true);
@@ -887,5 +889,16 @@ public class DestinationService {
         } catch (FeignException.NotFound e) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only an ADMIN user may verify reviews");
         }
+    }
+
+    private boolean isCurrentCallerAdmin() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication != null && authentication.getAuthorities().stream()
+                .anyMatch(authority -> "ROLE_ADMIN".equals(authority.getAuthority()));
+    }
+
+    private boolean hasCurrentCaller() {
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        return authentication != null && authentication.isAuthenticated();
     }
 }
