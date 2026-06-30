@@ -12,7 +12,7 @@ import java.util.UUID;
 @Table("activity_lifecycle_events")
 public class ActivityLifecycleEvent {
 
-    @PrimaryKeyColumn(name = "activity_id", ordinal = 0, type = PrimaryKeyType.PARTITIONED)
+    @PrimaryKeyColumn(name = "\"activityId\"", ordinal = 0, type = PrimaryKeyType.PARTITIONED)
     private Long activityId;
 
     @PrimaryKeyColumn(name = "timestamp", ordinal = 1, type = PrimaryKeyType.CLUSTERED, ordering = Ordering.DESCENDING)

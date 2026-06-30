@@ -31,6 +31,13 @@ public interface DestinationRepository extends JpaRepository<Destination, Long> 
             """, nativeQuery = true)
     List<Object[]> findTopRatedDestinationsReport(@Param("limit") int limit);
 
+    @Query(value = """
+            SELECT d.id, d.name, d.rating, d.total_ratings
+            FROM destinations d
+            WHERE d.id = :id
+            """, nativeQuery = true)
+    List<Object[]> findDashboardRowById(@Param("id") Long id);
+
     @Query("""
             SELECT DISTINCT d FROM Destination d
             LEFT JOIN FETCH d.destinationReviews

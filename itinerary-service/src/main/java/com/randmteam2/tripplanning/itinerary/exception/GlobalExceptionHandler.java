@@ -34,7 +34,9 @@ public class GlobalExceptionHandler {
                 message.contains("already") ||
                 message.contains("only") ||
                 message.contains("exists") ||
+                message.contains("active") ||
                 message.contains("ACTIVE") ||
+                message.contains("unavailable") ||
                 message.contains("DRAFT"))) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("error", message));

@@ -18,6 +18,7 @@ public class MongoAuditTrailObserver implements BookingEventObserver {
         try {
             PaymentAuditEvent ev = new PaymentAuditEvent();
             ev.setBookingId(event.getBookingId());
+            ev.setItineraryId(event.getItineraryId());
             ev.setAction(event.getAction());
             ev.setTimestamp(event.getTimestamp());
             ev.setMethod(event.getMethod());

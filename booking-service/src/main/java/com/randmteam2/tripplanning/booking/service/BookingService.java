@@ -98,8 +98,6 @@ public class BookingService {
 
     // ── S5-F1 ─────────────────────────────────────────────────────────────
 
-    @Cacheable(value = "booking-service",
-            key = "'S5-F1::' + (#status == null ? 'ALL' : #status) + '::' + #startDate + '::' + #endDate")
     public List<Booking> searchBookings(String status, LocalDateTime startDate, LocalDateTime endDate) {
         if (startDate == null) startDate = LocalDateTime.of(2000, 1, 1, 0, 0);
         if (endDate == null)   endDate   = LocalDateTime.of(2100, 1, 1, 0, 0);
@@ -357,7 +355,6 @@ public class BookingService {
 
     // ── S5-F6 ─────────────────────────────────────────────────────────────
 
-    @Cacheable(value = "booking-service", key = "'S5-F6::' + #startDate + '::' + #endDate")
     public RevenueReportDTO getRevenueReport(LocalDateTime startDate, LocalDateTime endDate) {
         if (startDate == null) startDate = LocalDateTime.of(2000, 1, 1, 0, 0);
         if (endDate   == null) endDate   = LocalDateTime.of(2100, 1, 1, 0, 0);
@@ -422,7 +419,6 @@ public class BookingService {
 
     // ── S5-F8 ─────────────────────────────────────────────────────────────
 
-    @Cacheable(value = "booking-service", key = "'S5-F8::' + #bookingId")
     public BookingDetailsDTO getBookingDetails(Long bookingId) {
         Booking booking = getBookingById(bookingId);
         List<BookingCoupon> coupons = bookingCouponRepository.findByBookingId(bookingId);
@@ -485,6 +481,11 @@ public class BookingService {
 
     @Transactional
     public Booking processRefundCancellation(Long bookingId, RefundCancellationRequest request) {
+        if (request == null || request.getReason() == null || request.getReason().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Refund cancellation reason is required");
+        }
+
         Booking booking = getBookingById(bookingId);
 
         if (booking.getStatus() != BookingStatus.CONFIRMED) {
@@ -523,12 +524,20 @@ public class BookingService {
 
         if (strategy instanceof NoRefundStrategy) {
             // Log REFUND_DENIED + invalidate caches BEFORE throwing 400 (M2 §10.5.3 step f)
-            Map<String, Object> denyDetails = new HashMap<>();
-            denyDetails.put("strategyName",    "NoRefundStrategy");
-            denyDetails.put("reason",          result.getReasonCode());
-            denyDetails.put("itineraryStatus", itiStatus != null ? itiStatus : "UNKNOWN");
-            // Use Observer chain for REFUND_DENIED
-            eventPublisher.publish(new BookingEvent("REFUND_DENIED", booking, denyDetails));
+            PaymentAuditEvent denied = new PaymentAuditEvent();
+            denied.setBookingId(booking.getId());
+            denied.setItineraryId(booking.getItineraryId());
+            denied.setAction("REFUND_DENIED");
+            denied.setTimestamp(LocalDateTime.now());
+            denied.setMethod(booking.getType() != null ? booking.getType().name() : null);
+            denied.setAmount(booking.getAmount());
+            denied.setDetails(Map.of(
+                    "strategyName", strategy.getClass().getSimpleName(),
+                    "reason", request.getReason(),
+                    "originalAmount", booking.getAmount(),
+                    "refundAmount", result.getRefundAmount()
+            ));
+            auditRepository.save(denied);
             cacheInvalidationService.evictRefundRelatedCaches();
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "trip already started or completed");
@@ -543,6 +552,9 @@ public class BookingService {
         }
 
         booking.setStatus(BookingStatus.CANCELLED);
+        booking.setStrategy(strategy.getClass().getSimpleName());
+        booking.setRefundedAmount(result.getRefundAmount());
+        booking.setReason(request.getReason());
         Map<String, Object> details = booking.getBookingDetails();
         if (details == null) details = new HashMap<>();
         details.put("refundAmount",        result.getRefundAmount());
@@ -553,6 +565,9 @@ public class BookingService {
         details.put("refundedAt",          LocalDateTime.now().toString());
         booking.setBookingDetails(details);
         Booking saved = bookingRepository.save(booking);
+        saved.setStrategy(strategy.getClass().getSimpleName());
+        saved.setRefundedAmount(result.getRefundAmount());
+        saved.setReason(request.getReason());
 
         // Use Observer chain for REFUNDED event
         Map<String, Object> refundedDetails = new HashMap<>();

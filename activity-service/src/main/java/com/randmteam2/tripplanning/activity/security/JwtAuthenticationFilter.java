@@ -26,6 +26,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getServletPath();
         return "/api/activities/health".equals(path)
+                || "/error".equals(path)
                 || path.startsWith("/actuator");
     }
 
@@ -52,12 +53,21 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 && SecurityContextHolder.getContext().getAuthentication() == null) {
             var auth = new UsernamePasswordAuthenticationToken(
                     context.getEmail(), null,
-                    List.of(new SimpleGrantedAuthority("ROLE_" + context.getRole()))
+                    List.of(new SimpleGrantedAuthority("ROLE_" + normalizeRole(context.getRole())))
             );
             auth.setDetails(context.getUserId());
             SecurityContextHolder.getContext().setAuthentication(auth);
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private static String normalizeRole(String role) {
+        if (role == null) return "";
+        String normalized = role.trim().toUpperCase();
+        if ("USER".equals(normalized) || "CUSTOMER".equals(normalized)) {
+            return "TRAVELER";
+        }
+        return normalized;
     }
 }

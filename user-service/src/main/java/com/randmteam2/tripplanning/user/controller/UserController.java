@@ -13,6 +13,7 @@ import com.randmteam2.tripplanning.user.security.JwtService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -47,39 +48,55 @@ public class UserController {
 
     @GetMapping("/{id}")
     public User getUserById(@PathVariable Long id) {
-        return userService.getUserById(id);
+        User user = userService.getUserById(id);
+        requireSelfOrAdmin(id);
+        return user;
     }
 
     @PutMapping("/{id}")
     public User updateUser(@PathVariable Long id, @RequestBody User user) {
+        requireSelfOrAdmin(id);
         return userService.updateUser(id, user);
     }
 
     @DeleteMapping("/{id}")
     public void deleteUser(@PathVariable Long id) {
+        requireSelfOrAdmin(id);
         userService.deleteUser(id);
     }
 
 @PutMapping("/{id}/preferences")
-public User updatePreferences(
+public ResponseEntity<?> updatePreferences(
         @PathVariable Long id,
         @RequestBody Map<String, Object> updates
 ) {
-    return userService.updatePreferences(id, updates);
+    try {
+        return ResponseEntity.ok(userService.updatePreferences(id, updates));
+    } catch (ResponseStatusException e) {
+        return statusError(e);
+    }
 }
 
     @GetMapping("/{id}/trip-summary")
-    public ResponseEntity<UserTripSummaryDTO> getTripSummary(@PathVariable Long id) {
-        return ResponseEntity.ok(userService.getUserTripSummary(id));
+    public ResponseEntity<?> getTripSummary(@PathVariable Long id) {
+        try {
+            return ResponseEntity.ok(userService.getUserTripSummary(id));
+        } catch (ResponseStatusException e) {
+            return statusError(e);
+        }
     }
 
 
     @GetMapping("/preferences/search")
-    public ResponseEntity<List<User>> searchByPreference(
+    public ResponseEntity<?> searchByPreference(
             @RequestParam String key,
             @RequestParam String value) {
 
-        return ResponseEntity.ok(userService.searchByPreference(key, value));
+        try {
+            return ResponseEntity.ok(userService.searchByPreference(key, value));
+        } catch (ResponseStatusException e) {
+            return statusError(e);
+        }
     }
 
     @GetMapping("/search")
@@ -177,12 +194,16 @@ public User updatePreferences(
     }
 
     @GetMapping("/reports/top-travelers")
-    public ResponseEntity<List<TopTravelerDTO>> getTopTravelers(
+    public ResponseEntity<?> getTopTravelers(
             @RequestParam String startDate,
             @RequestParam String endDate,
             @RequestParam Integer limit
     ) {
-        return ResponseEntity.ok(userService.getTopTravelers(startDate, endDate, limit));
+        try {
+            return ResponseEntity.ok(userService.getTopTravelers(startDate, endDate, limit));
+        } catch (ResponseStatusException e) {
+            return statusError(e);
+        }
     }
 
     @PutMapping("/{userId}/destinations/{destinationId}/default")
@@ -218,6 +239,9 @@ public User updatePreferences(
             return ResponseEntity.status(HttpStatus.FORBIDDEN)
                     .body(Map.of("error", "Access denied"));
         }
+        if (page < 0 || size < 0) {
+            return ResponseEntity.badRequest().body(Map.of("error", "page and size must not be negative"));
+        }
 
         try {
             return ResponseEntity.ok(userService.getActivityFeed(id, page, size));
@@ -227,12 +251,36 @@ public User updatePreferences(
     }
 
     @GetMapping("/preferences/travel-style")
-    public List<TravelStyleUserDTO> findUsersByTravelStyle(
+    public ResponseEntity<?> findUsersByTravelStyle(
             @RequestParam String style,
             @RequestParam int minTrips) {
 
-        return userService.findUsersByTravelStyle(style, minTrips);
+        try {
+            return ResponseEntity.ok(userService.findUsersByTravelStyle(style, minTrips));
+        } catch (ResponseStatusException e) {
+            return statusError(e);
+        }
     }
 
+    private ResponseEntity<Map<String, String>> statusError(ResponseStatusException e) {
+        String reason = e.getReason() != null ? e.getReason() : e.getMessage();
+        return ResponseEntity.status(e.getStatusCode()).body(Map.of("error", reason));
+    }
+
+    private void requireSelfOrAdmin(Long targetUserId) {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        boolean admin = auth != null && auth.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+        if (admin) {
+            return;
+        }
+        Long callerId = null;
+        if (auth != null && auth.getDetails() instanceof Number number) {
+            callerId = number.longValue();
+        }
+        if (callerId == null || !callerId.equals(targetUserId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Access denied");
+        }
+    }
 
 }

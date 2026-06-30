@@ -12,7 +12,6 @@ import com.randmteam2.tripplanning.contracts.dto.DestinationSummaryDTO;
 import com.randmteam2.tripplanning.contracts.dto.ItinerarySummaryDTO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -47,7 +46,6 @@ public class BookingAnalyticsService {
      * M3: two Feign batch calls replace the old 3-table SQL JOIN.
      * Cached 10 minutes.
      */
-    @Cacheable(value = "booking-service", key = "'S5-F10::' + #startDate + '::' + #endDate")
     public List<DestinationSeasonRevenueDTO> getRevenueByDestinationAndSeason(
             LocalDate startDate, LocalDate endDate) {
 

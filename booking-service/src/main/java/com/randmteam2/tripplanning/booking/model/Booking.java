@@ -53,9 +53,26 @@ public class Booking {
     @JsonIgnore
     private List<BookingCoupon> bookingCoupons = new ArrayList<>();
 
+    /** Transient (not persisted): refund strategy class name, surfaced on the
+     *  S5-F12 refund-cancellation-tier response as the top-level "strategy" field. */
+    @Transient
+    private String strategy;
+
+    @Transient
+    private Double refundedAmount;
+
+    @Transient
+    private String reason;
+
 
 
     public Long getId() { return id; }
+    public String getStrategy() { return strategy; }
+    public void setStrategy(String strategy) { this.strategy = strategy; }
+    public Double getRefundedAmount() { return refundedAmount; }
+    public void setRefundedAmount(Double refundedAmount) { this.refundedAmount = refundedAmount; }
+    public String getReason() { return reason; }
+    public void setReason(String reason) { this.reason = reason; }
     public void setId(Long id) { this.id = id; }
     public Long getItineraryId() { return itineraryId; }
     public void setItineraryId(Long itineraryId) { this.itineraryId = itineraryId; }

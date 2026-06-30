@@ -13,11 +13,12 @@ import com.randmteam2.tripplanning.booking.service.SettlementService;
 import com.randmteam2.tripplanning.contracts.dto.ConfirmedSummaryDTO;
 import com.randmteam2.tripplanning.contracts.dto.ItineraryBookingAggregateDTO;
 import com.randmteam2.tripplanning.contracts.dto.UserBookingTotalDTO;
-import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import com.randmteam2.tripplanning.booking.dto.RefundCancellationRequest;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -79,12 +80,8 @@ public class BookingController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate) {
-        LocalDateTime start = startDate != null ?
-                LocalDateTime.parse(startDate.replace(" ", "T")) :
-                LocalDateTime.of(2000, 1, 1, 0, 0);
-        LocalDateTime end = endDate != null ?
-                LocalDateTime.parse(endDate.replace(" ", "T")) :
-                LocalDateTime.of(2100, 1, 1, 0, 0);
+        LocalDateTime start = parseDateTimeParam(startDate, LocalDateTime.of(2000, 1, 1, 0, 0));
+        LocalDateTime end = parseDateTimeParam(endDate, LocalDateTime.of(2100, 1, 1, 0, 0));
         return ResponseEntity.ok(bookingService.searchBookings(status, start, end));
     }
 
@@ -153,12 +150,8 @@ public class BookingController {
     public ResponseEntity<RevenueReportDTO> getRevenueReport(
             @RequestParam(required = false) String startDate,
             @RequestParam(required = false) String endDate) {
-        LocalDateTime start = startDate != null ?
-                LocalDateTime.parse(startDate.replace(" ", "T")) :
-                LocalDateTime.of(2000, 1, 1, 0, 0);
-        LocalDateTime end = endDate != null ?
-                LocalDateTime.parse(endDate.replace(" ", "T")) :
-                LocalDateTime.of(2100, 1, 1, 0, 0);
+        LocalDateTime start = parseDateTimeParam(startDate, LocalDateTime.of(2000, 1, 1, 0, 0));
+        LocalDateTime end = parseDateTimeParam(endDate, LocalDateTime.of(2100, 1, 1, 0, 0));
         return ResponseEntity.ok(bookingService.getRevenueReport(start, end));
     }
     // ── S5-F7 ─────────────────────────────────────────────────────────────
@@ -191,11 +184,21 @@ public class BookingController {
 
     // ── S5-F11 ────────────────────────────────────────────────────────────
     @GetMapping("/{id}/payment-history")
-    public ResponseEntity<Page<PaymentHistoryEntryDTO>> getPaymentHistory(
+    public ResponseEntity<Map<String, Object>> getPaymentHistory(
             @PathVariable Long id,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size) {
-        return ResponseEntity.ok(paymentHistoryService.getPaymentHistory(id, page, size));
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        Long callerId = auth != null && auth.getDetails() instanceof Number n ? n.longValue() : null;
+        boolean admin = auth != null && auth.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+        List<PaymentHistoryEntryDTO> content =
+                paymentHistoryService.getPaymentHistory(id, page, size, callerId, admin);
+        return ResponseEntity.ok(Map.of(
+                "content", content,
+                "page", page == null || page < 0 ? 0 : page,
+                "size", size == null || size <= 0 ? PaymentHistoryService.DEFAULT_PAGE_SIZE : size
+        ));
     }
 
     @PostMapping("/settlement/process")
@@ -203,5 +206,16 @@ public class BookingController {
             @RequestBody SettlementProcessRequest request,
             @RequestHeader(name = "X-User-Id", required = false) Long authenticatedUserId) {
         return ResponseEntity.ok(settlementService.processSettlement(request, authenticatedUserId));
+    }
+
+    private LocalDateTime parseDateTimeParam(String value, LocalDateTime fallback) {
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+        String normalized = value.trim().replace(" ", "T");
+        if (normalized.length() == 10) {
+            return LocalDate.parse(normalized).atStartOfDay();
+        }
+        return LocalDateTime.parse(normalized);
     }
 }

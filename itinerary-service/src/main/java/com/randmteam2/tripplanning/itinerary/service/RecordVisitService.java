@@ -1,7 +1,5 @@
 package com.randmteam2.tripplanning.itinerary.service;
 
-import com.randmteam2.tripplanning.itinerary.dto.DestinationDTO;
-import com.randmteam2.tripplanning.itinerary.dto.UserDTO;
 import com.randmteam2.tripplanning.itinerary.feign.DestinationServiceClient;
 import com.randmteam2.tripplanning.itinerary.feign.UserServiceClient;
 import com.randmteam2.tripplanning.itinerary.model.Itinerary;
@@ -14,6 +12,9 @@ import com.randmteam2.tripplanning.itinerary.neo4j.VisitedRelationship;
 import com.randmteam2.tripplanning.itinerary.observer.EntityObserver;
 import com.randmteam2.tripplanning.itinerary.observer.MongoEventLogger;
 import com.randmteam2.tripplanning.itinerary.repository.ItineraryRepository;
+import org.neo4j.driver.Driver;
+import org.neo4j.driver.Session;
+import org.neo4j.driver.Values;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -30,6 +31,7 @@ public class RecordVisitService {
     private final DestinationNodeRepository destinationNodeRepository;
     private final UserServiceClient userServiceClient;
     private final DestinationServiceClient destinationServiceClient;
+    private final Driver neo4jDriver;
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
 
     public RecordVisitService(ItineraryRepository itineraryRepository,
@@ -37,12 +39,14 @@ public class RecordVisitService {
                               DestinationNodeRepository destinationNodeRepository,
                               ItineraryEventRepository itineraryEventRepository,
                               UserServiceClient userServiceClient,
-                              DestinationServiceClient destinationServiceClient) {
+                              DestinationServiceClient destinationServiceClient,
+                              Driver neo4jDriver) {
         this.itineraryRepository = itineraryRepository;
         this.userNodeRepository = userNodeRepository;
         this.destinationNodeRepository = destinationNodeRepository;
         this.userServiceClient = userServiceClient;
         this.destinationServiceClient = destinationServiceClient;
+        this.neo4jDriver = neo4jDriver;
         register(new MongoEventLogger(itineraryEventRepository));
     }
 
@@ -73,48 +77,8 @@ public class RecordVisitService {
         Long userId = itinerary.getUserId();
         Long destinationId = itinerary.getDestinationId();
 
-        UserDTO user = userServiceClient.getUser(userId);
-        String userName = valueAsString(user != null ? user.getName() : null, "Unknown");
-
-        DestinationDTO destination = destinationServiceClient.getDestination(destinationId);
-        String destName = valueAsString(destination != null ? destination.getName() : null, "Unknown");
-        String destCountry = valueAsString(destination != null ? destination.getCountry() : null, "");
-        String destCategory = valueAsString(destination != null ? destination.getCategory() : null, "");
-
-        // Find or create UserNode
-        UserNode userNode = userNodeRepository.findByUserId(userId)
-                .orElse(new UserNode(userId, userName));
-
-        // Find or create DestinationNode
-        DestinationNode destinationNode = destinationNodeRepository.findByDestinationId(destinationId)
-                .orElse(new DestinationNode(destinationId, destName, destCountry, destCategory));
-        destinationNodeRepository.save(destinationNode);
-
-        // Check idempotency
-        VisitedRelationship existingRel = userNode.getVisited().stream()
-                .filter(v -> v.getDestination().getDestinationId().equals(destinationId))
-                .findFirst()
-                .orElse(null);
-
-        if (existingRel != null) {
-            // Check if this itinerary was already recorded
-            if (existingRel.getRecordedItineraryIds().contains(itineraryId)) {
-                return "Visit already recorded for this itinerary";
-            }
-            // Increment visitCount
-            existingRel.setVisitCount(existingRel.getVisitCount() + 1);
-            existingRel.setLastVisitDate(LocalDateTime.now());
-            existingRel.getRecordedItineraryIds().add(itineraryId);
-        } else {
-            // Create new VISITED relationship
-            VisitedRelationship rel = new VisitedRelationship(destinationNode);
-            rel.setVisitCount(1);
-            rel.setLastVisitDate(LocalDateTime.now());
-            rel.getRecordedItineraryIds().add(itineraryId);
-            userNode.getVisited().add(rel);
-        }
-
-        userNodeRepository.save(userNode);
+        boolean createdOrUpdated = upsertVisitRelationship(
+                userId, destinationId, itineraryId);
 
         // Log VISIT_RECORDED to MongoDB via Observer
         Map<String, Object> payload = new HashMap<>();
@@ -123,10 +87,44 @@ public class RecordVisitService {
         payload.put("destinationId", destinationId);
         notifyObservers("VISIT_RECORDED", payload);
 
-        return "Visit recorded successfully";
+        return createdOrUpdated ? "Visit recorded successfully" : "Visit already recorded for this itinerary";
     }
 
-    private String valueAsString(Object value, String fallback) {
-        return value != null ? value.toString() : fallback;
+    private boolean upsertVisitRelationship(Long userId,
+                                            Long destinationId,
+                                            Long itineraryId) {
+        try (Session session = neo4jDriver.session()) {
+            String cypher = """
+                    MERGE (u:User {userId: $userId})
+                    MERGE (d:Destination {destinationId: $destinationId})
+                    MERGE (u)-[r:VISITED]->(d)
+                    WITH r, $itineraryId AS itineraryId,
+                         coalesce(r.recorded_itinerary_ids, coalesce(r.recordedItineraryIds, [])) AS recordedIds
+                    WITH r, itineraryId, recordedIds, itineraryId IN recordedIds AS alreadyRecorded
+                    SET r.recordedItineraryIds = CASE
+                            WHEN alreadyRecorded THEN recordedIds
+                            ELSE recordedIds + itineraryId
+                        END,
+                        r.recorded_itinerary_ids = CASE
+                            WHEN alreadyRecorded THEN recordedIds
+                            ELSE recordedIds + itineraryId
+                        END,
+                        r.visitCount = CASE
+                            WHEN alreadyRecorded THEN coalesce(r.visitCount, 0)
+                            ELSE coalesce(r.visitCount, 0) + 1
+                        END,
+                        r.lastVisitDate = CASE
+                            WHEN alreadyRecorded THEN r.lastVisitDate
+                            ELSE localdatetime()
+                        END
+                    RETURN alreadyRecorded AS alreadyRecorded
+                    """;
+            var result = session.run(cypher, Values.parameters(
+                    "userId", userId,
+                    "destinationId", destinationId,
+                    "itineraryId", itineraryId
+            ));
+            return result.hasNext() && !result.next().get("alreadyRecorded").asBoolean();
+        }
     }
 }

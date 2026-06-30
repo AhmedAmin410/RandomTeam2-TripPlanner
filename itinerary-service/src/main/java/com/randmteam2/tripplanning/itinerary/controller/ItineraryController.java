@@ -7,7 +7,7 @@ import com.randmteam2.tripplanning.itinerary.service.ItineraryDayService;
 import com.randmteam2.tripplanning.itinerary.service.ItineraryService;
 import com.randmteam2.tripplanning.itinerary.service.RecordVisitService;
 import com.randmteam2.tripplanning.itinerary.security.JwtService;
-import org.springframework.cache.annotation.Cacheable;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import com.randmteam2.tripplanning.itinerary.dto.ItineraryAnalyticsDashboardDTO;
@@ -40,9 +40,20 @@ public class ItineraryController {
             @RequestParam(defaultValue = "5") int limit,
             @RequestHeader(value = "Authorization", required = false) String authHeader) {
         // Ownership check: caller's uid must equal userId, or caller must be ADMIN.
+        if (authHeader == null || !authHeader.startsWith("Bearer ") || authHeader.length() <= 7) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("error", "Missing or malformed Authorization header"));
+        }
         String token = authHeader != null ? authHeader.replace("Bearer ", "") : "";
-        Long callerUid = jwtService.extractUserId(token);
-        String role = jwtService.extractRole(token);
+        Long callerUid;
+        String role;
+        try {
+            callerUid = jwtService.extractUserId(token);
+            role = jwtService.extractRole(token);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("error", "Invalid or expired token"));
+        }
         if (!"ADMIN".equals(role) && (callerUid == null || !callerUid.equals(userId))) {
             return ResponseEntity.status(403).body(Map.of("error", "Forbidden: not the target user"));
         }
@@ -176,7 +187,6 @@ public class ItineraryController {
         return ResponseEntity.ok(itineraryService.getDays(itineraryId));
     }
     @GetMapping("/analytics/dashboard")
-    @Cacheable(value = "itinerary-service::S3-F10", key = "#startDate + '-' + #endDate")
     public ResponseEntity<ItineraryAnalyticsDashboardDTO> getAnalyticsDashboard(
             @RequestParam LocalDate startDate,
             @RequestParam LocalDate endDate) {

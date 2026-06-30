@@ -67,7 +67,7 @@ public class Destination {
     }
 
     public enum Category {
-        BEACH, MOUNTAIN, CITY, HISTORICAL, ADVENTURE
+        BEACH, MOUNTAIN, CITY, HISTORICAL, ADVENTURE, SIGHTSEEING
     }
 
     public Long getId() {

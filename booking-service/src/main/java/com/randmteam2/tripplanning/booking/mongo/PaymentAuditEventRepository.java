@@ -14,4 +14,10 @@ public interface PaymentAuditEventRepository extends MongoRepository<PaymentAudi
     // S5-F11: payment history — only payment-related actions, ASC by timestamp
     Page<PaymentAuditEvent> findByBookingIdAndActionInOrderByTimestampAsc(
             Long bookingId, Collection<String> actions, Pageable pageable);
+
+    Page<PaymentAuditEvent> findByBookingIdAndItineraryIdAndActionInOrderByTimestampAsc(
+            Long bookingId, Long itineraryId, Collection<String> actions, Pageable pageable);
+
+    Page<PaymentAuditEvent> findByBookingIdAndItineraryIdAndActionInAndAmountOrderByTimestampAsc(
+            Long bookingId, Long itineraryId, Collection<String> actions, Double amount, Pageable pageable);
 }

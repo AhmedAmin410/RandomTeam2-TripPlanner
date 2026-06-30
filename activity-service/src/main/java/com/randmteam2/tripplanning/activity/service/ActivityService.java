@@ -143,7 +143,7 @@ public class ActivityService {
     public Activity getLatestByItineraryId(Long itineraryId) {
         Activity latest = activityRepository.findLatestByItineraryId(itineraryId);
         if (latest == null) {
-            throw new RuntimeException("No activities found for itinerary: " + itineraryId);
+            throw new RuntimeException("Latest activity not found for itinerary: " + itineraryId);
         }
         return latest;
     }
@@ -186,6 +186,7 @@ public class ActivityService {
 
     public ActivitySummaryDTO getActivitySummary(Long itineraryId, LocalDate start, LocalDate end) {
         if (!activityRepository.existsByItineraryId(itineraryId)) {
+            validateItineraryExists(itineraryId);
             return ActivitySummaryDTO.builder()
                     .itineraryId(itineraryId)
                     .totalActivities(0L)

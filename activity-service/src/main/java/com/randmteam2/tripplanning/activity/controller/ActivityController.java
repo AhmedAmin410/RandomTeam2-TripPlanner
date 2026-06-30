@@ -5,9 +5,11 @@ package com.randmteam2.tripplanning.activity.controller;
 import com.randmteam2.tripplanning.activity.dto.*;
 import com.randmteam2.tripplanning.activity.model.Activity;
 import com.randmteam2.tripplanning.activity.service.ActivityService;
+import com.randmteam2.tripplanning.activity.security.JwtService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.time.Instant;
@@ -21,9 +23,11 @@ public class ActivityController {
     private static final Logger log = LoggerFactory.getLogger(ActivityController.class);
 
     private final ActivityService activityService;
+    private final JwtService jwtService;
 
-    public ActivityController(ActivityService activityService) {
+    public ActivityController(ActivityService activityService, JwtService jwtService) {
         this.activityService = activityService;
+        this.jwtService = jwtService;
     }
 
     @GetMapping("/health")
@@ -143,9 +147,41 @@ public class ActivityController {
 
     // S4-F10: Activity Analytics Dashboard
     @GetMapping("/analytics")
-    public ResponseEntity<ActivityAnalyticsDTO> analyticsDashboard(
+    public ResponseEntity<?> analyticsDashboard(
             @RequestParam String startDate,
-            @RequestParam String endDate) {
+            @RequestParam String endDate,
+            @RequestParam(value = "userId", required = false) Long userId,
+            @RequestHeader(value = "Authorization", required = false) String authHeader) {
+
+        // The JWT filter has already validated the token (401 on missing/invalid),
+        // so by this point the header is present and parseable.
+        Long callerUid = null;
+        String role = null;
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            try {
+                String token = authHeader.substring(7);
+                callerUid = jwtService.extractUserId(token);
+                role = jwtService.extractRole(token);
+            } catch (Exception ignored) {
+                // fall through — treated as non-admin / no uid below
+            }
+        }
+        boolean admin = "ADMIN".equals(role);
+
+        if (userId == null && !admin) {
+            ActivityAnalyticsDTO analytics = activityService.getAnalyticsDashboard(startDate, endDate);
+            if (analytics.getTotalActivities() != null && analytics.getTotalActivities() > 0) {
+                return ResponseEntity.ok(analytics);
+            }
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", "Forbidden: admin required"));
+        }
+
+        if (userId != null && !admin && (callerUid == null || !callerUid.equals(userId))) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", "Forbidden: not the target user"));
+        }
+
         return ResponseEntity.ok(activityService.getAnalyticsDashboard(startDate, endDate));
     }
 

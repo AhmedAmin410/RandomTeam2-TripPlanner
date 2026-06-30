@@ -368,6 +368,8 @@ public class UserService {
     @Cacheable(value = "user-service", key = "'S1-F12::' + #userId + '::' + #page + '::' + #size")
     public Map<String, Object> getActivityFeed(Long userId, int page, int size) {
         getUserById(userId);
+        if (page < 0) page = 0;
+        if (size <= 0) size = 10;
         if (size > 100) size = 100;
         Page<com.randmteam2.tripplanning.user.model.AuthEvent> result =
                 authEventRepository.findByUserIdOrderByTimestampDesc(userId, PageRequest.of(page, size));

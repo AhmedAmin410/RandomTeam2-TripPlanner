@@ -26,9 +26,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getServletPath();
         return "/api/bookings/health".equals(path)
-                || path.startsWith("/actuator")
-                // Internal Feign endpoint called by user-service without a gateway JWT
-                || path.matches("/api/bookings/user/[^/]+/total");
+                || "/error".equals(path)
+                || path.startsWith("/actuator");
     }
 
     @Override
@@ -45,10 +44,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         AuthContext ctx = new AuthContext(request);
         try {
             head.handle(ctx);
-            String role = ctx.claims.get("role", String.class);
+            String role = normalizeRole(ctx.claims.get("role", String.class));
             var auth = new UsernamePasswordAuthenticationToken(
                     ctx.claims.getSubject(), null,
                     List.of(new SimpleGrantedAuthority("ROLE_" + role)));
+            auth.setDetails(ctx.claims.get("uid"));
             SecurityContextHolder.getContext().setAuthentication(auth);
             filterChain.doFilter(request, response);
         } catch (AuthException e) {
@@ -57,5 +57,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             response.setContentType("application/json");
             response.getWriter().write("{\"error\":\"" + e.getMessage() + "\"}");
         }
+    }
+
+    private static String normalizeRole(String role) {
+        if (role == null) return "";
+        String normalized = role.trim().toUpperCase();
+        if ("USER".equals(normalized) || "CUSTOMER".equals(normalized)) {
+            return "TRAVELER";
+        }
+        return normalized;
     }
 }

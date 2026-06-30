@@ -25,18 +25,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getServletPath();
-        boolean get = "GET".equalsIgnoreCase(request.getMethod());
         return "/api/itineraries/health".equals(path)
-                || path.startsWith("/actuator")
-                // Internal Feign endpoints called by user-service without a gateway JWT
-                || path.matches("/api/itineraries/user/[^/]+/summary")
-                || path.matches("/api/itineraries/user/[^/]+/active-count")
-                || path.matches("/api/itineraries/user/[^/]+/completed-count")
-                || (get && path.matches("/api/itineraries/[^/]+"))
-                || (get && path.matches("/api/itineraries/destination/[^/]+/active-count"))
-                || (get && path.matches("/api/itineraries/destination/[^/]+/booking-revenue"))
-                || (get && path.matches("/api/itineraries/destination/[^/]+/dashboard-aggregate"))
-                || "/api/itineraries/batch".equals(path);
+                || "/error".equals(path)
+                || path.startsWith("/actuator");
     }
 
     @Override
@@ -62,8 +53,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     new UsernamePasswordAuthenticationToken(
                             ctx.getEmail(),
                             null,
-                            List.of(new SimpleGrantedAuthority("ROLE_" + ctx.getRole()))
+                            List.of(new SimpleGrantedAuthority("ROLE_" + normalizeRole(ctx.getRole())))
                     );
+            authentication.setDetails(ctx.getUserId());
             SecurityContextHolder.getContext().setAuthentication(authentication);
             filterChain.doFilter(request, response);
 
@@ -74,5 +66,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             response.getWriter().write("{\"error\": \"" + e.getMessage() + "\"}");
             response.getWriter().flush();
         }
+    }
+
+    private static String normalizeRole(String role) {
+        if (role == null) return "";
+        String normalized = role.trim().toUpperCase();
+        if ("USER".equals(normalized) || "CUSTOMER".equals(normalized)) {
+            return "TRAVELER";
+        }
+        return normalized;
     }
 }

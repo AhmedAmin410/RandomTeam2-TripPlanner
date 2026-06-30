@@ -154,11 +154,11 @@ class BookingServiceRefundCancellationTest {
         when(bookingRepository.findById(10L))
                 .thenReturn(Optional.of(booking));
 
+        RefundCancellationRequest request = new RefundCancellationRequest();
+        request.setReason("Changed plans");
+
         assertThatThrownBy(() ->
-                bookingService.processRefundCancellation(
-                        10L,
-                        new RefundCancellationRequest()
-                )
+                bookingService.processRefundCancellation(10L, request)
         )
                 .isInstanceOf(ResponseStatusException.class);
 

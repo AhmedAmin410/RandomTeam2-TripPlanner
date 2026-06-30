@@ -24,18 +24,16 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((request, response, authException) -> {
+                            response.setStatus(401);
+                            response.setContentType("application/json");
+                            response.getWriter().write("{\"error\":\"Unauthorized\"}");
+                        }))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/itineraries/health").permitAll()
+                        .requestMatchers("/error").permitAll()
                         .requestMatchers("/actuator/**").permitAll()
-                        // Internal Feign endpoints — called service-to-service without gateway JWT
-                        .requestMatchers("/api/itineraries/user/*/summary").permitAll()
-                        .requestMatchers("/api/itineraries/user/*/active-count").permitAll()
-                        .requestMatchers("/api/itineraries/user/*/completed-count").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/itineraries/*").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/itineraries/destination/*/active-count").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/itineraries/destination/*/booking-revenue").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/itineraries/destination/*/dashboard-aggregate").permitAll()
-                        .requestMatchers("/api/itineraries/batch").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtAuthenticationFilter,

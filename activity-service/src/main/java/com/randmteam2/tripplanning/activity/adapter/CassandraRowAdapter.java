@@ -14,7 +14,7 @@ public class CassandraRowAdapter {
     public ActivityEventDTO adapt(Row row) {
         return ActivityEventDTO.builder()
                 .eventId(row.getUuid("event_id"))
-                .activityId(row.getLong("activity_id"))
+                .activityId(row.getLong("activityId"))
                 .status(row.getString("status"))
                 .timestamp(row.getInstant("timestamp"))
                 .build();

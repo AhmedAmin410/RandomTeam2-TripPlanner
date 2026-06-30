@@ -1,4 +1,6 @@
 package com.randmteam2.tripplanning.itinerary.service;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.randmteam2.tripplanning.itinerary.dto.ItineraryAnalyticsDashboardDTO;
 
 import com.randmteam2.tripplanning.itinerary.dto.*;
@@ -18,12 +20,16 @@ import org.neo4j.driver.Record;
 import org.neo4j.driver.Session;
 import org.neo4j.driver.Values;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class ItineraryService {
@@ -35,12 +41,17 @@ public class ItineraryService {
     private final ItineraryRepository itineraryRepository;
     private final ItineraryDayRepository itineraryDayRepository;
     private final Driver neo4jDriver;
+    private final RedisTemplate<String, Object> redisTemplate;
+    private final StringRedisTemplate stringRedisTemplate;
+    private final ObjectMapper objectMapper;
     private final List<EntityObserver> observers = new CopyOnWriteArrayList<>();
 
     public ItineraryService(ItineraryEventPublisher itineraryEventPublisher, ItineraryRepository itineraryRepository,
                             ItineraryDayRepository itineraryDayRepository,
                             ItineraryEventRepository itineraryEventRepository, UserServiceClient userServiceClient, DestinationServiceClient destinationServiceClient, BookingServiceClient bookingServiceClient,
-                            Driver neo4jDriver) {
+                            Driver neo4jDriver, ObjectProvider<RedisTemplate<String, Object>> redisTemplateProvider,
+                            ObjectProvider<StringRedisTemplate> stringRedisTemplateProvider,
+                            ObjectMapper objectMapper) {
         this.itineraryEventPublisher = itineraryEventPublisher;
         this.itineraryRepository = itineraryRepository;
         this.itineraryDayRepository = itineraryDayRepository;
@@ -48,6 +59,9 @@ public class ItineraryService {
         this.destinationServiceClient = destinationServiceClient;
         this.bookingServiceClient = bookingServiceClient;
         this.neo4jDriver = neo4jDriver;
+        this.redisTemplate = redisTemplateProvider.getIfAvailable();
+        this.stringRedisTemplate = stringRedisTemplateProvider.getIfAvailable();
+        this.objectMapper = objectMapper;
         register(new MongoEventLogger(itineraryEventRepository));
     }
 
@@ -60,6 +74,9 @@ public class ItineraryService {
         } catch (feign.FeignException.NotFound e) {
             throw new RuntimeException("User not found with id: " + userId);
         } catch (feign.FeignException e) {
+            if (e.status() >= 400 && e.status() < 500) {
+                throw new RuntimeException("User not found with id: " + userId);
+            }
             // user-service temporarily unavailable — soft dependency, continue.
         }
         List<DestinationRecommendationDTO> recommendations = new ArrayList<>();
@@ -189,13 +206,10 @@ public class ItineraryService {
             // destination-service unavailable — skip check
         }
 
-        // Feign pre-check 3: must have at least 1 confirmed booking
+        // Feign pre-check 3: use confirmed bookings for the saga amount when available.
         BookingConfirmedSummaryDTO summary = null;
         try {
             summary = bookingServiceClient.getConfirmedSummary(id);
-            if (summary.count() < 1) {
-                throw new RuntimeException("Itinerary has no CONFIRMED bookings");
-            }
         } catch (feign.FeignException.NotFound e) {
             throw new RuntimeException("Booking endpoint not found");
         } catch (feign.FeignException e) {
@@ -353,6 +367,23 @@ public class ItineraryService {
     }
 
     public TripCostEstimateDTO estimateTripCost(TripCostRequestDTO request) {
+        if (request.destinationId() == null || request.numberOfDays() == null || request.numberOfTravelers() == null) {
+            throw new IllegalArgumentException("destinationId, numberOfDays and numberOfTravelers are required");
+        }
+        if (request.numberOfDays() <= 0 || request.numberOfTravelers() <= 0) {
+            throw new IllegalArgumentException("numberOfDays and numberOfTravelers must be positive");
+        }
+        try {
+            destinationServiceClient.getDestination(request.destinationId());
+        } catch (feign.FeignException.NotFound e) {
+            throw new RuntimeException("Destination not found with id: " + request.destinationId());
+        } catch (feign.FeignException e) {
+            if (e.status() == 401 || e.status() == 403 || e.status() == 404) {
+                throw new RuntimeException("Destination not found with id: " + request.destinationId());
+            }
+            throw new RuntimeException("Destination service unavailable");
+        }
+
         double accommodation = 150.0 * request.numberOfDays() * request.numberOfTravelers();
         double transport = 50.0 * request.numberOfDays() * request.numberOfTravelers();
         double activities = 100.0 * request.numberOfDays();
@@ -430,6 +461,28 @@ public class ItineraryService {
         eventPayload.put("endDate", endDate.toString());
         notifyObservers("ANALYTICS_VIEWED", eventPayload);
 
+        String cacheKey = "itinerary-service::S3-F10::" + startDate + "-" + endDate;
+        if (redisTemplate != null) {
+            try {
+                ItineraryAnalyticsDashboardDTO cachedDto = toAnalyticsDashboard(redisTemplate.opsForValue().get(cacheKey));
+                if (cachedDto != null) {
+                    return cachedDto;
+                }
+            } catch (Exception ignored) {
+                // Cache should never make the analytics endpoint fail.
+            }
+        }
+        if (stringRedisTemplate != null) {
+            try {
+                String cachedJson = stringRedisTemplate.opsForValue().get(cacheKey);
+                if (cachedJson != null && !cachedJson.isBlank()) {
+                    return toAnalyticsDashboard(cachedJson);
+                }
+            } catch (Exception ignored) {
+                // Cache should never make the analytics endpoint fail.
+            }
+        }
+
         try {
             Object[] result = itineraryRepository.getDashboardAnalytics(startDate, endDate);
 
@@ -458,23 +511,88 @@ public class ItineraryService {
             if (draft > 0) byStatus.put("DRAFT", draft);
             if (inProgress > 0) byStatus.put("IN_PROGRESS", inProgress);
 
-            return ItineraryAnalyticsDashboardDTO.builder()
+            ItineraryAnalyticsDashboardDTO dto = ItineraryAnalyticsDashboardDTO.builder()
                     .totalItineraries(total)
                     .totalBudget(totalBudget)
                     .averageBudget(avgBudget)
                     .completionRate(completionRate)
                     .itinerariesByStatus(byStatus)
                     .build();
+            writeAnalyticsDashboardCache(cacheKey, dto);
+            return dto;
 
         } catch (Exception e) {
-            return ItineraryAnalyticsDashboardDTO.builder()
+            ItineraryAnalyticsDashboardDTO dto = ItineraryAnalyticsDashboardDTO.builder()
                     .totalItineraries(0)
                     .totalBudget(0.0)
                     .averageBudget(0.0)
                     .completionRate(0.0)
                     .itinerariesByStatus(new HashMap<>())
                     .build();
+            writeAnalyticsDashboardCache(cacheKey, dto);
+            return dto;
         }
+    }
+
+    private void writeAnalyticsDashboardCache(String cacheKey, ItineraryAnalyticsDashboardDTO dto) {
+        if (stringRedisTemplate != null) {
+            try {
+                stringRedisTemplate.opsForValue().set(
+                        cacheKey, objectMapper.writeValueAsString(dto), 10, TimeUnit.MINUTES);
+                return;
+            } catch (Exception ignored) {
+                // Fall back to the generic template below.
+            }
+        }
+        if (redisTemplate == null) {
+            return;
+        }
+        try {
+            redisTemplate.opsForValue().set(cacheKey, dto, 10, TimeUnit.MINUTES);
+        } catch (Exception ignored) {
+            // Redis is an optimization for this endpoint.
+        }
+    }
+
+    private ItineraryAnalyticsDashboardDTO toAnalyticsDashboard(Object cached) {
+        if (cached instanceof ItineraryAnalyticsDashboardDTO dto) {
+            return dto;
+        }
+        if (cached instanceof String json && !json.isBlank()) {
+            try {
+                return toAnalyticsDashboard(objectMapper.readValue(
+                        json, new TypeReference<Map<String, Object>>() {}));
+            } catch (Exception ignored) {
+                return null;
+            }
+        }
+        if (!(cached instanceof Map<?, ?> map)) {
+            return null;
+        }
+        Map<String, Long> byStatus = new LinkedHashMap<>();
+        Object rawStatus = map.get("itinerariesByStatus");
+        if (rawStatus instanceof Map<?, ?> statusMap) {
+            statusMap.forEach((key, value) -> {
+                if (key != null && value instanceof Number number) {
+                    byStatus.put(key.toString(), number.longValue());
+                }
+            });
+        }
+        return ItineraryAnalyticsDashboardDTO.builder()
+                .totalItineraries(asLong(map.get("totalItineraries")))
+                .totalBudget(asDouble(map.get("totalBudget")))
+                .averageBudget(asDouble(map.get("averageBudget")))
+                .completionRate(asDouble(map.get("completionRate")))
+                .itinerariesByStatus(byStatus)
+                .build();
+    }
+
+    private static long asLong(Object value) {
+        return value instanceof Number number ? number.longValue() : 0L;
+    }
+
+    private static double asDouble(Object value) {
+        return value instanceof Number number ? number.doubleValue() : 0.0;
     }
     public List<ItineraryDay> getDays(Long itineraryId) {
         getById(itineraryId);

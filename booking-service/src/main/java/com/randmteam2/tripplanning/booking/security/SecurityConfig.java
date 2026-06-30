@@ -21,14 +21,16 @@ public class SecurityConfig {
         return http
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint((request, response, authException) -> {
+                            response.setStatus(401);
+                            response.setContentType("application/json");
+                            response.getWriter().write("{\"error\":\"Unauthorized\"}");
+                        }))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/bookings/health").permitAll()
+                        .requestMatchers("/error").permitAll()
                         .requestMatchers("/actuator/**").permitAll()
-                        // Inter-service Feign endpoints (called by user-service, itinerary-service)
-                        .requestMatchers("/api/bookings/user/*/total").permitAll()
-                        .requestMatchers("/api/bookings/aggregate-by-itineraries").permitAll()
-                        .requestMatchers("/api/bookings/itinerary/*/confirmed-summary").permitAll()
-                        .requestMatchers("/api/bookings/itinerary/*/confirmed-count").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)

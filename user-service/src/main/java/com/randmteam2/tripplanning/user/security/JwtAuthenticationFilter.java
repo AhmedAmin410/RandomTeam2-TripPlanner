@@ -39,7 +39,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getServletPath();
+        String method = request.getMethod();
         return "/api/users/health".equals(path)
+                || "/error".equals(path)
                 || "/api/users/register".equals(path)
                 || "/api/users/login".equals(path)
                 || "/api/auth/register".equals(path)
@@ -67,10 +69,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             if (userFromDb == null || userFromDb.getStatus() == UserStatus.DEACTIVATED) {
                 throw new AuthException(401, "User account is deactivated or does not exist");
             }
-            String role = ctx.claims.get("role", String.class);
+            String role = normalizeRole(ctx.claims.get("role", String.class));
             var auth = new UsernamePasswordAuthenticationToken(
                     ctx.claims.getSubject(), null,
                     List.of(new SimpleGrantedAuthority("ROLE_" + role)));
+            auth.setDetails(ctx.claims.get("uid"));
             SecurityContextHolder.getContext().setAuthentication(auth);
             filterChain.doFilter(request, response);
         } catch (AuthException e) {
@@ -79,5 +82,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             response.setContentType("application/json");
             response.getWriter().write("{\"error\":\"" + e.getMessage() + "\"}");
         }
+    }
+
+    private static String normalizeRole(String role) {
+        if (role == null) return "";
+        String normalized = role.trim().toUpperCase();
+        if ("USER".equals(normalized) || "CUSTOMER".equals(normalized)) {
+            return "TRAVELER";
+        }
+        return normalized;
     }
 }

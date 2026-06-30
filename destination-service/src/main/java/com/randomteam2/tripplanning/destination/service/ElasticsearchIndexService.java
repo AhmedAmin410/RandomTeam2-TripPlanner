@@ -5,6 +5,7 @@ import com.randomteam2.tripplanning.destination.elasticsearch.DestinationSearchR
 import com.randomteam2.tripplanning.destination.model.Destination;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -17,15 +18,19 @@ public class ElasticsearchIndexService {
     private static final Logger logger = LoggerFactory.getLogger(ElasticsearchIndexService.class);
 
     private final DestinationSearchRepository searchRepository;
+    private final ElasticsearchOperations elasticsearchOperations;
 
-    public ElasticsearchIndexService(DestinationSearchRepository searchRepository) {
+    public ElasticsearchIndexService(DestinationSearchRepository searchRepository,
+                                     ElasticsearchOperations elasticsearchOperations) {
         this.searchRepository = searchRepository;
+        this.elasticsearchOperations = elasticsearchOperations;
     }
 
     public void indexDestination(Destination destination, String source) {
         try {
             DestinationSearchDocument doc = toDocument(destination);
             searchRepository.save(doc);
+            elasticsearchOperations.indexOps(DestinationSearchDocument.class).refresh();
             logger.info("Indexed destination id={} source={}", destination.getId(), source);
         } catch (Exception e) {
             logger.warn("Failed to index destination id={} in Elasticsearch", destination.getId(), e);

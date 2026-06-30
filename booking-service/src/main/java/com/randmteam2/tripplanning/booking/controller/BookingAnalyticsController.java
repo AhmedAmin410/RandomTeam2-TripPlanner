@@ -18,13 +18,16 @@ public class BookingAnalyticsController {
 
     @GetMapping("/analytics/destination-season")
     public ResponseEntity<List<DestinationSeasonRevenueDTO>> getRevenueByDestinationAndSeason(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
 
         // log OUTSIDE the cached method so it fires even on cache hits
         analyticsService.logAnalyticsViewed();
 
+        LocalDate from = startDate != null ? startDate : LocalDate.of(2000, 1, 1);
+        LocalDate to = endDate != null ? endDate : LocalDate.of(2100, 1, 1);
+
         return ResponseEntity.ok(
-                analyticsService.getRevenueByDestinationAndSeason(startDate, endDate));
+                analyticsService.getRevenueByDestinationAndSeason(from, to));
     }
 }

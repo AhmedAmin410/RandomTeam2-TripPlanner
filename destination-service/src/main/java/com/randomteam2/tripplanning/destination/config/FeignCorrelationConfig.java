@@ -1,4 +1,4 @@
-package com.randmteam2.tripplanning.user.config;
+package com.randomteam2.tripplanning.destination.config;
 
 import feign.RequestInterceptor;
 import org.slf4j.MDC;
@@ -22,9 +22,8 @@ public class FeignCorrelationConfig {
 
     /**
      * Forward the caller's Authorization header on outgoing Feign calls so the
-     * downstream service (which requires a valid JWT on every non-public endpoint)
-     * authenticates the same principal. Without this, cross-service feature calls
-     * would receive 401 from the target service.
+     * downstream service authenticates the same principal. S2-F3/F7/F8/F12 all
+     * fan out to itinerary-service / user-service, which require a valid JWT.
      */
     @Bean
     public RequestInterceptor authForwardingInterceptor() {

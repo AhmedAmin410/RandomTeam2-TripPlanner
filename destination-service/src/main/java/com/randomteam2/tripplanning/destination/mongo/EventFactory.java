@@ -21,7 +21,6 @@ public class EventFactory {
         LocalDateTime timestamp = extractTimestamp(safeParams.get("timestamp"));
 
         Map<String, Object> details = new HashMap<>(safeParams);
-        details.remove("destinationId");
         details.remove("action");
         details.remove("timestamp");
 

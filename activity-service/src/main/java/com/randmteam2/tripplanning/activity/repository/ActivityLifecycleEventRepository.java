@@ -11,9 +11,9 @@ import java.util.List;
 @Repository
 public interface ActivityLifecycleEventRepository extends CassandraRepository<ActivityLifecycleEvent, Long> {
 
-    @Query("SELECT * FROM activity_lifecycle_events WHERE activity_id = ?0")
+    @Query("SELECT * FROM activity_lifecycle_events WHERE \"activityId\" = ?0")
     List<ActivityLifecycleEvent> findByActivityId(Long activityId);
 
-    @Query("SELECT * FROM activity_lifecycle_events WHERE activity_id = ?0 AND timestamp >= ?1 AND timestamp <= ?2")
+    @Query("SELECT * FROM activity_lifecycle_events WHERE \"activityId\" = ?0 AND timestamp >= ?1 AND timestamp <= ?2")
     List<ActivityLifecycleEvent> findByActivityIdAndTimestampBetween(Long activityId, Instant startTime, Instant endTime);
 }

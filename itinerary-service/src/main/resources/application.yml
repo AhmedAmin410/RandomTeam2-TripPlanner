@@ -25,9 +25,14 @@ spring:
       port: ${SPRING_DATA_REDIS_PORT:6379}
       password: ${SPRING_DATA_REDIS_PASSWORD:redispass}
     neo4j:
-      uri: ${SPRING_DATA_NEO4J_URI:bolt://localhost:7687}
-      username: ${SPRING_DATA_NEO4J_USERNAME:neo4j}
-      password: ${SPRING_DATA_NEO4J_PASSWORD:neo4jpass}
+      uri: ${SPRING_NEO4J_URI:${SPRING_DATA_NEO4J_URI:bolt://localhost:7687}}
+      username: ${SPRING_NEO4J_AUTHENTICATION_USERNAME:${SPRING_DATA_NEO4J_USERNAME:neo4j}}
+      password: ${SPRING_NEO4J_AUTHENTICATION_PASSWORD:${SPRING_DATA_NEO4J_PASSWORD:neo4jpass}}
+  neo4j:
+    uri: ${SPRING_NEO4J_URI:${SPRING_DATA_NEO4J_URI:bolt://localhost:7687}}
+    authentication:
+      username: ${SPRING_NEO4J_AUTHENTICATION_USERNAME:${SPRING_DATA_NEO4J_USERNAME:neo4j}}
+      password: ${SPRING_NEO4J_AUTHENTICATION_PASSWORD:${SPRING_DATA_NEO4J_PASSWORD:neo4jpass}}
   rabbitmq:
     host: ${SPRING_RABBITMQ_HOST:localhost}
     port: 5672
