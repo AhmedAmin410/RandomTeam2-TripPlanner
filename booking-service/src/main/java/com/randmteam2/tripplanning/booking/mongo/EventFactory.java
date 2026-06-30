@@ -73,6 +73,8 @@ public class EventFactory {
         ev.setAction(asString(d.get("action")));
         ev.setTimestamp(asTimestamp(d.get("timestamp")));
         ev.setBookingId(asLong(d.get("bookingId")));
+        ev.setSettlementId(asLong(d.get("settlementId")));
+        ev.setItineraryId(asLong(d.get("itineraryId")));
         ev.setMethod(asString(d.get("method")));
         ev.setAmount(asDouble(d.get("amount")));
         ev.setDetails(asDetails(d.get("details")));

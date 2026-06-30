@@ -3,8 +3,10 @@ package com.randmteam2.tripplanning.booking.service;
 import com.randmteam2.tripplanning.booking.dto.*;
 import com.randmteam2.tripplanning.booking.feign.BookingFeignClients;
 import com.randmteam2.tripplanning.booking.model.*;
+import com.randmteam2.tripplanning.booking.mongo.EventFactory;
+import com.randmteam2.tripplanning.booking.mongo.EventType;
+import com.randmteam2.tripplanning.booking.mongo.MongoEvent;
 import com.randmteam2.tripplanning.booking.repository.*;
-import com.randmteam2.tripplanning.booking.mongo.PaymentAuditEvent;
 import com.randmteam2.tripplanning.booking.mongo.PaymentAuditEventRepository;
 import com.randmteam2.tripplanning.booking.observer.BookingEvent;
 import com.randmteam2.tripplanning.booking.observer.BookingEventPublisher;
@@ -524,20 +526,21 @@ public class BookingService {
 
         if (strategy instanceof NoRefundStrategy) {
             // Log REFUND_DENIED + invalidate caches BEFORE throwing 400 (M2 §10.5.3 step f)
-            PaymentAuditEvent denied = new PaymentAuditEvent();
-            denied.setBookingId(booking.getId());
-            denied.setItineraryId(booking.getItineraryId());
-            denied.setAction("REFUND_DENIED");
-            denied.setTimestamp(LocalDateTime.now());
-            denied.setMethod(booking.getType() != null ? booking.getType().name() : null);
-            denied.setAmount(booking.getAmount());
-            denied.setDetails(Map.of(
-                    "strategyName", strategy.getClass().getSimpleName(),
-                    "reason", request.getReason(),
-                    "originalAmount", booking.getAmount(),
-                    "refundAmount", result.getRefundAmount()
+            MongoEvent denied = EventFactory.createEvent(EventType.PAYMENT_AUDIT, Map.of(
+                    "bookingId", booking.getId(),
+                    "itineraryId", booking.getItineraryId(),
+                    "action", "REFUND_DENIED",
+                    "timestamp", LocalDateTime.now(),
+                    "method", booking.getType() != null ? booking.getType().name() : "",
+                    "amount", booking.getAmount(),
+                    "details", Map.of(
+                            "strategyName", strategy.getClass().getSimpleName(),
+                            "reason", request.getReason(),
+                            "originalAmount", booking.getAmount(),
+                            "refundAmount", result.getRefundAmount()
+                    )
             ));
-            auditRepository.save(denied);
+            auditRepository.save((com.randmteam2.tripplanning.booking.mongo.PaymentAuditEvent) denied);
             cacheInvalidationService.evictRefundRelatedCaches();
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "trip already started or completed");

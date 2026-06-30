@@ -2,7 +2,9 @@ package com.randmteam2.tripplanning.booking.service;
 
 import com.randmteam2.tripplanning.booking.dto.PaymentHistoryEntryDTO;
 import com.randmteam2.tripplanning.booking.model.Booking;
-import com.randmteam2.tripplanning.booking.mongo.PaymentAuditEvent;
+import com.randmteam2.tripplanning.booking.mongo.EventFactory;
+import com.randmteam2.tripplanning.booking.mongo.EventType;
+import com.randmteam2.tripplanning.booking.mongo.MongoEvent;
 import com.randmteam2.tripplanning.booking.mongo.PaymentAuditEventRepository;
 import com.randmteam2.tripplanning.booking.repository.BookingRepository;
 import org.springframework.data.domain.Page;
@@ -65,13 +67,14 @@ public class PaymentHistoryService {
                 .map(PaymentHistoryEntryDTO::new)
                 .toList();
 
-        PaymentAuditEvent viewed = new PaymentAuditEvent();
-        viewed.setBookingId(bookingId);
-        viewed.setItineraryId(booking.getItineraryId());
-        viewed.setAction("ANALYTICS_VIEWED");
-        viewed.setTimestamp(LocalDateTime.now());
-        viewed.setDetails(Map.of("endpoint", "S5-F11"));
-        auditRepository.save(viewed);
+        MongoEvent viewed = EventFactory.createEvent(EventType.PAYMENT_AUDIT, Map.of(
+                "bookingId", bookingId,
+                "itineraryId", booking.getItineraryId(),
+                "action", "ANALYTICS_VIEWED",
+                "timestamp", LocalDateTime.now(),
+                "details", Map.of("endpoint", "S5-F11")
+        ));
+        auditRepository.save((com.randmteam2.tripplanning.booking.mongo.PaymentAuditEvent) viewed);
 
         return dtos;
     }
